@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fab Agent • Agentic Organization Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap');
+    
+    body {
+      font-family: 'Inter', system_ui, sans-serif;
+    }
+    .font-display {
+      font-family: 'Space Grotesk', 'Inter', sans-serif;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-white">
+  <!-- Navbar -->
+  <nav class="border-b border-white/10 bg-slate-950/80 backdrop-blur-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-x-3">
+        <div class="w-9 h-9 bg-white rounded-2xl flex items-center justify-center">
+          <span class="text-slate-950 font-bold text-xl">F</span>
+        </div>
+        <span class="font-display text-2xl font-semibold tracking-tighter">Fab Agent</span>
+      </div>
+      
+      <div class="flex items-center gap-x-4">
+        <a href="https://docs.fab.engineering" class="px-4 py-2 text-sm font-medium hover:bg-white/5 rounded-xl transition-colors">Dokümantasyon</a>
+        <a href="https://github.com/fab-agent" class="px-4 py-2 text-sm font-medium hover:bg-white/5 rounded-xl transition-colors">GitHub</a>
+        <button onclick="window.location.href='https://github.com/fab-agent'" 
+                class="px-5 py-2 bg-white text-slate-950 rounded-2xl text-sm font-semibold hover:bg-white/90 transition-all">
+          Başla
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <div class="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
+    <div class="inline-flex items-center gap-x-2 bg-white/5 border border-white/10 px-4 h-8 rounded-3xl text-sm mb-6">
+      <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+      <span class="text-emerald-400 font-medium">v0.1.0 • Self-hosted</span>
+    </div>
+    
+    <h1 class="font-display text-7xl font-semibold tracking-tighter leading-none">
+      Şirketlerin<br>
+      <span class="bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">AI Agent</span> altyapısı
+    </h1>
+    
+    <p class="mt-6 text-xl text-slate-400 max-w-2xl mx-auto">
+      Organizasyon şeması, personel bazlı AI ajanlar ve policy yönetimi.<br>
+      Tamamen self-hosted ve açık kaynak.
+    </p>
+    
+    <div class="mt-10 flex items-center justify-center gap-x-4">
+      <a href="https://github.com/fab-agent/3rdparty-agent-org" 
+         class="inline-flex items-center gap-x-3 bg-white text-slate-950 px-8 h-14 rounded-3xl font-semibold text-lg hover:bg-white/90 transition-all">
+        <i class="fa-brands fa-github text-xl"></i>
+        <span>GitHub'da İncele</span>
+      </a>
+      <a href="https://docs.fab.engineering" 
+         class="inline-flex items-center gap-x-3 border border-white/20 px-8 h-14 rounded-3xl font-semibold text-lg hover:bg-white/5 transition-all">
+        <span>Dokümantasyonu Oku</span>
+      </a>
+    </div>
+    
+    <div class="mt-8 text-sm text-slate-500">
+      GitHub Organization: <a href="https://github.com/fab-agent" class="text-white hover:underline">@fab-agent</a>
+    </div>
+  </div>
+
+  <!-- Features -->
+  <div class="max-w-6xl mx-auto px-6 pb-20">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="bg-white/5 border border-white/10 rounded-3xl p-8">
+        <div class="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center mb-6">
+          <i class="fa-solid fa-sitemap text-emerald-400 text-2xl"></i>
+        </div>
+        <h3 class="font-semibold text-xl">Organizasyon Yönetimi</h3>
+        <p class="mt-3 text-slate-400">Organizasyon oluştur, personel ekle ve rollerini yönet. Tüm yapı dosya sistemi + veritabanı hibrit yapıda saklanır.</p>
+      </div>
+      
+      <div class="bg-white/5 border border-white/10 rounded-3xl p-8">
+        <div class="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center mb-6">
+          <i class="fa-solid fa-robot text-blue-400 text-2xl"></i>
+        </div>
+        <h3 class="font-semibold text-xl">Personel Bazlı Agentlar</h3>
+        <p class="mt-3 text-slate-400">Her personele özel AI agent tanımla. Claude, GPT veya kendi modellerini kullan. Policy ve skill'leri markdown ile yönet.</p>
+      </div>
+      
+      <div class="bg-white/5 border border-white/10 rounded-3xl p-8">
+        <div class="w-12 h-12 bg-violet-500/10 rounded-2xl flex items-center justify-center mb-6">
+          <i class="fa-solid fa-lock text-violet-400 text-2xl"></i>
+        </div>
+        <h3 class="font-semibold text-xl">Self-hosted &amp; Güvenli</h3>
+        <p class="mt-3 text-slate-400">Tüm veriler kendi sunucunda kalır. Docker ile tek komutta kurulum. Açık kaynak ve şeffaf.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-white/10 py-8">
+    <div class="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between text-sm text-slate-500">
+      <div>© 2026 Fab Agent. Built with ❤️ in Turkey.</div>
+      <div class="mt-4 md:mt-0 flex gap-x-6">
+        <a href="https://github.com/fab-agent" class="hover:text-white">GitHub</a>
+        <a href="https://docs.fab.engineering" class="hover:text-white">Dokümantasyon</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
