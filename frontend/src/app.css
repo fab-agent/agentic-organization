@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ============================================
-   Shadcn Svelte (Nova style) + Custom Theme
+   Shadcn Svelte Theme Variables
    ============================================ */
 
 :root {
@@ -27,10 +27,6 @@
   --input: 214.3 31.8% 91.4%;
   --ring: 222.2 84% 4.9%;
   --radius: 0.75rem;
-
-  /* Custom project colors */
-  --primary-custom: #0f172a;
-  --accent-custom: #6366f1;
 }
 
 .dark {
@@ -59,97 +55,30 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
 }
 
-/* Font utilities */
 .font-display {
   font-family: 'Space Grotesk', 'Inter', sans-serif;
   font-weight: 600;
   letter-spacing: -0.015em;
 }
 
-/* Keep some legacy custom styles for existing components */
-.card {
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 1.75rem;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+/* ============================================
+   Dialog Animations
+   ============================================ */
+
+@keyframes backdropIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
-.dark .card {
-  background: hsl(var(--card));
-  border-color: hsl(var(--border));
+@keyframes dialogIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);     }
 }
 
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  font-weight: 500;
-  font-size: 0.875rem;
-  border-radius: 1.25rem;
-  transition: all 0.15s ease;
-  white-space: nowrap;
+.animate-backdrop {
+  animation: backdropIn 0.15s ease;
 }
 
-/* Input, modal, badge legacy styles preserved for compatibility */
-.input {
-  width: 100%;
-  border: 1px solid #e2e8f0;
-  border-radius: 1rem;
-  padding: 0 1rem;
-  height: 2.75rem;
-  font-size: 0.875rem;
-  transition: all 0.15s ease;
-}
-
-.input:focus {
-  outline: none;
-  border-color: var(--accent-custom);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-.modal {
-  animation: modalEnter 0.2s cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-@keyframes modalEnter {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.985);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 10px;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  border-radius: 9999px;
-}
-
-/* Legacy support classes */
-.org-card {
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.org-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-}
-
-.agent-badge {
-  font-size: 0.75rem;
-  padding: 1px 8px;
-  border-radius: 9999px;
-}
-
-.md-preview {
-  font-size: 0.875rem;
-  line-height: 1.6;
+.animate-dialog {
+  animation: dialogIn 0.2s cubic-bezier(0.32, 0.72, 0, 1);
 }
