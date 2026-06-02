@@ -3,115 +3,797 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fab Agent • Agentic Organization Platform</title>
+  <title>fab.engineering — Agentic Organization Platform</title>
+  <meta name="description" content="Şirketinizin tüm yapısına AI ajan entegre edin. Self-hosted, açık kaynak, organizasyonel zeka platformu.">
+  <meta property="og:title" content="fab.engineering">
+  <meta property="og:description" content="Organizasyonunuza AI Ajan Entegrasyonu. Self-hosted & Open Source.">
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap');
-    
-    body {
-      font-family: 'Inter', system_ui, sans-serif;
+    :root { --bg: #09090b; --card: #111113; --border: rgba(255,255,255,0.07); --muted: #52525b; --accent: #e4e4e7; }
+    .light { --bg: #fafafa; --card: #ffffff; --border: rgba(0,0,0,0.08); --muted: #71717a; --accent: #18181b; }
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: #fafafa; margin: 0; -webkit-font-smoothing: antialiased; transition: background-color 0.3s, color 0.3s; }
+    .light body, body.light { color: #18181b; }
+    body.light { color: #18181b; }
+
+    /* Light mode overrides */
+    body.light .text-zinc-400 { color: #52525b !important; }
+    body.light .text-zinc-500 { color: #71717a !important; }
+    body.light .text-zinc-600 { color: #71717a !important; }
+    body.light .text-zinc-300 { color: #3f3f46 !important; }
+    body.light nav { background: rgba(250,250,250,0.9) !important; border-bottom-color: rgba(0,0,0,0.08) !important; }
+    body.light .card { background: #ffffff !important; border-color: rgba(0,0,0,0.08) !important; }
+    body.light .card:hover { border-color: rgba(0,0,0,0.15) !important; }
+    body.light .badge { background: rgba(0,0,0,0.04) !important; border-color: rgba(0,0,0,0.08) !important; }
+    body.light .pill { background: rgba(0,0,0,0.04) !important; border-color: rgba(0,0,0,0.07) !important; color: #52525b !important; }
+    body.light .code-block { background: #f4f4f5 !important; border-color: rgba(0,0,0,0.08) !important; }
+    body.light .code-bar { background: #e4e4e7 !important; border-bottom-color: rgba(0,0,0,0.08) !important; }
+    body.light pre { color: #18181b !important; }
+    body.light .c-dim { color: #a1a1aa !important; }
+    body.light .c-green { color: #059669 !important; }
+    body.light .c-blue { color: #4f46e5 !important; }
+    body.light .c-white { color: #18181b !important; }
+    body.light .dot-grid { background-image: radial-gradient(circle, rgba(0,0,0,0.06) 1px, transparent 1px); background-size: 32px 32px; }
+    body.light .hero-glow { background: radial-gradient(ellipse, rgba(99,102,241,0.08) 0%, transparent 70%); }
+    body.light .grad-text { background: linear-gradient(135deg, #18181b 30%, #52525b 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    body.light section[style*="border-top"] { border-top-color: rgba(0,0,0,0.07) !important; }
+    body.light footer { border-top-color: rgba(0,0,0,0.07) !important; }
+    body.light .bg-white\/5, body.light .hover\:bg-white\/5:hover { background: rgba(0,0,0,0.04) !important; }
+    body.light .lang-btn { color: #71717a; }
+    body.light .lang-btn:hover { color: #18181b; background: rgba(0,0,0,0.06); }
+    body.light .lang-btn.active { color: #18181b; background: rgba(0,0,0,0.08); }
+    body.light .bg-white\/5 { background: rgba(0,0,0,0.05) !important; }
+    body.light [style*="background:#18181b"] { background: #e4e4e7 !important; }
+    body.light [style*="background: #18181b"] { background: #e4e4e7 !important; }
+
+    /* Theme toggle button */
+    .theme-toggle { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); cursor: pointer; transition: all 0.15s; color: #a1a1aa; }
+    .theme-toggle:hover { background: rgba(255,255,255,0.1); color: #fafafa; }
+    body.light .theme-toggle { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.1); color: #71717a; }
+    body.light .theme-toggle:hover { background: rgba(0,0,0,0.08); color: #18181b; }
+    .font-display { font-family: 'Space Grotesk', 'Inter', sans-serif; }
+    .mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+
+    /* Dot grid */
+    .dot-grid {
+      background-image: radial-gradient(circle, rgba(255,255,255,0.05) 1px, transparent 1px);
+      background-size: 32px 32px;
     }
-    .font-display {
-      font-family: 'Space Grotesk', 'Inter', sans-serif;
-      font-weight: 600;
+
+    /* Gradient glow */
+    .hero-glow {
+      position: absolute; top: -120px; left: 50%; transform: translateX(-50%);
+      width: 700px; height: 400px;
+      background: radial-gradient(ellipse, rgba(99,102,241,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    /* Gradient text */
+    .grad-text {
+      background: linear-gradient(135deg, #fff 30%, #71717a 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .grad-blue {
+      background: linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .card:hover { border-color: rgba(255,255,255,0.14); transform: translateY(-2px); }
+
+    /* Code block */
+    .code-block {
+      background: #0d0d0f;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .code-bar { background: #18181b; border-bottom: 1px solid var(--border); padding: 10px 16px; display: flex; align-items: center; gap: 8px; }
+    .dot-r { width:12px; height:12px; border-radius:50%; background:#ff5f57; }
+    .dot-y { width:12px; height:12px; border-radius:50%; background:#ffbd2e; }
+    .dot-g { width:12px; height:12px; border-radius:50%; background:#28c840; }
+    pre { margin: 0; padding: 24px; font-size: 13.5px; line-height: 1.7; overflow-x: auto; }
+    .c-dim { color: #52525b; }
+    .c-green { color: #34d399; }
+    .c-blue { color: #818cf8; }
+    .c-white { color: #e4e4e7; }
+
+    /* Badge */
+    .badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.09); border-radius: 999px; padding: 4px 14px; font-size: 13px; }
+
+    /* Pill tag */
+    .pill { display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 999px; padding: 3px 12px; font-size: 12px; color: #a1a1aa; }
+
+    /* Step connector */
+    .step-line { position:absolute; left:19px; top:40px; bottom:-24px; width:1px; background: linear-gradient(to bottom, rgba(255,255,255,0.1), transparent); }
+
+    /* Lang button */
+    .lang-btn { padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 500; color: #71717a; cursor: pointer; transition: all 0.15s; border: none; background: none; }
+    .lang-btn:hover { color: #fafafa; background: rgba(255,255,255,0.06); }
+    .lang-btn.active { color: #fafafa; background: rgba(255,255,255,0.08); }
+
+    /* Divider */
+    hr.fancy { border: none; border-top: 1px solid var(--border); }
+
+    /* Nav */
+    nav { position: sticky; top: 0; z-index: 50; border-bottom: 1px solid var(--border); background: rgba(9,9,11,0.85); backdrop-filter: blur(16px); }
+
+    /* Feature icon */
+    .feat-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; font-size: 18px; }
+
+    /* Section */
+    section { padding: 80px 0; }
+    section.tight { padding: 60px 0; }
+
+    /* Smooth scroll */
+    html { scroll-behavior: smooth; }
+
+    /* Global transition for theme switching */
+    body, nav, .card, .badge, .pill, .code-block, .code-bar, footer, section {
+      transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
     }
   </style>
 </head>
-<body class="bg-slate-950 text-white">
-  <!-- Navbar -->
-  <nav class="border-b border-white/10 bg-slate-950/80 backdrop-blur-lg sticky top-0 z-50">
-    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-      <div class="flex items-center gap-x-3">
-        <img src="https://github.com/fab-agent.png" class="w-9 h-9 rounded-2xl" alt="Fab Agent">
-          
-        </div>
-        <span class="font-display text-2xl font-semibold tracking-tighter">Fab Agent</span>
-      </div>
-      
-      <div class="flex items-center gap-x-4">
-        <a href="https://docs.fab.engineering" class="px-4 py-2 text-sm font-medium hover:bg-white/5 rounded-xl transition-colors">Dokümantasyon</a>
-        <a href="https://github.com/fab-agent" class="px-4 py-2 text-sm font-medium hover:bg-white/5 rounded-xl transition-colors">GitHub</a>
-        <button onclick="window.location.href='https://github.com/fab-agent'" 
-                class="px-5 py-2 bg-white text-slate-950 rounded-2xl text-sm font-semibold hover:bg-white/90 transition-all">
-          Başla
-        </button>
-      </div>
-    </div>
-  </nav>
+<body>
 
-  <!-- Hero -->
-  <div class="max-w-5xl mx-auto px-6 pt-20 pb-16 text-center">
-    <div class="inline-flex items-center gap-x-2 bg-white/5 border border-white/10 px-4 h-8 rounded-3xl text-sm mb-6">
-      <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-      <span class="text-emerald-400 font-medium">v0.1.0 • Self-hosted</span>
+<!-- ─── Navbar ───────────────────────────────────────────────────────────── -->
+<nav>
+  <div style="max-width:1120px" class="mx-auto px-6 h-14 flex items-center justify-between">
+
+    <!-- Logo -->
+    <a href="/" class="flex items-center gap-2.5 no-underline">
+      <div style="width:28px;height:28px;background:#6366f1;border-radius:8px;display:flex;align-items:center;justify-content:center;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <span class="font-display font-semibold text-lg tracking-tight" style="letter-spacing:-0.5px">
+        <span style="color:#fafafa">fab</span><span style="color:#52525b">.engineering</span>
+      </span>
+    </a>
+
+    <!-- Nav links -->
+    <div class="hidden md:flex items-center gap-1">
+      <a href="https://docs.fab.engineering" class="px-3 py-1.5 text-sm text-zinc-400 hover:text-white rounded-lg hover:bg-white/5 transition-all no-underline" data-i18n="nav.docs">Docs</a>
+      <a href="https://github.com/fab-agent/3rdparty-agent-org" class="px-3 py-1.5 text-sm text-zinc-400 hover:text-white rounded-lg hover:bg-white/5 transition-all no-underline flex items-center gap-1.5">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+        GitHub
+      </a>
     </div>
-    
-    <h1 class="font-display text-7xl font-semibold tracking-tighter leading-none">
-      Şirketlerin<br>
-      <span class="bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">AI Agent</span> altyapısı
+
+    <!-- Right: Lang + Theme + CTA -->
+    <div class="flex items-center gap-3">
+      <!-- Language switcher -->
+      <div class="hidden sm:flex items-center gap-0.5 bg-white/5 rounded-lg p-0.5">
+        <button class="lang-btn active" onclick="setLang('tr')">TR</button>
+        <button class="lang-btn" onclick="setLang('en')">EN</button>
+        <button class="lang-btn" onclick="setLang('de')">DE</button>
+        <button class="lang-btn" onclick="setLang('es')">ES</button>
+      </div>
+      <!-- Dark/Light mode toggle -->
+      <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle" title="Toggle light/dark mode">
+        <svg id="iconMoon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+        </svg>
+        <svg id="iconSun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+      </button>
+      <a href="https://github.com/fab-agent/3rdparty-agent-org"
+         class="hidden sm:inline-flex items-center gap-2 bg-white text-zinc-950 px-4 h-8 rounded-lg text-sm font-semibold hover:bg-zinc-100 transition-all no-underline">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+        <span data-i18n="nav.star">Star on GitHub</span>
+      </a>
+    </div>
+  </div>
+</nav>
+
+
+<!-- ─── Hero ─────────────────────────────────────────────────────────────── -->
+<section class="dot-grid relative overflow-hidden" style="padding: 100px 0 80px;">
+  <div class="hero-glow"></div>
+  <div style="max-width:780px" class="mx-auto px-6 text-center relative">
+
+    <!-- Badge -->
+    <div class="badge mb-8">
+      <span style="width:7px;height:7px;background:#10b981;border-radius:50%;display:inline-block;animation:pulse 2s infinite"></span>
+      <span class="text-emerald-400 font-medium text-xs tracking-wide">Open Source · Self-Hosted · v0.1</span>
+    </div>
+
+    <!-- Headline -->
+    <h1 class="font-display grad-text" style="font-size:clamp(2.8rem,6vw,4.5rem);line-height:1.08;letter-spacing:-2px;margin:0 0 24px">
+      <span data-i18n="hero.line1">AI Ajanları</span><br>
+      <span class="grad-blue" data-i18n="hero.line2">Organizasyona Taşı</span>
     </h1>
-    
-    <p class="mt-6 text-xl text-slate-400 max-w-2xl mx-auto">
-      Organizasyon şeması, personel bazlı AI ajanlar ve policy yönetimi.<br>
-      Tamamen self-hosted ve açık kaynak.
+
+    <!-- Sub -->
+    <p class="text-zinc-400 mx-auto text-center" style="font-size:1.1rem;line-height:1.7;max-width:600px;margin:0 auto 40px;text-align:center" data-i18n="hero.sub">
+      Yapay zeka sadece IT bölümleri için değil. Şirketinizde, organizasyonunuzda yaşayan ve sizinle beraber çalışan, öğrenen bir yapı olabilir. Rutin işlerinizi, bölümler arası süreçlerinizi yönetebilirsiniz ve sizler asıl işinize odaklanabilirsiniz. Artık katma değer üretimi insanlarda, rutin işler, analizler ve raporlar ajanlarda.
     </p>
-    
-    <div class="mt-10 flex items-center justify-center gap-x-4">
-      <a href="https://github.com/fab-agent/3rdparty-agent-org" 
-         class="inline-flex items-center gap-x-3 bg-white text-slate-950 px-8 h-14 rounded-3xl font-semibold text-lg hover:bg-white/90 transition-all">
-        <i class="fa-brands fa-github text-xl"></i>
-        <span>GitHub'da İncele</span>
+
+    <!-- CTAs -->
+    <div class="flex flex-wrap items-center justify-center gap-3">
+      <a href="https://github.com/fab-agent/3rdparty-agent-org"
+         class="inline-flex items-center gap-2.5 bg-white text-zinc-950 px-6 h-12 rounded-xl font-semibold text-sm hover:bg-zinc-100 transition-all no-underline">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+        <span data-i18n="hero.cta1">GitHub'da İncele</span>
       </a>
-      <a href="https://docs.fab.engineering" 
-         class="inline-flex items-center gap-x-3 border border-white/20 px-8 h-14 rounded-3xl font-semibold text-lg hover:bg-white/5 transition-all">
-        <span>Dokümantasyonu Oku</span>
+      <a href="https://docs.fab.engineering"
+         class="inline-flex items-center gap-2 border px-6 h-12 rounded-xl font-semibold text-sm hover:bg-white/5 transition-all no-underline text-zinc-300"
+         style="border-color:rgba(255,255,255,0.12)">
+        <span data-i18n="hero.cta2">Dokümantasyon →</span>
       </a>
     </div>
-    
-    <div class="mt-8 text-sm text-slate-500">
-      GitHub Organization: <a href="https://github.com/fab-agent" class="text-white hover:underline">@fab-agent</a>
+
+    <!-- Tech pills -->
+    <div class="flex flex-wrap items-center justify-center gap-2 mt-10">
+      <span class="pill">MIT License</span>
+      <span class="pill">FastAPI + SvelteKit</span>
+      <span class="pill">Docker 1-command</span>
+      <span class="pill">Claude · GPT-4 · Gemini</span>
+      <span class="pill">SQLite</span>
     </div>
   </div>
+</section>
 
-  <!-- Features -->
-  <div class="max-w-6xl mx-auto px-6 pb-20">
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-      <div class="bg-white/5 border border-white/10 rounded-3xl p-8">
-        <div class="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center mb-6">
-          <i class="fa-solid fa-sitemap text-emerald-400 text-2xl"></i>
-        </div>
-        <h3 class="font-semibold text-xl">Organizasyon Yönetimi</h3>
-        <p class="mt-3 text-slate-400">Organizasyon oluştur, personel ekle ve rollerini yönet. Tüm yapı dosya sistemi + veritabanı hibrit yapıda saklanır.</p>
+
+<!-- ─── Problem / Vision ──────────────────────────────────────────────────── -->
+<section style="padding:80px 0;border-top:1px solid rgba(255,255,255,0.06)">
+  <div style="max-width:1120px" class="mx-auto px-6">
+    <div class="grid md:grid-cols-2 gap-16 items-center">
+
+      <!-- Left text -->
+      <div>
+        <p class="text-indigo-400 font-semibold text-sm tracking-widest uppercase mb-4" data-i18n="vision.label">Neden</p>
+        <h2 class="font-display grad-text" style="font-size:2.2rem;line-height:1.2;letter-spacing:-1px;margin:0 0 20px" data-i18n="vision.title">
+          Ajanlar artık sadece yazılım ekibinin aracı değil
+        </h2>
+        <p class="text-zinc-400" style="line-height:1.8;margin:0 0 20px" data-i18n="vision.p1">
+          Bugün çoğu şirket AI ajanlarını geliştirici araçlarıyla sınırlı tutuyor. Oysa gerçek değer, organizasyonun tamamına — satışa, finansa, İK'ya, müşteri başarısına — yayıldığında ortaya çıkıyor.
+        </p>
+        <p class="text-zinc-400" style="line-height:1.8" data-i18n="vision.p2">
+          fab.engineering, şirket hiyerarşisini bir şablona dönüştürür: her pozisyonun kendi ajanı, kendi politikaları ve yetki sınırları olur. İnsanlar karar vermek için değil, <em style="color:#a1a1aa">karar onaylamak</em> için sistemde kalır.
+        </p>
       </div>
-      
-      <div class="bg-white/5 border border-white/10 rounded-3xl p-8">
-        <div class="w-12 h-12 bg-blue-500/10 rounded-2xl flex items-center justify-center mb-6">
-          <i class="fa-solid fa-robot text-blue-400 text-2xl"></i>
+
+      <!-- Right: org visual -->
+      <div class="card p-6" style="border-color:rgba(255,255,255,0.08)">
+        <p class="text-xs text-zinc-500 mb-5 font-medium tracking-widest uppercase" data-i18n="vision.org_label">Örnek Organizasyon</p>
+
+        <!-- CEO row -->
+        <div class="flex items-center gap-3 mb-3">
+          <div style="width:36px;height:36px;background:#18181b;border:1px solid rgba(255,255,255,0.1);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:14px">👤</div>
+          <div>
+            <div class="text-sm font-medium">Zeynep Çelik — CEO</div>
+            <div class="text-xs text-zinc-500" data-i18n="vision.human">İnsan · Kurucu</div>
+          </div>
+          <div class="ml-auto">
+            <span class="pill" style="font-size:11px;background:rgba(99,102,241,0.1);border-color:rgba(99,102,241,0.2);color:#818cf8">founder</span>
+          </div>
         </div>
-        <h3 class="font-semibold text-xl">Personel Bazlı Agentlar</h3>
-        <p class="mt-3 text-slate-400">Her personele özel AI agent tanımla. Claude, GPT veya kendi modellerini kullan. Policy ve skill'leri markdown ile yönet.</p>
-      </div>
-      
-      <div class="bg-white/5 border border-white/10 rounded-3xl p-8">
-        <div class="w-12 h-12 bg-violet-500/10 rounded-2xl flex items-center justify-center mb-6">
-          <i class="fa-solid fa-lock text-violet-400 text-2xl"></i>
+
+        <div class="ml-4" style="border-left:1px solid rgba(255,255,255,0.07);padding-left:20px">
+
+          <!-- Dept -->
+          <div class="flex items-center gap-3 mb-3 mt-1">
+            <div style="width:32px;height:32px;background:#18181b;border:1px solid rgba(255,255,255,0.08);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px">🏢</div>
+            <div>
+              <div class="text-sm font-medium">Yazılım Geliştirme</div>
+              <div class="text-xs text-zinc-500" data-i18n="vision.dept">Departman</div>
+            </div>
+          </div>
+
+          <div class="ml-4" style="border-left:1px solid rgba(255,255,255,0.07);padding-left:16px">
+            <!-- Agent -->
+            <div class="flex items-center gap-3 mb-2 mt-1">
+              <div style="width:30px;height:30px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px">🤖</div>
+              <div>
+                <div class="text-sm font-medium">CodeGuard</div>
+                <div class="text-xs text-zinc-500">claude-sonnet-4 · Code Review</div>
+              </div>
+              <div class="ml-auto"><span class="pill" style="font-size:10px;background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.2);color:#34d399">active</span></div>
+            </div>
+            <div class="flex items-center gap-3 mb-1">
+              <div style="width:30px;height:30px;background:rgba(99,102,241,0.1);border:1px solid rgba(99,102,241,0.2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px">🤖</div>
+              <div>
+                <div class="text-sm font-medium">DeployBot</div>
+                <div class="text-xs text-zinc-500">gpt-4o · CI/CD</div>
+              </div>
+              <div class="ml-auto"><span class="pill" style="font-size:10px;background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.2);color:#34d399">active</span></div>
+            </div>
+          </div>
+
         </div>
-        <h3 class="font-semibold text-xl">Self-hosted &amp; Güvenli</h3>
-        <p class="mt-3 text-slate-400">Tüm veriler kendi sunucunda kalır. Docker ile tek komutta kurulum. Açık kaynak ve şeffaf.</p>
       </div>
     </div>
   </div>
+</section>
 
-  <!-- Footer -->
-  <footer class="border-t border-white/10 py-8">
-    <div class="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between text-sm text-slate-500">
-      <div>© 2026 Fab Agent. Built with ❤️ in Turkey.</div>
-      <div class="mt-4 md:mt-0 flex gap-x-6">
-        <a href="https://github.com/fab-agent" class="hover:text-white">GitHub</a>
-        <a href="https://docs.fab.engineering" class="hover:text-white">Dokümantasyon</a>
-      </div>
+
+<!-- ─── Features ─────────────────────────────────────────────────────────── -->
+<section style="border-top:1px solid rgba(255,255,255,0.06)">
+  <div style="max-width:1120px" class="mx-auto px-6">
+    <div class="text-center mb-16">
+      <p class="text-indigo-400 font-semibold text-sm tracking-widest uppercase mb-3" data-i18n="features.label">Özellikler</p>
+      <h2 class="font-display grad-text" style="font-size:2.4rem;letter-spacing:-1px;margin:0" data-i18n="features.title">
+        Organizasyonel zeka, eksiksiz
+      </h2>
     </div>
-  </footer>
+
+    <div class="grid md:grid-cols-3 gap-4">
+
+      <!-- 1 -->
+      <div class="card p-6">
+        <div class="feat-icon" style="background:rgba(99,102,241,0.1)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        </div>
+        <h3 class="font-semibold text-base mb-2" data-i18n="f1.title">Organizasyon Hiyerarşisi</h3>
+        <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="f1.desc">Şirket, departman, personel ve ajan katmanlarını tanımla. Org chart'ı görselleştir, yöneticileri ve raporlama yapısını belirle.</p>
+      </div>
+
+      <!-- 2 -->
+      <div class="card p-6">
+        <div class="feat-icon" style="background:rgba(16,185,129,0.1)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg>
+        </div>
+        <h3 class="font-semibold text-base mb-2" data-i18n="f2.title">Personel Bazlı Ajanlar</h3>
+        <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="f2.desc">Her pozisyona özel ajan: model seçimi, versiyon, skill'ler ve politikalar. Claude, GPT-4 veya Gemini — tek bir arayüzden.</p>
+      </div>
+
+      <!-- 3 -->
+      <div class="card p-6">
+        <div class="feat-icon" style="background:rgba(245,158,11,0.1)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+        </div>
+        <h3 class="font-semibold text-base mb-2" data-i18n="f3.title">A2A Delegasyon</h3>
+        <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="f3.desc">Ajan-to-Ajan görev devri. Bir ajan başka bir ajana iş atayabilir; sorumlu insan onay veya red eder. İki aşamalı onay akışı.</p>
+      </div>
+
+      <!-- 4 -->
+      <div class="card p-6">
+        <div class="feat-icon" style="background:rgba(139,92,246,0.1)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+        </div>
+        <h3 class="font-semibold text-base mb-2" data-i18n="f4.title">Policy & Skill Yönetimi</h3>
+        <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="f4.desc">Politikalar ve yetenekler Markdown dosyaları ile tanımlanır. Git ile versiyon kontrolü; değişiklik talepleri onay akışıyla.</p>
+      </div>
+
+      <!-- 5 -->
+      <div class="card p-6">
+        <div class="feat-icon" style="background:rgba(236,72,153,0.1)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f472b6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+        </div>
+        <h3 class="font-semibold text-base mb-2" data-i18n="f5.title">Rol Tabanlı Erişim</h3>
+        <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="f5.desc">5 kademeli yetki sistemi: Kurucu → Yönetici → Bölüm Müdürü → Ajan Sorumlusu → Kullanıcı. Her kademe kendi kapsamında çalışır.</p>
+      </div>
+
+      <!-- 6 -->
+      <div class="card p-6">
+        <div class="feat-icon" style="background:rgba(20,184,166,0.1)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+        </div>
+        <h3 class="font-semibold text-base mb-2" data-i18n="f6.title">Self-Hosted & Açık Kaynak</h3>
+        <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="f6.desc">Tüm veriler kendi sunucunda. MIT lisansı, şeffaf mimari. Docker ile tek komutta kur, istediğin gibi özelleştir.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ─── How It Works ──────────────────────────────────────────────────────── -->
+<section style="border-top:1px solid rgba(255,255,255,0.06)">
+  <div style="max-width:720px" class="mx-auto px-6">
+    <div class="text-center mb-16">
+      <p class="text-indigo-400 font-semibold text-sm tracking-widest uppercase mb-3" data-i18n="how.label">Nasıl Çalışır</p>
+      <h2 class="font-display grad-text" style="font-size:2.2rem;letter-spacing:-1px;margin:0" data-i18n="how.title">Üç adımda kurulum</h2>
+    </div>
+
+    <div class="space-y-0">
+
+      <!-- Step 1 -->
+      <div class="flex gap-6 relative pb-10">
+        <div class="flex-shrink-0 relative">
+          <div style="width:40px;height:40px;background:#18181b;border:1px solid rgba(255,255,255,0.1);border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#818cf8">1</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="pt-2">
+          <h3 class="font-semibold text-base mb-2" data-i18n="step1.title">Organizasyonunu Tanımla</h3>
+          <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="step1.desc">Şirketini ekle, departmanları oluştur, personeli kaydet. Yönetici hiyerarşisini belirle. Tüm yapı veritabanında ve Markdown dosyalarında saklanır.</p>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="flex gap-6 relative pb-10">
+        <div class="flex-shrink-0 relative">
+          <div style="width:40px;height:40px;background:#18181b;border:1px solid rgba(255,255,255,0.1);border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#818cf8">2</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="pt-2">
+          <h3 class="font-semibold text-base mb-2" data-i18n="step2.title">Ajanlara Görev ve Politika At</h3>
+          <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="step2.desc">Her pozisyon için model seç, skill'leri ve politikaları Markdown ile tanımla. MCP, HTTP ve function-based skill'ler desteklenir. Kullanıcıları platforma davet et, rol ata.</p>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="flex gap-6">
+        <div class="flex-shrink-0">
+          <div style="width:40px;height:40px;background:#18181b;border:1px solid rgba(255,255,255,0.1);border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#818cf8">3</div>
+        </div>
+        <div class="pt-2">
+          <h3 class="font-semibold text-base mb-2" data-i18n="step3.title">Yürütmeyi İzle, Yükü Azalt</h3>
+          <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="step3.desc">Ajanlar iş alır, delegasyon oluşturur, onay bekler. İnsanlar sadece kritik kararları verir. Operasyon hızı artar, karar yükü düşer.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ─── Quick Start ───────────────────────────────────────────────────────── -->
+<section style="border-top:1px solid rgba(255,255,255,0.06)">
+  <div style="max-width:760px" class="mx-auto px-6">
+    <div class="text-center mb-10">
+      <h2 class="font-display grad-text" style="font-size:2rem;letter-spacing:-1px;margin:0 0 10px" data-i18n="quickstart.title">Dakikalar içinde çalışır</h2>
+      <p class="text-zinc-400 text-sm" data-i18n="quickstart.sub">Docker kurulu olan her sunucuda çalışır.</p>
+    </div>
+
+    <div class="code-block">
+      <div class="code-bar">
+        <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+        <span class="mono text-xs text-zinc-500 ml-2">terminal</span>
+      </div>
+      <pre class="mono"><span class="c-dim"># 1. Clone</span>
+<span class="c-green">git</span> <span class="c-white">clone https://github.com/fab-agent/3rdparty-agent-org</span>
+<span class="c-green">cd</span> <span class="c-white">3rdparty-agent-org</span>
+
+<span class="c-dim"># 2. Configure</span>
+<span class="c-green">cp</span> <span class="c-white">.env.example .env</span>
+<span class="c-dim"># Add: JWT_SECRET, RESEND_API_KEY, FOUNDER_EMAIL...</span>
+
+<span class="c-dim"># 3. Launch</span>
+<span class="c-blue">docker</span> <span class="c-white">compose up --build</span>
+
+<span class="c-dim"># → Backend:  http://localhost:8000</span>
+<span class="c-dim"># → Frontend: http://localhost:5173</span></pre>
+    </div>
+
+    <div class="flex flex-wrap justify-center gap-4 mt-8 text-sm text-zinc-500">
+      <span class="flex items-center gap-2">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        <span data-i18n="qs.p1">FastAPI backend, SvelteKit frontend</span>
+      </span>
+      <span class="flex items-center gap-2">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        <span data-i18n="qs.p2">SQLite — zero-config veritabanı</span>
+      </span>
+      <span class="flex items-center gap-2">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        <span data-i18n="qs.p3">Seed data ile anında demo</span>
+      </span>
+    </div>
+  </div>
+</section>
+
+
+<!-- ─── OSS CTA ───────────────────────────────────────────────────────────── -->
+<section style="border-top:1px solid rgba(255,255,255,0.06)">
+  <div style="max-width:680px" class="mx-auto px-6 text-center">
+    <div style="width:56px;height:56px;background:#18181b;border:1px solid rgba(255,255,255,0.1);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 24px">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="#fafafa"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+    </div>
+    <h2 class="font-display grad-text" style="font-size:2.4rem;letter-spacing:-1px;margin:0 0 16px" data-i18n="oss.title">Açık Kaynak, Hep Öyle Kalacak</h2>
+    <p class="text-zinc-400 mb-8" style="line-height:1.7" data-i18n="oss.desc">
+      MIT lisansı altında yayınlandı. Forklayabilir, özelleştirebilir ve kendi organizasyonuna uyarlayabilirsin. Veriler her zaman senin sunucunda, senin kontrolünde.
+    </p>
+    <div class="flex flex-wrap items-center justify-center gap-3">
+      <a href="https://github.com/fab-agent/3rdparty-agent-org"
+         class="inline-flex items-center gap-2 bg-white text-zinc-950 px-6 h-11 rounded-xl font-semibold text-sm hover:bg-zinc-100 transition-all no-underline">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+        <span data-i18n="oss.cta1">GitHub'da Yıldızla ⭐</span>
+      </a>
+      <a href="https://docs.fab.engineering"
+         class="inline-flex items-center gap-2 border px-6 h-11 rounded-xl font-semibold text-sm hover:bg-white/5 transition-all no-underline text-zinc-300"
+         style="border-color:rgba(255,255,255,0.12)" data-i18n="oss.cta2">
+        Dokümantasyonu Oku →
+      </a>
+    </div>
+  </div>
+</section>
+
+
+<!-- ─── Footer ───────────────────────────────────────────────────────────── -->
+<footer style="border-top:1px solid rgba(255,255,255,0.06);padding:40px 0">
+  <div style="max-width:1120px" class="mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
+
+    <div class="flex items-center gap-2">
+      <div style="width:22px;height:22px;background:#6366f1;border-radius:6px;display:flex;align-items:center;justify-content:center;">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      </div>
+      <span class="font-display text-sm font-semibold" style="letter-spacing:-0.3px">
+        <span style="color:#fafafa">fab</span><span style="color:#52525b">.engineering</span>
+      </span>
+      <span class="text-zinc-600 text-xs ml-2" data-i18n="footer.copy">© 2026 · Built in Turkey · MIT License</span>
+    </div>
+
+    <div class="flex items-center gap-5 text-sm text-zinc-500">
+      <a href="https://docs.fab.engineering" class="hover:text-white transition-colors no-underline" data-i18n="footer.docs">Docs</a>
+      <a href="https://github.com/fab-agent/3rdparty-agent-org" class="hover:text-white transition-colors no-underline">GitHub</a>
+      <a href="https://github.com/fab-agent/3rdparty-agent-org/blob/main/LICENSE" class="hover:text-white transition-colors no-underline">MIT License</a>
+    </div>
+  </div>
+</footer>
+
+
+<!-- ─── i18n ─────────────────────────────────────────────────────────────── -->
+<script>
+const LANGS = {
+  tr: {
+    'nav.docs': 'Docs',
+    'nav.star': 'GitHub\'da İncele',
+    'hero.line1': 'AI Ajanları',
+    'hero.line2': 'Organizasyona Taşı',
+    'hero.sub': 'Yapay zeka sadece IT bölümleri için değil. Şirketinizde, organizasyonunuzda yaşayan ve sizinle beraber çalışan, öğrenen bir yapı olabilir. Rutin işlerinizi, bölümler arası süreçlerinizi yönetebilirsiniz ve sizler asıl işinize odaklanabilirsiniz. Artık katma değer üretimi insanlarda, rutin işler, analizler ve raporlar ajanlarda.',
+    'hero.cta1': 'GitHub\'da İncele',
+    'hero.cta2': 'Dokümantasyon →',
+    'vision.label': 'Neden',
+    'vision.title': 'Ajanlar artık sadece yazılım ekibinin aracı değil',
+    'vision.p1': 'Bugün çoğu şirket AI ajanlarını geliştirici araçlarıyla sınırlı tutuyor. Oysa gerçek değer, organizasyonun tamamına — satışa, finansa, İK\'ya, müşteri başarısına — yayıldığında ortaya çıkıyor.',
+    'vision.p2': 'fab.engineering, şirket hiyerarşisini bir şablona dönüştürür: her pozisyonun kendi ajanı, kendi politikaları ve yetki sınırları olur. İnsanlar karar vermek için değil, <em style="color:#a1a1aa">karar onaylamak</em> için sistemde kalır.',
+    'vision.org_label': 'Örnek Organizasyon',
+    'vision.human': 'İnsan · Kurucu',
+    'vision.dept': 'Departman',
+    'features.label': 'Özellikler',
+    'features.title': 'Organizasyonel zeka, eksiksiz',
+    'f1.title': 'Organizasyon Hiyerarşisi',
+    'f1.desc': 'Şirket, departman, personel ve ajan katmanlarını tanımla. Org chart\'ı görselleştir, yöneticileri ve raporlama yapısını belirle.',
+    'f2.title': 'Personel Bazlı Ajanlar',
+    'f2.desc': 'Her pozisyona özel ajan: model seçimi, versiyon, skill\'ler ve politikalar. Claude, GPT-4 veya Gemini — tek bir arayüzden.',
+    'f3.title': 'A2A Delegasyon',
+    'f3.desc': 'Ajan-to-Ajan görev devri. Bir ajan başka bir ajana iş atayabilir; sorumlu insan onay veya red eder. İki aşamalı onay akışı.',
+    'f4.title': 'Policy & Skill Yönetimi',
+    'f4.desc': 'Politikalar ve yetenekler Markdown dosyaları ile tanımlanır. Git ile versiyon kontrolü; değişiklik talepleri onay akışıyla.',
+    'f5.title': 'Rol Tabanlı Erişim',
+    'f5.desc': '5 kademeli yetki sistemi: Kurucu → Yönetici → Bölüm Müdürü → Ajan Sorumlusu → Kullanıcı. Her kademe kendi kapsamında çalışır.',
+    'f6.title': 'Self-Hosted & Açık Kaynak',
+    'f6.desc': 'Tüm veriler kendi sunucunda. MIT lisansı, şeffaf mimari. Docker ile tek komutta kur, istediğin gibi özelleştir.',
+    'how.label': 'Nasıl Çalışır',
+    'how.title': 'Üç adımda kurulum',
+    'step1.title': 'Organizasyonunu Tanımla',
+    'step1.desc': 'Şirketini ekle, departmanları oluştur, personeli kaydet. Yönetici hiyerarşisini belirle. Tüm yapı veritabanında ve Markdown dosyalarında saklanır.',
+    'step2.title': 'Ajanlara Görev ve Politika At',
+    'step2.desc': 'Her pozisyon için model seç, skill\'leri ve politikaları Markdown ile tanımla. MCP, HTTP ve function-based skill\'ler desteklenir. Kullanıcıları platforma davet et, rol ata.',
+    'step3.title': 'Yürütmeyi İzle, Yükü Azalt',
+    'step3.desc': 'Ajanlar iş alır, delegasyon oluşturur, onay bekler. İnsanlar sadece kritik kararları verir. Operasyon hızı artar, karar yükü düşer.',
+    'quickstart.title': 'Dakikalar içinde çalışır',
+    'quickstart.sub': 'Docker kurulu olan her sunucuda çalışır.',
+    'qs.p1': 'FastAPI backend, SvelteKit frontend',
+    'qs.p2': 'SQLite — zero-config veritabanı',
+    'qs.p3': 'Seed data ile anında demo',
+    'oss.title': 'Açık Kaynak, Hep Öyle Kalacak',
+    'oss.desc': 'MIT lisansı altında yayınlandı. Forklayabilir, özelleştirebilir ve kendi organizasyonuna uyarlayabilirsin. Veriler her zaman senin sunucunda, senin kontrolünde.',
+    'oss.cta1': 'GitHub\'da Yıldızla ⭐',
+    'oss.cta2': 'Dokümantasyonu Oku →',
+    'footer.copy': '© 2026 · Built in Turkey · MIT License',
+    'footer.docs': 'Docs',
+  },
+  en: {
+    'nav.docs': 'Docs',
+    'nav.star': 'View on GitHub',
+    'hero.line1': 'Bring AI Agents',
+    'hero.line2': 'Across Your Organization',
+    'hero.sub': 'AI isn\'t just for the IT department. It can be a living structure inside your company and organization — one that works alongside you and learns as it goes. You can manage routine tasks and cross-departmental processes while staying focused on what matters most. Value creation stays with people; routine work, analysis, and reporting move to agents.',
+    'hero.cta1': 'View on GitHub',
+    'hero.cta2': 'Read the Docs →',
+    'vision.label': 'Why',
+    'vision.title': 'Agents aren\'t just a developer tool anymore',
+    'vision.p1': 'Most companies today limit AI agents to engineering workflows. But the real value emerges when the entire organization — sales, finance, HR, customer success — operates with agents embedded in it.',
+    'vision.p2': 'fab.engineering turns your company hierarchy into a template: every position gets its own agent, its own policies, and its own authority boundaries. Humans stay in the loop to <em style="color:#a1a1aa">approve decisions</em>, not make them.',
+    'vision.org_label': 'Example Organization',
+    'vision.human': 'Human · Founder',
+    'vision.dept': 'Department',
+    'features.label': 'Features',
+    'features.title': 'Organizational intelligence, complete',
+    'f1.title': 'Organization Hierarchy',
+    'f1.desc': 'Define company, department, personnel and agent layers. Visualize the org chart, set managers and reporting structures.',
+    'f2.title': 'Personnel-Based Agents',
+    'f2.desc': 'A dedicated agent per position: model selection, version, skills and policies. Claude, GPT-4 or Gemini — from a single interface.',
+    'f3.title': 'A2A Delegation',
+    'f3.desc': 'Agent-to-Agent task routing. One agent can assign work to another; the responsible human approves or rejects. Two-stage approval flow.',
+    'f4.title': 'Policy & Skill Management',
+    'f4.desc': 'Policies and capabilities are defined via Markdown files. Version controlled with Git; change requests go through an approval workflow.',
+    'f5.title': 'Role-Based Access',
+    'f5.desc': '5-level permission system: Founder → Executive → Dept. Head → Agent Owner → User. Each level operates within its own scope.',
+    'f6.title': 'Self-Hosted & Open Source',
+    'f6.desc': 'All data stays on your servers. MIT license, transparent architecture. Deploy in one command with Docker, customize freely.',
+    'how.label': 'How It Works',
+    'how.title': 'Set up in three steps',
+    'step1.title': 'Define Your Organization',
+    'step1.desc': 'Add your company, create departments, register personnel. Set the management hierarchy. All structure is stored in the database and Markdown files.',
+    'step2.title': 'Assign Tasks and Policies to Agents',
+    'step2.desc': 'Choose a model per position, define skills and policies in Markdown. MCP, HTTP and function-based skills are supported. Invite users to the platform, assign roles.',
+    'step3.title': 'Monitor Execution, Reduce Load',
+    'step3.desc': 'Agents take on work, create delegations, wait for approval. Humans only make critical decisions. Operation speed increases, decision burden decreases.',
+    'quickstart.title': 'Running in minutes',
+    'quickstart.sub': 'Works on any server with Docker installed.',
+    'qs.p1': 'FastAPI backend, SvelteKit frontend',
+    'qs.p2': 'SQLite — zero-config database',
+    'qs.p3': 'Instant demo with seed data',
+    'oss.title': 'Open Source, Always Will Be',
+    'oss.desc': 'Released under the MIT license. Fork it, customize it, adapt it to your organization. Your data always lives on your servers, under your control.',
+    'oss.cta1': 'Star on GitHub ⭐',
+    'oss.cta2': 'Read the Docs →',
+    'footer.copy': '© 2026 · Built in Turkey · MIT License',
+    'footer.docs': 'Docs',
+  },
+  de: {
+    'nav.docs': 'Docs',
+    'nav.star': 'Auf GitHub',
+    'hero.line1': 'KI-Agenten in',
+    'hero.line2': 'Ihre Organisation',
+    'hero.sub': 'KI ist nicht nur für die IT-Abteilung. Sie kann eine lebendige Struktur in Ihrem Unternehmen und Ihrer Organisation sein — eine, die mit Ihnen zusammenarbeitet und dazulernt. Routineaufgaben und abteilungsübergreifende Prozesse können automatisiert werden, damit Sie sich auf das Wesentliche konzentrieren. Wertschöpfung bleibt beim Menschen; Routinearbeit, Analysen und Berichte übernehmen Agenten.',
+    'hero.cta1': 'Auf GitHub ansehen',
+    'hero.cta2': 'Dokumentation →',
+    'vision.label': 'Warum',
+    'vision.title': 'Agenten sind nicht mehr nur ein Entwicklerwerkzeug',
+    'vision.p1': 'Die meisten Unternehmen begrenzen KI-Agenten heute auf Entwicklungsworkflows. Aber der echte Wert entsteht, wenn die gesamte Organisation — Vertrieb, Finanzen, HR, Kundenerfolg — mit eingebetteten Agenten arbeitet.',
+    'vision.p2': 'fab.engineering verwandelt Ihre Unternehmenshierarchie in eine Vorlage: Jede Position bekommt ihren eigenen Agenten, eigene Richtlinien und Autoritätsgrenzen.',
+    'vision.org_label': 'Beispielorganisation',
+    'vision.human': 'Mensch · Gründer',
+    'vision.dept': 'Abteilung',
+    'features.label': 'Funktionen',
+    'features.title': 'Organisationale Intelligenz, vollständig',
+    'f1.title': 'Organisationshierarchie',
+    'f1.desc': 'Definieren Sie Unternehmens-, Abteilungs-, Personal- und Agentenebenen. Visualisieren Sie das Organigramm.',
+    'f2.title': 'Personalbezogene Agenten',
+    'f2.desc': 'Ein dedizierter Agent pro Position: Modellauswahl, Version, Fähigkeiten und Richtlinien. Claude, GPT-4 oder Gemini.',
+    'f3.title': 'A2A-Delegation',
+    'f3.desc': 'Agent-zu-Agent-Aufgabenweiterleitung. Ein Agent kann einem anderen Arbeit zuweisen; der verantwortliche Mensch genehmigt oder lehnt ab.',
+    'f4.title': 'Policy & Skill-Management',
+    'f4.desc': 'Richtlinien und Fähigkeiten werden über Markdown-Dateien definiert. Versionskontrolle mit Git.',
+    'f5.title': 'Rollenbasierter Zugriff',
+    'f5.desc': '5-stufiges Berechtigungssystem: Gründer → Führungskraft → Abteilungsleiter → Agentenverantwortlicher → Nutzer.',
+    'f6.title': 'Self-Hosted & Open Source',
+    'f6.desc': 'Alle Daten bleiben auf Ihren Servern. MIT-Lizenz. Mit einem Docker-Befehl bereitstellen.',
+    'how.label': 'Wie es funktioniert',
+    'how.title': 'In drei Schritten einrichten',
+    'step1.title': 'Ihre Organisation definieren',
+    'step1.desc': 'Fügen Sie Ihr Unternehmen hinzu, erstellen Sie Abteilungen, registrieren Sie Personal.',
+    'step2.title': 'Aufgaben und Richtlinien zuweisen',
+    'step2.desc': 'Wählen Sie ein Modell pro Position, definieren Sie Fähigkeiten und Richtlinien in Markdown.',
+    'step3.title': 'Ausführung überwachen, Last reduzieren',
+    'step3.desc': 'Agenten übernehmen Arbeit, erstellen Delegationen, warten auf Genehmigung.',
+    'quickstart.title': 'In Minuten einsatzbereit',
+    'quickstart.sub': 'Funktioniert auf jedem Server mit Docker.',
+    'qs.p1': 'FastAPI Backend, SvelteKit Frontend',
+    'qs.p2': 'SQLite — Zero-Config-Datenbank',
+    'qs.p3': 'Sofortige Demo mit Seed-Daten',
+    'oss.title': 'Open Source, bleibt es auch',
+    'oss.desc': 'Unter der MIT-Lizenz veröffentlicht. Forken, anpassen und an Ihre Organisation anpassen.',
+    'oss.cta1': 'Auf GitHub markieren ⭐',
+    'oss.cta2': 'Dokumentation lesen →',
+    'footer.copy': '© 2026 · Built in Turkey · MIT License',
+    'footer.docs': 'Docs',
+  },
+  es: {
+    'nav.docs': 'Docs',
+    'nav.star': 'Ver en GitHub',
+    'hero.line1': 'Lleva los Agentes IA',
+    'hero.line2': 'a Tu Organización',
+    'hero.sub': 'La IA no es solo para el departamento de TI. Puede ser una estructura viva dentro de tu empresa y organización — una que trabaja contigo y aprende en el camino. Puedes gestionar tareas rutinarias y procesos entre departamentos mientras te enfocas en lo que más importa. La creación de valor se queda en las personas; el trabajo rutinario, los análisis y los informes pasan a los agentes.',
+    'hero.cta1': 'Ver en GitHub',
+    'hero.cta2': 'Leer la Documentación →',
+    'vision.label': 'Por qué',
+    'vision.title': 'Los agentes ya no son solo una herramienta de desarrollo',
+    'vision.p1': 'Hoy la mayoría de empresas limitan los agentes IA a flujos de ingeniería. Pero el valor real surge cuando toda la organización — ventas, finanzas, RRHH, éxito del cliente — opera con agentes integrados.',
+    'vision.p2': 'fab.engineering convierte tu jerarquía empresarial en una plantilla: cada posición tiene su propio agente, sus propias políticas y sus límites de autoridad.',
+    'vision.org_label': 'Organización de ejemplo',
+    'vision.human': 'Humano · Fundador',
+    'vision.dept': 'Departamento',
+    'features.label': 'Características',
+    'features.title': 'Inteligencia organizacional, completa',
+    'f1.title': 'Jerarquía Organizacional',
+    'f1.desc': 'Define capas de empresa, departamento, personal y agente. Visualiza el organigrama, establece managers.',
+    'f2.title': 'Agentes por Personal',
+    'f2.desc': 'Un agente dedicado por posición: selección de modelo, versión, skills y políticas. Claude, GPT-4 o Gemini.',
+    'f3.title': 'Delegación A2A',
+    'f3.desc': 'Enrutamiento de tareas de agente a agente. Un agente puede asignar trabajo a otro; el humano responsable aprueba o rechaza.',
+    'f4.title': 'Gestión de Políticas y Skills',
+    'f4.desc': 'Políticas y capacidades definidas mediante archivos Markdown. Control de versiones con Git.',
+    'f5.title': 'Acceso Basado en Roles',
+    'f5.desc': 'Sistema de permisos de 5 niveles: Fundador → Ejecutivo → Jefe de Depto. → Responsable de Agente → Usuario.',
+    'f6.title': 'Self-Hosted y Open Source',
+    'f6.desc': 'Todos los datos en tus servidores. Licencia MIT. Despliega con un comando Docker.',
+    'how.label': 'Cómo Funciona',
+    'how.title': 'Configuración en tres pasos',
+    'step1.title': 'Define Tu Organización',
+    'step1.desc': 'Añade tu empresa, crea departamentos, registra personal. Establece la jerarquía de gestión.',
+    'step2.title': 'Asigna Tareas y Políticas',
+    'step2.desc': 'Elige un modelo por posición, define skills y políticas en Markdown.',
+    'step3.title': 'Monitoriza y Reduce la Carga',
+    'step3.desc': 'Los agentes reciben trabajo, crean delegaciones, esperan aprobación.',
+    'quickstart.title': 'Funcionando en minutos',
+    'quickstart.sub': 'Funciona en cualquier servidor con Docker.',
+    'qs.p1': 'Backend FastAPI, Frontend SvelteKit',
+    'qs.p2': 'SQLite — base de datos zero-config',
+    'qs.p3': 'Demo instantánea con datos seed',
+    'oss.title': 'Open Source, Siempre lo Será',
+    'oss.desc': 'Publicado bajo la licencia MIT. Haz fork, personalízalo y adáptalo a tu organización.',
+    'oss.cta1': 'Dar Estrella en GitHub ⭐',
+    'oss.cta2': 'Leer la Documentación →',
+    'footer.copy': '© 2026 · Built in Turkey · MIT License',
+    'footer.docs': 'Docs',
+  }
+};
+
+let currentLang = 'tr';
+
+// ── Theme toggle ─────────────────────────────────────────────────────────────
+function applyTheme(isLight) {
+  const body = document.body;
+  const moon = document.getElementById('iconMoon');
+  const sun  = document.getElementById('iconSun');
+  if (isLight) {
+    body.classList.add('light');
+    if (moon) moon.style.display = 'none';
+    if (sun)  sun.style.display  = 'block';
+  } else {
+    body.classList.remove('light');
+    if (moon) moon.style.display = 'block';
+    if (sun)  sun.style.display  = 'none';
+  }
+}
+
+function toggleTheme() {
+  const isCurrentlyLight = document.body.classList.contains('light');
+  const next = !isCurrentlyLight;
+  applyTheme(next);
+  localStorage.setItem('theme', next ? 'light' : 'dark');
+}
+
+// Apply saved theme on load
+(function() {
+  const saved = localStorage.getItem('theme');
+  if (saved === 'light') applyTheme(true);
+})();
+
+function setLang(lang) {
+  currentLang = lang;
+  const dict = LANGS[lang] || LANGS.tr;
+
+  // Update all data-i18n elements
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (dict[key] !== undefined) el.innerHTML = dict[key];
+  });
+
+  // Update lang buttons
+  document.querySelectorAll('.lang-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.textContent.trim().toLowerCase() === lang);
+  });
+
+  // Update html lang attr
+  document.documentElement.lang = lang;
+}
+
+// Pulse animation
+const style = document.createElement('style');
+style.textContent = `@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }`;
+document.head.appendChild(style);
+</script>
+
 </body>
 </html>
