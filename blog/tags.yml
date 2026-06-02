@@ -1,19 +1,24 @@
-facebook:
-  label: Facebook
-  permalink: /facebook
-  description: Facebook tag description
+agentic:
+  label: Agentic Sistemler
+  permalink: /agentic
+  description: Agent tabanlı sistemler, orkestrasyon ve otomasyon
 
-hello:
-  label: Hello
-  permalink: /hello
-  description: Hello tag description
+policy:
+  label: Policy & Guardrail
+  permalink: /policy
+  description: Güvenlik, davranış kuralları ve guardrail mekanizmaları
 
-docusaurus:
-  label: Docusaurus
-  permalink: /docusaurus
-  description: Docusaurus tag description
+mcp:
+  label: MCP Araçları
+  permalink: /mcp
+  description: Model Context Protocol entegrasyonları ve araç geliştirme
 
-hola:
-  label: Hola
-  permalink: /hola
-  description: Hola tag description
+architecture:
+  label: Mimari
+  permalink: /architecture
+  description: Sistem mimarisi, kararlar ve teknik yaklaşımlar
+
+product:
+  label: Ürün
+  permalink: /product
+  description: Ürün geliştirme, ekranlar ve kullanıcı deneyimi

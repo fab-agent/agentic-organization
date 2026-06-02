@@ -1,25 +1,18 @@
-yangshun:
-  name: Yangshun Tay
-  title: Ex-Meta Staff Engineer, Co-founder GreatFrontEnd
-  url: https://linkedin.com/in/yangshun
-  image_url: https://github.com/yangshun.png
+kuntaykunt:
+  name: Kuntay Kunt
+  title: Kurucu & Makine Mühendisi (MBA)
+  url: https://kuntay.fab.limited
+  image_url: https://i.pravatar.cc/128?img=47
   page: true
   socials:
-    x: yangshunz
-    linkedin: yangshun
-    github: yangshun
-    newsletter: https://www.greatfrontend.com
+    linkedin: kuntaykunt
+    github: kuntaykunt
 
-slorber:
-  name: Sébastien Lorber
-  title: Docusaurus maintainer
-  url: https://sebastienlorber.com
-  image_url: https://github.com/slorber.png
-  page:
-    # customize the url of the author page at /blog/authors/<permalink>
-    permalink: '/all-sebastien-lorber-articles'
+fab-agent:
+  name: Fab Agent Ekibi
+  title: Agentic Sistemler & Otomasyon
+  url: https://fab.limited
+  image_url: https://i.pravatar.cc/128?img=32
+  page: true
   socials:
-    x: sebastienlorber
-    linkedin: sebastienlorber
-    github: slorber
-    newsletter: https://thisweekinreact.com
+    github: fab-agent
