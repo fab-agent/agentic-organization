@@ -3,8 +3,8 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
-  title: 'Fab Agent Docs',
-  tagline: '3rd Party Agent Organization & Hermes Agent Dokümantasyonu',
+  title: 'fab.engineering',
+  tagline: 'Şirketinizin ajanlarını organize edin.',
   favicon: 'img/favicon.ico',
 
   url: 'https://docs.fab.engineering',
@@ -39,7 +39,7 @@ const config: Config = {
 
   themeConfig: {
     navbar: {
-      title: 'Fab Agent',
+      title: 'fab.engineering',
       items: [
         {
           type: 'docSidebar',
@@ -56,7 +56,7 @@ const config: Config = {
     },
     footer: {
       style: 'dark',
-      copyright: `Copyright © ${new Date().getFullYear()} Fab Agent. Built with Docusaurus.`,
+      copyright: `© 2025 Fabrika Yazılım Ticaret Limited Şirketi · Kuntay Kunt`,
     },
     prism: {
       theme: prismThemes.github,

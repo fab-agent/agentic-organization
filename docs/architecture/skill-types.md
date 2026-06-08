@@ -2,7 +2,7 @@
 sidebar_position: 4
 ---
 
-# Skill Tipleri (F6A)
+# Skill Tipleri
 
 Bu belge, 3PA'da tanımlı dört skill tipini, her tipin `config_json` şemasını ve çalışma zamanı davranışlarını açıklamaktadır.
 
@@ -94,7 +94,7 @@ API anahtarı gerekmez.
 ```
 
 :::note text_to_chart ve code_execution
-`text_to_chart` şu an yer tutucu döndürmektedir — grafik render motoru F7'de eklenecektir. `code_execution` süreç izolasyonu gerektirdiğinden `function` tipi ile birlikte ileriki bir faza ertelenmiştir.
+`text_to_chart` şu an yer tutucu döndürmektedir. `code_execution` ise süreç izolasyonu gerektirdiğinden henüz etkin değildir.
 :::
 
 ---
@@ -202,7 +202,7 @@ Herhangi bir REST endpoint'ini araç olarak kullanan skill tipi. MCP protokolü 
 Agent'a özgü Python kodu doğrudan kayıt içinde tanımlanabilen skill tipi.
 
 :::note Mevcut durum
-`function` tipi için araç tanımı ve DB kaydı desteklenmektedir, ancak **kod çalıştırma ertelenmiştir**. Çalışma zamanında `[Function execution deferred — {skill.name}]` mesajı döndürülür. Sandbox çalışma ortamı ileriki bir fazda eklenecektir.
+`function` tipi için araç tanımı ve DB kaydı desteklenmektedir, ancak **kod çalıştırma henüz etkin değildir**. Çalışma zamanında `[Function execution deferred — {skill.name}]` mesajı döndürülür. Sandbox çalışma ortamı ilerleyen dönemde eklenecektir.
 :::
 
 ### config_json Şeması

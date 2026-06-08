@@ -10,18 +10,21 @@ Platform kurulumu tamamlandıktan sonra bu kılavuz ile temel iş akışlarını
 
 ## Arayüze Genel Bakış
 
-Sol kenar çubukta sekiz ana bölüm bulunur:
+Sol kenar çubukta on bir ana bölüm bulunur:
 
 | Bölüm | Adres | Açıklama |
 |---|---|---|
-| Yapı | `/` | Özet istatistikler |
-| Bölümler | `/departments` | Departman yönetimi |
-| İnsanlar | `/personnel` | Personel listesi |
-| Ajanlar | `/agents` | Ajan yönetimi |
-| Organizasyon | `/org-chart` | Hiyerarşik ağaç görünümü |
+| Yapı | `/` | Özet istatistikler ve şirket bilgileri |
+| Bölümler | `/departments` | Departman hiyerarşisi yönetimi |
+| İnsanlar | `/personnel` | Personel listesi ve davetler |
+| Ajanlar | `/agents` | Ajan yapılandırması ve değişiklik talepleri |
+| Organizasyon | `/org-chart` | Personel ve departman ağaç görünümü |
+| Değişiklikler | `/change-requests` | Onay akışı ve GitHub commit entegrasyonu |
+| Gelen Kutusu | `/inbox` | Akış sonuçları ve görev bildirimleri |
+| Akışlar | `/flows` | Zamanlanmış ajan görevleri |
 | İşler | `/chat` | Ajanlarla sohbet |
 | Delegasyon | `/a2a` | Ajanlar arası görev devri |
-| Ayarlar | `/settings` | AI sağlayıcılar + Git |
+| Ayarlar | `/settings` | AI sağlayıcılar + Git entegrasyonu |
 
 ---
 
@@ -100,6 +103,44 @@ Forecasting    v1.2   Nakit akışı tahmini
 - 🤖 **Ajan** düğümleri turuncu
 
 Bir ajan düğümüne tıklandığında sağ panelde model, skill listesi, durum ve sorumlu kişi görüntülenir.
+
+---
+
+### Adım 6 — Değişiklik Talepleri
+
+**Ajanlar** sayfasında ajan yapılandırmasında değişiklik yapıldığında bu değişiklik otomatik olarak bir **Değişiklik Talebi** oluşturur.
+
+**Değişiklikler** sayfasında (`/change-requests`):
+
+1. Bölüm yöneticisi talebi inceler ve **Bölüm Onayı** verir.
+2. Yönetici veya kurucu **Admin Onayı + Commit Et** ile değişikliği GitHub'a işler.
+3. Commit SHA ve bağlantısı talep kaydında görüntülenir.
+
+---
+
+### Adım 7 — Otonom Akışlar Kur
+
+**Akışlar** sayfasında (`/flows`) zamanlanmış ajan görevleri tanımlanır.
+
+1. **"Yeni Akış"** butonuna bas.
+2. Hangi ajanın çalışacağını seç.
+3. Cron zamanlamasını gir (örn. `0 9 * * 1-5` — hafta içi 09:00).
+4. Ajanın her çalışmada alacağı görevi yaz.
+5. Akışı etkinleştir.
+
+Akış çalıştığında sonuç **Gelen Kutusu**'na düşer.
+
+---
+
+### Adım 8 — Gelen Kutusu Takibi
+
+**Gelen Kutusu** sayfası (`/inbox`) şunları listeler:
+
+- Otonom akış sonuçları
+- Görev talepleri (başka personelin sizden ajan desteği istemesi)
+- GitHub commit bildirimleri
+
+Gelen Kutusu 30 saniyede bir otomatik güncellenir.
 
 ---
 

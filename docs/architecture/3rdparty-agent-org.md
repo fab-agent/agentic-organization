@@ -206,20 +206,21 @@ departments = await deptApi.list(companyStore.active?.id);
 
 ---
 
-## Mevcut Durum
+## Platform Kapsamı
 
-| Faz | Durum | Kapsam |
-|---|---|---|
-| **F1** | ✅ Tamamlandı | Backend modüler mimari, şirket + departman + personel CRUD |
-| **F2** | ✅ Tamamlandı | Provider anahtar yönetimi (Fernet şifreleme, test, UI) |
-| **F3** | ✅ Tamamlandı | CLI kurulum sihirbazı (`3pa init`) |
-| **F4** | ✅ Tamamlandı | Git entegrasyonu (pull/push/diff/PR, YAML I/O) |
-| **F5** | ✅ Tamamlandı | Çoklu şirket desteği + i18n (TR/EN/DE/ES) |
-| **F6A** | ✅ Tamamlandı | Skill tipleştirme: `builtin \| mcp \| http \| function`, `config_json` şemaları, `is_active` bayrağı |
-| **F6B** | ✅ Tamamlandı | Agent runtime: SSE akışı, çoklu provider yönlendirmesi (Gemini/Anthropic), agentic döngü (maks 8 iter.) |
-| **F6C** | ✅ Tamamlandı | Chat UI (Markdown/Mermaid render), agent bilgi paneli, A2A delegasyon + onay akışı |
-| **F7** | ✅ Tamamlandı | Kimlik doğrulama (JWT + davet sistemi), rol hiyerarşisi, profil sayfası |
-| **F8** | ✅ Tamamlandı | Departman hiyerarşisi (`parent_id`), Değişiklik Talepleri onay akışı, GitHub PAT entegrasyonu, Otonom Akışlar (cron), Görev Talepleri, Gelen Kutusu (30s polling) |
+| Bileşen | Açıklama |
+|---|---|
+| Organizasyon yönetimi | Şirket + departman hiyerarşisi + personel CRUD |
+| AI sağlayıcılar | Fernet şifreli API anahtar yönetimi (Gemini / Anthropic / OpenAI) |
+| CLI | `3pa init` kurulum sihirbazı |
+| Git entegrasyonu | Pull/push/diff/PR, YAML I/O, GitHub PAT |
+| Çoklu şirket | Şirket switcher + i18n (TR/EN/DE/ES) |
+| Skill sistemi | `builtin \| mcp \| http \| function` tipleri, `config_json` şemaları, `is_active` bayrağı |
+| Agent runtime | SSE akışı, çoklu provider yönlendirmesi, agentic döngü (maks 8 iter.) |
+| Chat UI | Markdown/Mermaid render, agent bilgi paneli |
+| A2A delegasyon | İki aşamalı onay akışı |
+| Kimlik doğrulama | JWT + davet sistemi, rol hiyerarşisi, profil sayfası |
+| Operasyonel modüller | Departman hiyerarşisi, Değişiklik Talepleri, GitHub commit entegrasyonu, Otonom Akışlar (cron), Görev Talepleri, Gelen Kutusu |
 
 ---
 

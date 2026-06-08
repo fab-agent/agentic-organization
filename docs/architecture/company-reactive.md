@@ -8,13 +8,13 @@ Platformda birden fazla şirket yönetilebilir. Kullanıcı aktif şirketi deği
 
 ---
 
-## Sorun
+## Neden İkisi Birden Gerekli?
 
-SvelteKit sayfaları `onMount` içinde veri yükler. Ancak `onMount` yalnızca sayfa ilk açıldığında çalışır; kullanıcı şirket değiştirdiğinde `onMount` yeniden tetiklenmez. Dolayısıyla yalnızca `onMount` kullanan sayfalar eski şirketin verisini göstermeye devam eder.
+SvelteKit sayfaları `onMount` içinde veri yükler. Ancak `onMount` yalnızca sayfa ilk açıldığında çalışır; kullanıcı şirket değiştirdiğinde `onMount` yeniden tetiklenmez. Bu nedenle `$effect` ile birlikte kullanılır.
 
 ---
 
-## Çözüm: onMount + $effect Deseni
+## onMount + $effect Deseni
 
 ```svelte
 <script lang="ts">
@@ -41,7 +41,7 @@ SvelteKit sayfaları `onMount` içinde veri yükler. Ancak `onMount` yalnızca s
 
 ---
 
-## Neden İkisi Birden?
+## Davranış Karşılaştırması
 
 | Durum | `onMount` | `$effect` |
 |---|---|---|

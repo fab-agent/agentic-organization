@@ -25,7 +25,7 @@ Geleneksel organizasyonlarda her çalışanın kendi aracı ve süreci vardır. 
 
 ## Agent-Personel İlişkisi
 
-MVP'de her agent **sadece bir personele** atanır. Bu ilişki:
+Platformda her agent **sadece bir personele** atanır. Bu ilişki:
 
 - Agent'ın çıktıları, personelin sorumluluğundadır.
 - Personel, agent'ın ürettiği sonuçları değerlendirir.

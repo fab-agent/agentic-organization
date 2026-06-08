@@ -2,7 +2,7 @@
 sidebar_position: 5
 ---
 
-# A2A (Agent-to-Agent) İşbirliği Mimarisi (F6C)
+# A2A (Agent-to-Agent) İşbirliği Mimarisi
 
 Bu belge, 3PA'da farklı departmanlardaki agent'ların birbirinden görev talep edebildiği A2A protokolünün tasarımını açıklamaktadır.
 

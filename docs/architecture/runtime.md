@@ -2,7 +2,7 @@
 sidebar_position: 3
 ---
 
-# Agent Runtime Mimarisi (F6B)
+# Agent Runtime Mimarisi
 
 Bu belge, 3PA'nın agent çalıştırma katmanını açıklamaktadır: sistem prompt'u oluşturma, araç tanım hattı, çoklu provider yönlendirmesi, SSE akış tasarımı ve agentic döngü.
 
@@ -235,7 +235,7 @@ Bu desen, uzun süren LLM çağrıları sırasında SQLite bağlantısının aç
 |---|---|---|
 | SSE / HTTP JSON-RPC | Destekleniyor | `call_mcp_sse_tool()` — POST `/call` endpoint'ine JSON-RPC 2.0 |
 | HTTP doğrudan | Destekleniyor | `call_http_tool()` — GET veya POST, args query/body olarak geçer |
-| stdio | Ertelenmiş | Süreç izolasyonu gerektirdiği için F7+'a alındı |
+| stdio | Ertelenmiş | Süreç izolasyonu gerektirdiğinden henüz desteklenmiyor |
 
 MCP sunucuları JSON-RPC 2.0 protokolü ile `/call` endpoint'ini açmalıdır:
 
@@ -262,7 +262,7 @@ MCP sunucuları JSON-RPC 2.0 protokolü ile `/call` endpoint'ini açmalıdır:
 | Konuşma geçmişi | `contents` listesi | Tüm önceki mesajlar |
 | Araç sonuçları | `function_response` parçaları | Araç yanıtına göre değişken |
 
-Politikalar kısa kural dizileri olduğu için token tüketimi düşüktür. Yüksek miktarda araç ve uzun geçmişin bir arada bulunduğu oturumlar model bağlam limitine yaklaşabilir; bu durum ileriki fazlarda konuşma özetleme ile yönetilecektir.
+Politikalar kısa kural dizileri olduğu için token tüketimi düşüktür. Yüksek miktarda araç ve uzun geçmişin bir arada bulunduğu oturumlar model bağlam limitine yaklaşabilir; bu durum ilerleyen dönemde konuşma özetleme ile yönetilecektir.
 
 ---
 

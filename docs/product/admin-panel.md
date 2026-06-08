@@ -75,4 +75,4 @@ Kullanıcı yönetimiyle ilgili backend endpoint'leri:
 | `/auth/reset/{user_id}` | POST | Admin şifre sıfırlama | `manager+` |
 | `/personnel/{id}/invite` | POST | Personel kaydından doğrudan davet | `manager+` |
 
-Detaylı API dokümantasyonu → [API Genel Bakış](../api/overview.md)
+İnteraktif API dokümantasyonu için platform çalışırken `http://localhost:8000/docs` (Swagger UI) adresini ziyaret edin.

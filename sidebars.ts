@@ -49,18 +49,13 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
-      label: 'Pitch Deck',
+      label: 'İçgörüler',
       items: [
         'pitch-deck/overview',
         'pitch-deck/agentik-organizasyon-yapisi',
         'pitch-deck/policy-ve-guardrail',
         'pitch-deck/mcp-ve-skill-gelistirme',
       ],
-    },
-    {
-      type: 'category',
-      label: 'API Dokümantasyonu',
-      items: ['api/overview'],
     },
   ],
 };

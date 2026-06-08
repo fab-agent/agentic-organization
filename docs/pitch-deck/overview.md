@@ -1,14 +1,17 @@
-# Pitch Deck
+---
+sidebar_position: 1
+---
 
-Bu bölümde yatırımcılara ve iş ortaklarına sunulacak pitch deck içerikleri yer almaktadır.
+# İçgörüler
 
-## Ana Konular
+Bu bölüm, fab.engineering'i inşa ederken aldığımız tasarım kararlarını, geliştirdiğimiz bakış açılarını ve tekrar tekrar döndüğümüz temel fikirleri içerir.
 
-- Problem
-- Çözüm
-- Ürün
-- Pazar
-- İş Modeli
-- Ekip
+Resmi dokümantasyon değil — kararların arkasındaki "neden"ler.
 
-Bu içerikler sürekli güncellenmektedir.
+---
+
+## Bu Bölümde Neler Var?
+
+- **Agentik Organizasyon Yapısı** — Klasik org chart'tan ajan-personel modeline geçiş mantığı ve rol tanımları
+- **Policy ve Guardrail Yaklaşımı** — Ajanları güvenli ve öngörülebilir tutmanın yapısal yolu
+- **MCP ve Skill Geliştirme** — Yeteneklerin nasıl tanımlandığı, test edildiği ve yayınlandığı

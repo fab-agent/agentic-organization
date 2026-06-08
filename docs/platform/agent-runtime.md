@@ -2,7 +2,7 @@
 sidebar_position: 1
 ---
 
-# Agent Runtime (F6B)
+# Agent Runtime
 
 Bu belge, platform içindeki ajan çalıştırma motorunun işleyişini açıklar: oturum yaşam döngüsü, SSE akışı, çoklu provider desteği ve araç çağrısı döngüsü.
 
@@ -185,8 +185,8 @@ Harici bağlantı gerektirmeyen platform içi araçlar:
 | Araç | Durum | Açıklama |
 |---|---|---|
 | `web_search` | Aktif | DuckDuckGo Instant Answer API |
-| `text_to_chart` | Yer tutucu | Grafik tanımı oluşturma (F7'de tamamlanacak) |
-| `code_execution` | Ertelenmiş | Python sandbox (F7+) |
+| `text_to_chart` | Yer tutucu | Grafik tanımı oluşturma |
+| `code_execution` | Ertelenmiş | Python sandbox |
 | `delegate_to_agent` | Planlanıyor | A2A talebi oluşturma |
 
 ---
