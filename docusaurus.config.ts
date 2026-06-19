@@ -7,7 +7,7 @@ const config: Config = {
   tagline: 'Şirketinizin ajanlarını organize edin.',
   favicon: 'img/favicon.ico',
 
-  url: 'https://docs.fab.engineering',
+  url: 'https://agent-docs.fab.engineering',
   baseUrl: '/',
 
   organizationName: 'fab-agent',
@@ -18,7 +18,13 @@ const config: Config = {
 
   i18n: {
     defaultLocale: 'tr',
-    locales: ['tr'],
+    locales: ['tr', 'en', 'de', 'es'],
+    localeConfigs: {
+      tr: { label: 'Türkçe', direction: 'ltr' },
+      en: { label: 'English', direction: 'ltr' },
+      de: { label: 'Deutsch', direction: 'ltr' },
+      es: { label: 'Español', direction: 'ltr' },
+    },
   },
 
   presets: [
@@ -46,6 +52,10 @@ const config: Config = {
           sidebarId: 'tutorialSidebar',
           position: 'left',
           label: 'Dokümantasyon',
+        },
+        {
+          type: 'localeDropdown',
+          position: 'right',
         },
         {
           href: 'https://github.com/fab-agent',

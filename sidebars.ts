@@ -23,6 +23,9 @@ const sidebars: SidebarsConfig = {
         'product/task-requests',
         'product/inbox',
         'product/a2a-architecture',
+        'product/audit-log',
+        'product/agent-memory',
+        'product/flow-tool-use',
       ],
     },
     {
