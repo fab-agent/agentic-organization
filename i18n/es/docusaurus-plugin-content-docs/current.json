@@ -1,0 +1,26 @@
+{
+  "version.label": {
+    "message": "Next",
+    "description": "The label for version current"
+  },
+  "sidebar.tutorialSidebar.category.Başlarken": {
+    "message": "Introducción",
+    "description": "The label for category 'Başlarken' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Ürün": {
+    "message": "Producto",
+    "description": "The label for category 'Ürün' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Platform": {
+    "message": "Plataforma",
+    "description": "The label for category 'Platform' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Mimari": {
+    "message": "Arquitectura",
+    "description": "The label for category 'Mimari' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.İçgörüler": {
+    "message": "Perspectivas",
+    "description": "The label for category 'İçgörüler' in sidebar 'tutorialSidebar'"
+  }
+}

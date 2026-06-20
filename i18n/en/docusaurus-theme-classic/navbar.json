@@ -3,12 +3,12 @@
     "message": "fab.engineering",
     "description": "The title in the navbar"
   },
-  "item.label.Documentation": {
-    "message": "Documentation",
-    "description": "Navbar item with label Documentation"
-  },
   "item.label.GitHub": {
     "message": "GitHub",
     "description": "Navbar item with label GitHub"
+  },
+  "item.label.Dokümantasyon": {
+    "message": "Documentation",
+    "description": "Navbar item with label Dokümantasyon"
   }
 }
