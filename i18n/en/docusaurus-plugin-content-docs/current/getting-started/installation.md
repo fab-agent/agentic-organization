@@ -102,6 +102,19 @@ openssl rand -hex 32
 
 ---
 
+## Resend Setup {#resend-setup}
+
+Invite emails and password resets are sent via [Resend](https://resend.com). Set your API key in `.env`:
+
+```bash
+RESEND_API_KEY=re_...
+EMAIL_FROM=noreply@yourdomain.com
+```
+
+Without `RESEND_API_KEY`, invite tokens are printed to the server console log instead of being emailed — useful for local development.
+
+---
+
 ## First Launch
 
 On first startup the platform seeds sample data:

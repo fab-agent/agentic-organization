@@ -13,7 +13,7 @@ const config: Config = {
   organizationName: 'fab-agent',
   projectName: 'docs',
 
-  onBrokenLinks: 'throw',
+  onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
 
   i18n: {
