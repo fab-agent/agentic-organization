@@ -2,6 +2,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from sqlmodel import select
 
+from api.audit import log_action
 from core.security import encrypt, decrypt
 from database import get_session
 from models import GitConfig, SyncLog
@@ -84,6 +85,7 @@ def create_git_config(body: GitConfigCreate, company_id: Optional[str] = None):
             auto_pr=body.auto_pr,
         )
         session.add(cfg)
+        log_action(session, "create", "git_config", entity_id=cfg.id, entity_name=cfg.repo_url, company_id=cfg.company_id)
         session.commit()
         session.refresh(cfg)
         return _config_to_dict(cfg)
@@ -98,6 +100,7 @@ def update_git_config(body: GitConfigUpdate, company_id: Optional[str] = None):
         if body.sync_interval is not None: cfg.sync_interval   = body.sync_interval
         if body.auto_pr is not None:       cfg.auto_pr         = body.auto_pr
         session.add(cfg)
+        log_action(session, "update", "git_config", entity_id=cfg.id, entity_name=cfg.repo_url, company_id=cfg.company_id)
         session.commit()
         session.refresh(cfg)
         return _config_to_dict(cfg)
@@ -107,6 +110,7 @@ def update_git_config(body: GitConfigUpdate, company_id: Optional[str] = None):
 def delete_git_config(company_id: Optional[str] = None):
     with get_session() as session:
         cfg = _get_config_or_404(session, company_id)
+        log_action(session, "delete", "git_config", entity_id=cfg.id, entity_name=cfg.repo_url, company_id=cfg.company_id)
         session.delete(cfg)
         session.commit()
 
@@ -118,6 +122,8 @@ def git_pull(company_id: Optional[str] = None):
     with get_session() as session:
         cfg = _get_config_or_404(session, company_id)
         log = git_service.pull(session, cfg)
+        log_action(session, "sync", "git_config", entity_id=cfg.id, entity_name=cfg.repo_url, company_id=cfg.company_id, details={"direction": "pull", "status": log.status})
+        session.commit()
         return _log_to_dict(log)
 
 
@@ -126,6 +132,8 @@ def git_push(body: PushRequest, company_id: Optional[str] = None):
     with get_session() as session:
         cfg = _get_config_or_404(session, company_id)
         log = git_service.push(session, cfg, body.message)
+        log_action(session, "sync", "git_config", entity_id=cfg.id, entity_name=cfg.repo_url, company_id=cfg.company_id, details={"direction": "push", "status": log.status})
+        session.commit()
         return _log_to_dict(log)
 
 

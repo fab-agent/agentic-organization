@@ -13,6 +13,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
 
+from api.audit import log_action
 from api.auth import get_current_user
 from database import get_session
 from models import ChangeRequest, GitConfig, Personnel, User
@@ -104,6 +105,7 @@ def create_change_request(
             updated_at=datetime.utcnow(),
         )
         session.add(cr)
+        log_action(session, "create", "change_request", entity_id=cr.id, entity_name=cr.title, company_id=cr.company_id, user_id=current_user.id)
         session.commit()
         session.refresh(cr)
         return _cr_to_dict(cr)
@@ -130,6 +132,7 @@ def dept_head_approve(
         cr.dept_head_note = body.note
         cr.updated_at = datetime.utcnow()
         session.add(cr)
+        log_action(session, "approve", "change_request", entity_id=cr.id, entity_name=cr.title, company_id=cr.company_id, user_id=current_user.id, details={"stage": "dept_head"})
         session.commit()
         session.refresh(cr)
         return _cr_to_dict(cr)
@@ -154,6 +157,7 @@ def dept_head_reject(
         cr.dept_head_note = body.note
         cr.updated_at = datetime.utcnow()
         session.add(cr)
+        log_action(session, "reject", "change_request", entity_id=cr.id, entity_name=cr.title, company_id=cr.company_id, user_id=current_user.id, details={"stage": "dept_head"})
         session.commit()
         session.refresh(cr)
         return _cr_to_dict(cr)
@@ -202,6 +206,7 @@ def admin_approve(
 
         cr.updated_at = datetime.utcnow()
         session.add(cr)
+        log_action(session, "approve", "change_request", entity_id=cr.id, entity_name=cr.title, company_id=cr.company_id, user_id=current_user.id, details={"stage": "admin", "commit_sha": cr.commit_sha})
         session.commit()
         session.refresh(cr)
         return _cr_to_dict(cr)
@@ -226,6 +231,7 @@ def admin_reject(
         cr.admin_note = body.note
         cr.updated_at = datetime.utcnow()
         session.add(cr)
+        log_action(session, "reject", "change_request", entity_id=cr.id, entity_name=cr.title, company_id=cr.company_id, user_id=current_user.id, details={"stage": "admin"})
         session.commit()
         session.refresh(cr)
         return _cr_to_dict(cr)

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import select
 
+from api.audit import log_action
 from api.auth import get_current_user
 from database import get_session
 from models import Flow, User
@@ -79,6 +80,7 @@ def create_flow(body: FlowCreate, company_id: str, current_user: User = Depends(
             updated_at=datetime.utcnow(),
         )
         session.add(flow)
+        log_action(session, "create", "flow", entity_id=flow.id, entity_name=flow.name, company_id=flow.company_id, user_id=current_user.id)
         session.commit()
         session.refresh(flow)
         # Reload scheduler
@@ -103,6 +105,7 @@ def update_flow(flow_id: str, body: FlowUpdate, current_user: User = Depends(get
         if body.enabled is not None:     flow.enabled = body.enabled
         flow.updated_at = datetime.utcnow()
         session.add(flow)
+        log_action(session, "update", "flow", entity_id=flow.id, entity_name=flow.name, company_id=flow.company_id, user_id=current_user.id)
         session.commit()
         session.refresh(flow)
         try:
@@ -119,6 +122,7 @@ def delete_flow(flow_id: str, current_user: User = Depends(get_current_user)):
         flow = session.get(Flow, flow_id)
         if not flow:
             raise HTTPException(status_code=404, detail="Flow not found")
+        log_action(session, "delete", "flow", entity_id=flow.id, entity_name=flow.name, company_id=flow.company_id, user_id=current_user.id)
         session.delete(flow)
         session.commit()
         try:
@@ -139,4 +143,6 @@ def run_flow_now(flow_id: str, current_user: User = Depends(get_current_user)):
     run_flow(flow_id)
     with get_session() as session:
         flow = session.get(Flow, flow_id)
+        log_action(session, "run", "flow", entity_id=flow.id, entity_name=flow.name, company_id=flow.company_id, user_id=current_user.id, details={"status": flow.last_run_status})
+        session.commit()
         return _to_dict(flow)

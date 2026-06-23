@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 from sqlmodel import select
 import json
 
+from api.audit import log_action
 from database import get_session
 from models import Department
 from schemas import DepartmentCreate, DepartmentUpdate
@@ -58,6 +59,7 @@ def create_department(body: DepartmentCreate, company_id: Optional[str] = None):
             status=body.status,
         )
         session.add(dept)
+        log_action(session, "create", "department", entity_id=dept.id, entity_name=dept.name, company_id=dept.company_id or company_id)
         session.commit()
         session.refresh(dept)
         return dept_to_dict(dept, parent_name)
@@ -94,6 +96,7 @@ def update_department(dept_id: str, body: DepartmentUpdate):
                 raise HTTPException(status_code=400, detail="Department cannot be its own parent")
             dept.parent_id = body.parent_id
         session.add(dept)
+        log_action(session, "update", "department", entity_id=dept.id, entity_name=dept.name, company_id=dept.company_id)
         session.commit()
         session.refresh(dept)
         parent_name = None
@@ -114,6 +117,7 @@ def delete_department(dept_id: str):
         for child in children:
             child.parent_id = None
             session.add(child)
+        log_action(session, "delete", "department", entity_id=dept.id, entity_name=dept.name, company_id=dept.company_id)
         session.delete(dept)
         session.commit()
 

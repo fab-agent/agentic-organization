@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from sqlmodel import select, func
 
+from api.audit import log_action
 from database import get_session
 from models import Company, Department, Personnel, AgentConfig
 from schemas import CompanyCreate, CompanyUpdate
@@ -52,6 +53,7 @@ def create_company(body: CompanyCreate):
             website=body.website,
         )
         session.add(company)
+        log_action(session, "create", "company", entity_id=company.id, entity_name=company.name)
         session.commit()
         session.refresh(company)
         return _company_to_dict(company, session)
@@ -77,6 +79,7 @@ def update_company(company_id: str, body: CompanyUpdate):
         if body.sector is not None:  company.sector  = body.sector
         if body.website is not None: company.website = body.website
         session.add(company)
+        log_action(session, "update", "company", entity_id=company.id, entity_name=company.name)
         session.commit()
         session.refresh(company)
         return _company_to_dict(company, session)
@@ -88,5 +91,6 @@ def delete_company(company_id: str):
         company = session.get(Company, company_id)
         if not company:
             raise HTTPException(status_code=404, detail="Company not found")
+        log_action(session, "delete", "company", entity_id=company.id, entity_name=company.name)
         session.delete(company)
         session.commit()

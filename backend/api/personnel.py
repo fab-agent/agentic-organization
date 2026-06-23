@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Header, HTTPException
 from sqlmodel import select
 
+from api.audit import log_action
 from database import get_session
 from models import AgentConfig, Company, CompanyMember, Department, Personnel, Skill, User
 from schemas import AgentConfigCreate, AgentConfigUpdate, PersonnelCreate, PersonnelUpdate, SkillCreate, SkillUpdate
@@ -99,6 +100,7 @@ def create_personnel(body: PersonnelCreate):
             manager_id=body.manager_id,
         )
         session.add(person)
+        log_action(session, "create", "personnel", entity_id=person.id, entity_name=person.name, company_id=person.company_id)
         session.commit()
         session.refresh(person)
         return _personnel_to_dict(person, session)
@@ -128,6 +130,7 @@ def update_personnel(person_id: str, body: PersonnelUpdate):
         if body.manager_id is not None:    person.manager_id = body.manager_id
         if body.email is not None:         person.email = body.email or None
         session.add(person)
+        log_action(session, "update", "personnel", entity_id=person.id, entity_name=person.name, company_id=person.company_id)
         session.commit()
         session.refresh(person)
         return _personnel_to_dict(person, session)
@@ -217,6 +220,7 @@ def delete_personnel(person_id: str):
         person = session.get(Personnel, person_id)
         if not person:
             raise HTTPException(status_code=404, detail="Personnel not found")
+        log_action(session, "delete", "personnel", entity_id=person.id, entity_name=person.name, company_id=person.company_id)
         session.delete(person)
         session.commit()
 
@@ -265,6 +269,7 @@ def create_agent_config(person_id: str, body: AgentConfigCreate):
         session.add(cfg)
         person.type = "agent"
         session.add(person)
+        log_action(session, "create", "agent_config", entity_id=cfg.id, entity_name=person.name, company_id=person.company_id)
         session.commit()
         session.refresh(cfg)
         return {
@@ -290,6 +295,7 @@ def update_agent_config(person_id: str, body: AgentConfigUpdate):
         if body.responsible_id is not None: cfg.responsible_id = body.responsible_id
         cfg.updated_at = datetime.utcnow()
         session.add(cfg)
+        log_action(session, "update", "agent_config", entity_id=cfg.id, entity_name=cfg.personnel_id)
         session.commit()
         session.refresh(cfg)
         skills = session.exec(select(Skill).where(Skill.agent_id == cfg.id)).all()
@@ -334,6 +340,7 @@ def add_skill(person_id: str, body: SkillCreate):
             is_active=body.is_active,
         )
         session.add(skill)
+        log_action(session, "create", "skill", entity_id=skill.id, entity_name=skill.name)
         session.commit()
         session.refresh(skill)
         return _skill_to_dict(skill)
@@ -352,6 +359,7 @@ def update_skill(person_id: str, skill_id: str, body: SkillUpdate):
         if body.config is not None:      skill.config_json = _json.dumps(body.config)
         if body.is_active is not None:   skill.is_active = body.is_active
         session.add(skill)
+        log_action(session, "update", "skill", entity_id=skill.id, entity_name=skill.name)
         session.commit()
         session.refresh(skill)
         return _skill_to_dict(skill)
@@ -363,6 +371,7 @@ def delete_skill(person_id: str, skill_id: str):
         skill = session.get(Skill, skill_id)
         if not skill:
             raise HTTPException(status_code=404, detail="Skill not found")
+        log_action(session, "delete", "skill", entity_id=skill.id, entity_name=skill.name)
         session.delete(skill)
         session.commit()
 

@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from sqlmodel import select
 
+from api.audit import log_action
 from core.security import encrypt, decrypt
 from database import get_session
 from models import AppConfig, ProviderKey
@@ -104,6 +105,7 @@ def set_provider_key(provider: str, body: SetProviderKey):
 
     with get_session() as session:
         row = _provider_row(session, provider)
+        is_update = row is not None
         if row:
             row.encrypted_key = encrypted
             row.status = "active" if valid else "invalid"
@@ -117,6 +119,7 @@ def set_provider_key(provider: str, body: SetProviderKey):
                 last_tested=now,
             )
             session.add(row)
+        log_action(session, "update" if is_update else "create", "provider_key", entity_name=provider)
         session.commit()
         session.refresh(row)
         return _provider_status_dict(row, provider)
@@ -129,6 +132,7 @@ def delete_provider_key(provider: str):
     with get_session() as session:
         row = _provider_row(session, provider)
         if row:
+            log_action(session, "delete", "provider_key", entity_name=provider)
             session.delete(row)
             session.commit()
 
@@ -147,6 +151,7 @@ def test_existing_key(provider: str):
         row.status = "active" if valid else "invalid"
         row.last_tested = datetime.utcnow()
         session.add(row)
+        log_action(session, "test", "provider_key", entity_name=provider, details={"valid": valid})
         session.commit()
         session.refresh(row)
         return _provider_status_dict(row, provider)
