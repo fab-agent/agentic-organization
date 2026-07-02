@@ -18,12 +18,10 @@ const config: Config = {
 
   i18n: {
     defaultLocale: 'tr',
-    locales: ['tr', 'en', 'de', 'es'],
+    locales: ['tr', 'en'],
     localeConfigs: {
       tr: { label: 'Türkçe', direction: 'ltr' },
       en: { label: 'English', direction: 'ltr' },
-      de: { label: 'Deutsch', direction: 'ltr' },
-      es: { label: 'Español', direction: 'ltr' },
     },
   },
 

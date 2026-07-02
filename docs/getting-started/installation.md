@@ -82,16 +82,22 @@ Sihirbaz sırasıyla şunları sorar:
 
 ---
 
-## İlk Açılış
+## İlk Açılış — Kurulum Sihirbazı
 
-Platform ilk açılışta örnek veri yükler:
+Platform ilk açıldığında veritabanında hiç kullanıcı yoksa otomatik olarak **kurulum sayfasına** yönlendirilirsiniz.
 
-| Şirket | Departman | İnsan | Ajan |
-|---|---|---|---|
-| Fabrika Yazılım | 6 | 10 | 9 |
-| Demo Corp | 1 | 2 | 1 |
+Bu sayfada:
 
-Bu verileri şablon olarak kullanabilir ya da silebilirsiniz.
+1. **Ad Soyad** — yönetici kullanıcının adı
+2. **Şirket Adı** — platformdaki ilk şirket
+3. **E-posta** — giriş için kullanılacak adres
+4. **Şifre** — en az 8 karakter
+
+Form gönderildiğinde kullanıcı `founder` rolüyle oluşturulur ve otomatik giriş yapılır.
+
+:::info
+Kurulum formu yalnızca veritabanı boşken görünür. Bir kullanıcı oluşturulduktan sonra `/setup` sayfası devre dışı kalır.
+:::
 
 ---
 
@@ -102,8 +108,7 @@ Bu verileri şablon olarak kullanabilir ya da silebilirsiniz.
 
 # --- Kimlik Doğrulama (Zorunlu) ---
 JWT_SECRET=gizli-ve-uzun-rastgele-bir-dize    # JWT imzalama anahtarı — en az 32 karakter
-FOUNDER_EMAIL=kurucu@sirket.com               # İlk açılışta otomatik oluşturulan kurucu hesabı
-FOUNDER_PASSWORD=ilk-giris-sifresi            # Kurucu'nun başlangıç şifresi (ilk girişte değiştirin)
+# İlk yönetici hesabı kurulum sihirbazıyla oluşturulur (/setup sayfası)
 
 # --- E-posta / Davet Sistemi (Zorunlu) ---
 RESEND_API_KEY=re_...                         # Resend.com API anahtarı (davet e-postaları için)
@@ -115,6 +120,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 GOOGLE_API_KEY=AIza...
 MISTRAL_API_KEY=...
+QWEN_API_KEY=sk-...           # Alibaba DashScope
 
 # Frontend (.env)
 VITE_API_URL=http://localhost:8000
@@ -125,7 +131,7 @@ AI anahtarları `.env` yerine **Ayarlar → AI Sağlayıcıları** sayfasından 
 :::
 
 :::caution
-`JWT_SECRET`, `RESEND_API_KEY` ve `FOUNDER_EMAIL`/`FOUNDER_PASSWORD` değerlerini ayarlamadan platformu başlatmayın. JWT_SECRET'ın tahmin edilemez ve yeterince uzun olduğundan emin olun. `FOUNDER_PASSWORD` ile ilk girişi yaptıktan sonra **hemen şifrenizi değiştirin**.
+`JWT_SECRET` ve `RESEND_API_KEY` değerlerini ayarlamadan platformu başlatmayın. `JWT_SECRET`'ın tahmin edilemez ve en az 32 karakter uzunluğunda olduğundan emin olun. İlk yönetici hesabı kurulum sihirbazından oluşturulur; sabit bir şifre tanımlamanıza gerek yoktur.
 :::
 
 ---

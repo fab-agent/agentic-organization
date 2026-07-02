@@ -2,6 +2,18 @@
 
 Bu sayfa, 3rdParty Agent Organization platformunda **provider API anahtarlarının** güvenli yönetimi ile ilgili sistemi açıklamaktadır.
 
+## Desteklenen Sağlayıcılar
+
+| Sağlayıcı | Kimlik | Modeller |
+|---|---|---|
+| Anthropic | `anthropic` | Claude Opus 4.7, Sonnet 4.6, Haiku 4.5 |
+| OpenAI | `openai` | GPT-4o, GPT-4o Mini, o1 Mini |
+| Google | `google` | Gemini 2.5 Pro, Gemini 2.0 Flash |
+| Mistral AI | `mistral` | Mistral Large, Mistral Small |
+| Alibaba Qwen | `qwen` | Qwen Max, Qwen Plus, Qwen Turbo, Qwen Long |
+
+Qwen, DashScope'un OpenAI uyumlu API'sini (`dashscope.aliyuncs.com/compatible-mode/v1`) kullanır. Key [DashScope Console](https://dashscope.console.aliyun.com/) üzerinden alınır.
+
 ## Genel Bakış
 
 Platform, birden fazla AI sağlayıcısı (Anthropic, OpenAI, Google, Mistral vb.) ile çalışabildiği için, bu sağlayıcılara ait API anahtarlarının güvenli bir şekilde saklanması ve yönetilmesi kritik öneme sahiptir.
