@@ -35,7 +35,7 @@ Her personele AI ajan tanımlanır, politika ve yetenekler YAML dosyaları üzer
 - Departman ve skill filtreyle uygun ajana görev gönder (Görev Talepleri)
 - Akış sonuçları ve görev bildirimlerini Gelen Kutusu'ndan takip et (30s polling)
 - Ekip üyelerini e-posta ile platforma davet et; rol bazlı erişim kontrolü uygula
-- Arayüzü Türkçe, İngilizce, Almanca veya İspanyolca kullan
+- Arayüzü Türkçe veya İngilizce kullan
 
 ---
 
@@ -45,7 +45,7 @@ Her personele AI ajan tanımlanır, politika ve yetenekler YAML dosyaları üzer
 git clone https://github.com/fab-agent/3rdparty-agent-org.git
 cd 3rdparty-agent-org
 cp .env.example .env
-# .env içine JWT_SECRET, RESEND_API_KEY ve kurucu bilgilerini girin
+# .env içine JWT_SECRET ve RESEND_API_KEY değerlerini girin
 docker compose up --build
 ```
 
@@ -62,14 +62,5 @@ Platform, davet tabanlı bir kullanıcı sistemi kullanır. Kullanıcılar siste
 Detaylı bilgi için → [Kimlik Doğrulama ve Roller](./platform/auth-and-roles.md)
 
 ---
-
-## Bu Doküman Sitesi Hakkında
-
-```bash
-git clone https://github.com/fab-agent/docs.git
-cd docs
-npm install
-npm start     # http://localhost:3000
-```
 
 Site dili: Türkçe. Yayın adresi: [docs.fab.engineering](https://docs.fab.engineering)
