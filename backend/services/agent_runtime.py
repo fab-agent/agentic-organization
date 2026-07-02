@@ -209,6 +209,8 @@ def detect_provider(model: str) -> str:
         return "anthropic"
     if m.startswith("gpt") or m.startswith("o1") or m.startswith("o3"):
         return "openai"
+    if m.startswith("qwen"):
+        return "qwen"
     return "google"
 
 
@@ -464,6 +466,96 @@ async def _stream_anthropic(
     }
 
 
+# ── OpenAI-compatible streaming (OpenAI + Qwen) ───────────────────────────────
+
+_OPENAI_BASE_URLS = {
+    "openai": "https://api.openai.com/v1",
+    "qwen":   "https://dashscope.aliyuncs.com/compatible-mode/v1",
+}
+
+async def _stream_openai_compatible(
+    provider: str,
+    model_name: str,
+    api_key: str,
+    system_prompt: str,
+    history: list[SessionMessage],
+    user_message: str,
+    tool_defs: list[dict],
+    skills: list[Skill],
+    session_id: str | None = None,
+    agent_id: str | None = None,
+) -> AsyncGenerator[dict, None]:
+    from openai import OpenAI
+
+    base_url = _OPENAI_BASE_URLS.get(provider, "https://api.openai.com/v1")
+    client = OpenAI(api_key=api_key, base_url=base_url)
+
+    messages = [{"role": "system", "content": system_prompt}]
+    for msg in history:
+        messages.append({"role": msg.role, "content": msg.content})
+    messages.append({"role": "user", "content": user_message})
+
+    oai_tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": td["name"],
+                "description": td["description"],
+                "parameters": td["parameters"],
+            },
+        }
+        for td in tool_defs
+    ]
+
+    all_tool_calls: list[dict] = []
+    all_tool_results: list[dict] = []
+
+    max_loops = 8
+    for _ in range(max_loops):
+        response_text = ""
+        loop_tool_calls: list[dict] = []
+
+        def _sync_call():
+            nonlocal response_text, loop_tool_calls
+            kwargs: dict = {"model": model_name, "messages": messages, "max_tokens": 4096}
+            if oai_tools:
+                kwargs["tools"] = oai_tools
+            resp = client.chat.completions.create(**kwargs)
+            choice = resp.choices[0]
+            if choice.message.content:
+                response_text = choice.message.content
+            if choice.message.tool_calls:
+                for tc in choice.message.tool_calls:
+                    loop_tool_calls.append({
+                        "id": tc.id,
+                        "name": tc.function.name,
+                        "args": json.loads(tc.function.arguments or "{}"),
+                    })
+
+        await asyncio.to_thread(_sync_call)
+
+        if response_text:
+            yield {"type": "text", "content": response_text}
+
+        if not loop_tool_calls:
+            break
+
+        all_tool_calls.extend(loop_tool_calls)
+        messages.append({"role": "assistant", "tool_calls": [
+            {"id": tc["id"], "type": "function", "function": {"name": tc["name"], "arguments": json.dumps(tc["args"])}}
+            for tc in loop_tool_calls
+        ]})
+
+        for tc in loop_tool_calls:
+            yield {"type": "tool_call", "name": tc["name"], "args": tc["args"]}
+            result = await execute_skill(tc["name"], tc["args"], skills, session_id=session_id, agent_id=agent_id)
+            yield {"type": "tool_result", "name": tc["name"], "result": result}
+            all_tool_results.append({"name": tc["name"], "result": result})
+            messages.append({"role": "tool", "tool_call_id": tc["id"], "content": result})
+
+    yield {"type": "_meta", "tool_calls": all_tool_calls, "tool_results": all_tool_results}
+
+
 # ── Main entry point ──────────────────────────────────────────────────────────
 
 async def run_session(
@@ -538,6 +630,8 @@ async def run_session(
         gen = _stream_gemini(model_name, api_key, system_prompt, gemini_history, user_message, tool_defs, list(skills), session_id=session_id, agent_id=person.id)
     elif provider == "anthropic":
         gen = _stream_anthropic(model_name, api_key, system_prompt, list(history_rows), user_message, tool_defs, list(skills), session_id=session_id, agent_id=person.id)
+    elif provider in ("openai", "qwen"):
+        gen = _stream_openai_compatible(provider, model_name, api_key, system_prompt, list(history_rows), user_message, tool_defs, list(skills), session_id=session_id, agent_id=person.id)
     else:
         yield {"type": "error", "message": f"Provider '{provider}' not yet supported in runtime"}
         return

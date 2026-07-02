@@ -235,6 +235,52 @@ def change_password(body: dict, user: User = Depends(get_current_user)):
     return {"access_token": token, "token_type": "bearer"}
 
 
+# ── First-time setup ──────────────────────────────────────────────────────────
+
+@router.get("/setup-status")
+def setup_status():
+    with get_session() as session:
+        user_count = session.exec(select(User)).all()
+    return {"needs_setup": len(user_count) == 0}
+
+
+@router.post("/setup", status_code=201)
+def setup(body: dict):
+    """Create the first admin user. Only works when no users exist."""
+    with get_session() as session:
+        existing = session.exec(select(User)).first()
+        if existing:
+            raise HTTPException(status_code=403, detail="Sistem zaten kurulmuş")
+
+    name: str = body.get("name", "").strip()
+    email: str = body.get("email", "").strip().lower()
+    password: str = body.get("password", "")
+    company_name: str = body.get("company_name", "").strip()
+
+    if not name or not email or not password or not company_name:
+        raise HTTPException(status_code=422, detail="name, email, password, company_name zorunlu")
+    if len(password) < 8:
+        raise HTTPException(status_code=422, detail="Şifre en az 8 karakter olmalı")
+
+    with get_session() as session:
+        user = User(email=email, name=name, password_hash=hash_password(password), is_active=True)
+        session.add(user)
+        session.flush()
+
+        import re
+        slug = re.sub(r"[^a-z0-9]+", "-", company_name.lower()).strip("-") or "sirket"
+        company = Company(name=company_name, slug=slug)
+        session.add(company)
+        session.flush()
+
+        session.add(CompanyMember(user_id=user.id, company_id=company.id, role="founder"))
+        session.commit()
+        user_id = user.id
+
+    token = create_access_token(user_id)
+    return {"access_token": token, "token_type": "bearer", "user_id": user_id}
+
+
 # ── Admin: reset user password ────────────────────────────────────────────────
 
 @router.post("/reset/{user_id}")

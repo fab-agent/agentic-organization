@@ -47,6 +47,19 @@ PROVIDER_CONFIGS: dict[str, dict] = {
             {"id": "mistral-small-latest", "name": "Mistral Small"},
         ],
     },
+    "qwen": {
+        "display_name": "Alibaba Qwen",
+        "url":     "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+        "method":  "post",
+        "headers": lambda k: {"Authorization": f"Bearer {k}", "content-type": "application/json"},
+        "body":    {"model": "qwen-turbo", "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]},
+        "models": [
+            {"id": "qwen-max",   "name": "Qwen Max"},
+            {"id": "qwen-plus",  "name": "Qwen Plus"},
+            {"id": "qwen-turbo", "name": "Qwen Turbo"},
+            {"id": "qwen-long",  "name": "Qwen Long"},
+        ],
+    },
 }
 
 SUPPORTED_PROVIDERS = list(PROVIDER_CONFIGS.keys())

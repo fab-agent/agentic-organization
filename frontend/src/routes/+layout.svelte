@@ -36,7 +36,7 @@
 	let { children }: { children: Snippet } = $props();
 
 	// Public routes — no auth required
-	const PUBLIC_ROUTES = ['/login', '/set-password', '/request-reset'];
+	const PUBLIC_ROUTES = ['/login', '/set-password', '/request-reset', '/setup'];
 
 	let sidebarOpen = $state(false);
 	let companyMenuOpen = $state(false);
@@ -66,6 +66,16 @@
 
 	onMount(() => {
 		(async () => {
+			// Check first-time setup before anything else
+			try {
+				const { API_URL } = await import('$lib/api/client');
+				const res = await fetch(`${API_URL}/auth/setup-status`);
+				if (res.ok) {
+					const { needs_setup } = await res.json();
+					if (needs_setup) { goto('/setup'); return; }
+				}
+			} catch {}
+
 			await authStore.init();
 			const path = $page.url.pathname;
 			const isPublic = PUBLIC_ROUTES.some(r => path.startsWith(r));
