@@ -2,11 +2,9 @@
 Seed data — runs once on startup if DB is empty.
 """
 import json
-import os
 from sqlmodel import select
 from database import get_session
-from models import Company, Department, Personnel, AgentConfig, Skill, User, CompanyMember
-from services.auth import hash_password
+from models import Company, Department, Personnel, AgentConfig, Skill
 
 
 def run_seed() -> None:
@@ -317,21 +315,5 @@ def run_seed() -> None:
         session.flush()
         session.add(Skill(agent_id=demo_cfg.id, name="Code Generation", version="1.0", description="Automated code scaffolding"))
 
-        # ── Founder User ──────────────────────────────────────────────────────
-        founder_email = os.getenv("FOUNDER_EMAIL", "bilgi@kuntaykunt.com")
-        founder_password = os.getenv("FOUNDER_PASSWORD", "changeme123!")
-        founder = User(
-            email=founder_email,
-            name="Kuntay Kunt",
-            password_hash=hash_password(founder_password),
-            is_active=True,
-            must_change_password=False,
-        )
-        session.add(founder)
-        session.flush()
-
-        session.add(CompanyMember(user_id=founder.id, company_id=company1.id, role="founder"))
-        session.add(CompanyMember(user_id=founder.id, company_id=company2.id, role="founder"))
-
         session.commit()
-        print(f"✅ Seed: 2 companies, 7 departments, 13 humans, 10 agents, founder={founder_email}")
+        print("✅ Seed: 2 companies, 7 departments, 13 humans, 10 agents")
