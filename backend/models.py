@@ -103,6 +103,16 @@ class GitConfig(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class TelegramConfig(SQLModel, table=True):
+    """Per-company Telegram bot configuration for notifications."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    company_id: Optional[str] = Field(default=None, foreign_key="company.id", index=True)
+    encrypted_token: str               # Bot token from BotFather (AES encrypted)
+    admin_chat_id: str                 # Chat/group ID where system alerts are sent
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class SyncLog(SQLModel, table=True):
     """Record of every pull/push sync operation."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)

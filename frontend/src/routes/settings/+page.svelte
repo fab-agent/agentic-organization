@@ -3,6 +3,7 @@
 	import { providers as providerApi, type ProviderStatus } from '$lib/api/providers.js';
 	import { git as gitApi, type GitConfig, type SyncLog } from '$lib/api/git.js';
 	import { api } from '$lib/api/client.js';
+	import { telegram as telegramApi, type TelegramConfigResponse } from '$lib/api/telegram.js';
 	import { companyStore } from '$lib/stores/company.svelte';
 	import Button from '$lib/components/ui/button.svelte';
 	import {
@@ -416,6 +417,75 @@
 		}
 	}
 
+	// ── Telegram state ───────────────────────────────────────────────────────
+	let tgConfig = $state<TelegramConfigResponse | null>(null);
+	let tgLoading = $state(false);
+	let tgSaving = $state(false);
+	let tgTesting = $state(false);
+	let tgDeleting = $state(false);
+	let tgError = $state('');
+	let tgSuccess = $state('');
+	let tgShowToken = $state(false);
+	let tgEditMode = $state(false);
+	let tgForm = $state({ bot_token: '', admin_chat_id: '' });
+
+	async function loadTelegram() {
+		tgLoading = true;
+		tgError = '';
+		try {
+			tgConfig = await telegramApi.getConfig();
+		} catch (e: any) {
+			tgError = e?.message ?? 'Yüklenemedi';
+		} finally {
+			tgLoading = false;
+		}
+	}
+
+	async function saveTelegram() {
+		tgSaving = true;
+		tgError = '';
+		tgSuccess = '';
+		try {
+			const res = await telegramApi.saveConfig(tgForm.bot_token.trim(), tgForm.admin_chat_id.trim());
+			tgConfig = res;
+			tgForm = { bot_token: '', admin_chat_id: '' };
+			tgEditMode = false;
+			tgSuccess = `Bağlandı — @${res.bot_username ?? 'bot'}`;
+		} catch (e: any) {
+			tgError = e?.message ?? 'Kaydetme başarısız';
+		} finally {
+			tgSaving = false;
+		}
+	}
+
+	async function testTelegram() {
+		tgTesting = true;
+		tgError = '';
+		tgSuccess = '';
+		try {
+			await telegramApi.test();
+			tgSuccess = 'Test mesajı gönderildi ✓';
+		} catch (e: any) {
+			tgError = e?.message ?? 'Test başarısız';
+		} finally {
+			tgTesting = false;
+		}
+	}
+
+	async function deleteTelegram() {
+		tgDeleting = true;
+		tgError = '';
+		try {
+			await telegramApi.deleteConfig();
+			tgConfig = { configured: false };
+			tgSuccess = '';
+		} catch (e: any) {
+			tgError = e?.message ?? 'Silinemedi';
+		} finally {
+			tgDeleting = false;
+		}
+	}
+
 	// ── Database state ───────────────────────────────────────────────────────
 	type DBConn = {
 		id: string; name: string; db_type: string; status: string;
@@ -503,7 +573,7 @@
 		tab = newTab;
 		if (newTab === 'audit') loadAuditLogs();
 		if (newTab === 'backup') loadBackup();
-		if (newTab === 'social') loadSocial();
+		if (newTab === 'social') { loadSocial(); loadTelegram(); }
 		if (newTab === 'databases') loadDatabases();
 	}
 
@@ -602,8 +672,8 @@
 			].join(' ')}
 			onclick={() => switchTab('social')}
 		>
-			<Share2 class="w-4 h-4" />
-			Sosyal Medya
+			<Link class="w-4 h-4" />
+			Entegrasyonlar
 		</button>
 		<button
 			class={[
@@ -1444,13 +1514,123 @@
 		</div>
 	{/if}
 
-	<!-- ── SOCIAL MEDIA TAB ─────────────────────────────────────────────── -->
+	<!-- ── ENTEGRASYONLAR TAB ───────────────────────────────────────────── -->
 	{#if tab === 'social'}
-		<div class="space-y-6">
-			<p class="text-sm text-muted-foreground">
+		<div class="space-y-8">
+
+		<!-- ── Telegram ──────────────────────────────────────────────────────── -->
+		<div>
+			<h3 class="text-sm font-semibold mb-3 flex items-center gap-x-2">
+				<MessageSquare class="w-4 h-4 text-sky-500" />
+				Telegram Bildirimleri
+			</h3>
+			<p class="text-xs text-muted-foreground mb-4">
+				BotFather ile oluşturduğunuz bot token ve admin chat ID'yi girerek
+				davet, şifre sıfırlama ve ajan bildirimlerini Telegram'dan alın.
+			</p>
+
+			{#if tgError}
+				<div class="mb-3 flex items-center gap-x-2 text-sm text-destructive bg-destructive/10 px-4 py-3 rounded-xl">
+					<XCircle class="w-4 h-4 flex-shrink-0" />{tgError}
+				</div>
+			{/if}
+			{#if tgSuccess}
+				<div class="mb-3 flex items-center gap-x-2 text-sm text-emerald-700 bg-emerald-50 px-4 py-3 rounded-xl">
+					<CheckCircle2 class="w-4 h-4 flex-shrink-0" />{tgSuccess}
+				</div>
+			{/if}
+
+			{#if tgLoading}
+				<div class="flex justify-center py-8"><Loader2 class="w-5 h-5 animate-spin text-muted-foreground" /></div>
+			{:else if tgConfig?.configured && !tgEditMode}
+				<!-- Configured card -->
+				<div class="rounded-2xl border border-sky-500/30 bg-card">
+					<div class="flex items-center justify-between px-5 py-4">
+						<div class="flex items-center gap-x-3">
+							<CheckCircle2 class="w-5 h-5 text-sky-500 flex-shrink-0" />
+							<div>
+								<div class="font-semibold text-sm">Telegram bağlı</div>
+								<div class="text-xs text-muted-foreground mt-0.5">
+									Chat ID: <code class="font-mono">{tgConfig.admin_chat_id}</code>
+								</div>
+							</div>
+						</div>
+						<div class="flex items-center gap-x-2">
+							<Button variant="ghost" size="sm" class="h-8 px-3 text-xs gap-x-1.5"
+								disabled={tgTesting} onclick={testTelegram}>
+								{#if tgTesting}<Loader2 class="w-3.5 h-3.5 animate-spin" />{:else}<RefreshCw class="w-3.5 h-3.5" />{/if}
+								Test
+							</Button>
+							<Button variant="ghost" size="sm" class="h-8 px-3 text-xs"
+								onclick={() => { tgEditMode = true; }}>
+								Güncelle
+							</Button>
+							<Button variant="ghost" size="sm" class="h-8 px-3 text-xs text-destructive hover:text-destructive gap-x-1.5"
+								disabled={tgDeleting} onclick={deleteTelegram}>
+								{#if tgDeleting}<Loader2 class="w-3.5 h-3.5 animate-spin" />{:else}<Trash2 class="w-3.5 h-3.5" />{/if}
+								Kaldır
+							</Button>
+						</div>
+					</div>
+				</div>
+			{:else}
+				<!-- Configure form -->
+				<div class="rounded-2xl border bg-card p-5 space-y-4">
+					<div class="grid grid-cols-2 gap-4">
+						<div>
+							<label class="block text-xs font-medium text-muted-foreground mb-1.5">
+								Bot Token <span class="text-destructive">*</span>
+							</label>
+							<div class="relative">
+								<input type={tgShowToken ? 'text' : 'password'}
+									bind:value={tgForm.bot_token}
+									placeholder="123456789:AAF..."
+									class="w-full h-9 px-3 pr-10 text-sm rounded-lg border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-ring" />
+								<button class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+									onclick={() => (tgShowToken = !tgShowToken)} type="button" tabindex="-1">
+									{#if tgShowToken}<EyeOff class="w-4 h-4" />{:else}<Eye class="w-4 h-4" />{/if}
+								</button>
+							</div>
+							<p class="mt-1 text-xs text-muted-foreground">BotFather → /newbot → token</p>
+						</div>
+						<div>
+							<label class="block text-xs font-medium text-muted-foreground mb-1.5">
+								Admin Chat ID <span class="text-destructive">*</span>
+							</label>
+							<input type="text" bind:value={tgForm.admin_chat_id}
+								placeholder="-100123456789"
+								class="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+								onkeydown={(e) => e.key === 'Enter' && saveTelegram()} />
+							<p class="mt-1 text-xs text-muted-foreground">@userinfobot veya grup ID'si</p>
+						</div>
+					</div>
+					<div class="flex justify-end gap-x-2">
+						{#if tgEditMode}
+							<Button variant="ghost" size="sm" class="h-8 px-3 text-xs"
+								onclick={() => { tgEditMode = false; tgError = ''; }}>İptal</Button>
+						{/if}
+						<Button variant="default" size="sm" class="h-8 px-4 text-xs"
+							disabled={tgSaving || !tgForm.bot_token.trim() || !tgForm.admin_chat_id.trim()}
+							onclick={saveTelegram}>
+							{#if tgSaving}<Loader2 class="w-3.5 h-3.5 animate-spin mr-1.5" />Doğrulanıyor...{:else}Bağlan{/if}
+						</Button>
+					</div>
+				</div>
+			{/if}
+		</div>
+
+		<div class="border-t border-border/50"></div>
+
+		<!-- ── Sosyal Medya ───────────────────────────────────────────────────── -->
+		<div>
+			<h3 class="text-sm font-semibold mb-3 flex items-center gap-x-2">
+				<Share2 class="w-4 h-4 text-pink-500" />
+				Sosyal Medya
+			</h3>
+			<p class="text-xs text-muted-foreground mb-4">
 				Instagram Business ve WhatsApp Business Cloud API entegrasyonu. Ajanlara
 				<code class="text-xs bg-muted px-1 py-0.5 rounded">instagram_post</code> ve
-				<code class="text-xs bg-muted px-1 py-0.5 rounded">whatsapp_send</code> builtin skill'leri
+				<code class="text-xs bg-muted px-1 py-0.5 rounded">whatsapp_send</code> skill'leri
 				ekleyerek sosyal medya paylaşımı yapabilirler.
 			</p>
 
@@ -1633,6 +1813,7 @@
 					</ul>
 				</div>
 			{/if}
+		</div>
 		</div>
 	{/if}
 

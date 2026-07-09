@@ -15,7 +15,30 @@ from services.auth import (
     hash_password,
     verify_password,
 )
-from services.email import send_admin_reset, send_invite, send_temp_password
+import os as _os
+
+from services import telegram as _tg
+from core.security import decrypt as _decrypt
+from models import TelegramConfig as _TelegramConfig
+
+_APP_URL = _os.getenv("APP_URL", "http://localhost:5173")
+
+
+def _tg_notify(session, company_id: str, fn, **kwargs):
+    """Fire a Telegram notification if the company has a bot configured."""
+    try:
+        cfg = session.exec(
+            select(_TelegramConfig).where(_TelegramConfig.company_id == company_id)
+        ).first()
+        if cfg and cfg.is_active:
+            fn(
+                bot_token=_decrypt(cfg.encrypted_token),
+                chat_id=cfg.admin_chat_id,
+                app_url=_APP_URL,
+                **kwargs,
+            )
+    except Exception as exc:
+        print(f"[telegram] notify failed: {exc}")
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -100,7 +123,7 @@ def login(body: LoginRequest):
             _regenerate_and_send(user)
             raise HTTPException(
                 status_code=401,
-                detail="Geçici şifrenizin süresi dolmuştu. Yeni geçici şifre e-posta adresinize gönderildi."
+                detail="Geçici şifrenizin süresi dolmuştu. Yeni geçici şifre yöneticinize Telegram'dan iletildi."
             )
         raise HTTPException(status_code=401, detail="Email veya şifre hatalı")
 
@@ -109,7 +132,7 @@ def login(body: LoginRequest):
         _regenerate_and_send(user)
         raise HTTPException(
             status_code=401,
-            detail="Geçici şifrenizin süresi dolmuştu. Yeni geçici şifre e-posta adresinize gönderildi."
+            detail="Geçici şifrenizin süresi dolmuştu. Yeni geçici şifre yöneticinize Telegram'dan iletildi."
         )
 
     # Success
@@ -127,7 +150,7 @@ def login(body: LoginRequest):
 
 
 def _regenerate_and_send(user: User) -> None:
-    """Generate new temp password and email it."""
+    """Generate new temp password and notify via Telegram (if configured)."""
     temp_pw = generate_temp_password()
     with get_session() as session:
         u = session.get(User, user.id)
@@ -136,7 +159,10 @@ def _regenerate_and_send(user: User) -> None:
         u.must_change_password = True
         session.add(u)
         session.commit()
-    send_temp_password(to=user.email, name=user.name, temp_password=temp_pw)
+        member = session.exec(select(CompanyMember).where(CompanyMember.user_id == user.id)).first()
+        if member:
+            _tg_notify(session, member.company_id, _tg.notify_temp_password,
+                       name=user.name, email=user.email, temp_password=temp_pw)
 
 
 # ── Current user ──────────────────────────────────────────────────────────────
@@ -222,8 +248,10 @@ def invite_user(body: InviteRequest, caller: User = Depends(require_manager)):
         session.commit()
         user_id = user.id
 
-    send_invite(to=email, name=name, company_name=company.name, temp_password=temp_pw)
-    return {"user_id": user_id, "message": "Davet emaili gönderildi"}
+    with get_session() as session:
+        _tg_notify(session, company_id, _tg.notify_invite,
+                   name=name, email=email, company_name=company.name, temp_password=temp_pw)
+    return {"user_id": user_id, "temp_password": temp_pw, "message": "Davet oluşturuldu"}
 
 
 # ── Change password (authenticated — first-login or profile) ─────────────────
@@ -307,5 +335,9 @@ def admin_reset(user_id: str, caller: User = Depends(require_manager)):
         session.commit()
         email, name = user.email, user.name
 
-    send_admin_reset(to=email, name=name, temp_password=temp_pw)
-    return {"message": "Geçici şifre gönderildi"}
+    with get_session() as session:
+        member = session.exec(select(CompanyMember).where(CompanyMember.user_id == user_id)).first()
+        if member:
+            _tg_notify(session, member.company_id, _tg.notify_admin_reset,
+                       name=name, email=email, temp_password=temp_pw)
+    return {"message": "Geçici şifre oluşturuldu", "temp_password": temp_pw}
