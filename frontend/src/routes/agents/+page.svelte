@@ -454,7 +454,7 @@
 </svelte:head>
 
 <!-- ── Page ──────────────────────────────────────────────────────────────── -->
-<div class="space-y-6" class:mr-panel={showPanel}>
+<div class="space-y-6">
 
 	<!-- Header -->
 	<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -1029,11 +1029,6 @@
 {/if}
 
 <style>
-	/* Panel margin (content shifts when panel opens on lg+) */
-	@media (min-width: 1024px) {
-		.mr-panel { margin-right: 608px; transition: margin-right 0.2s ease; }
-	}
-
 	/* ── Agent Panel ── */
 	.agent-panel {
 		position: fixed;

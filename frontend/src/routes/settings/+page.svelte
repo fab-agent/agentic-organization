@@ -615,30 +615,28 @@
 
 	<!-- Tabs -->
 	<div class="relative mb-8">
-		<div class="absolute bottom-0 left-0 right-0 h-px bg-border"></div>
+		<div class="absolute bottom-0 left-0 right-0 h-px bg-border pointer-events-none"></div>
 		<div class="tab-scroll flex gap-x-1">
-			{#each [
-				{ id: 'providers', icon: Cpu,       label: t('settings_providers') },
-				{ id: 'git',       icon: GitBranch, label: t('settings_git') },
-				{ id: 'audit',     icon: Clock,     label: 'Audit Log' },
-				{ id: 'backup',    icon: Database,  label: 'Yedekleme' },
-				{ id: 'social',    icon: Link,      label: 'Entegrasyonlar' },
-				{ id: 'databases', icon: Table2,    label: 'Veritabanları' },
-			] as t2}
-				<button
-					class={[
-						'relative z-10 px-4 py-2.5 text-sm font-medium transition-colors flex items-center gap-x-2 whitespace-nowrap flex-shrink-0',
-						'after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:transition-colors',
-						tab === t2.id
-							? 'text-foreground after:bg-primary'
-							: 'text-muted-foreground hover:text-foreground after:bg-transparent'
-					].join(' ')}
-					onclick={() => switchTab(t2.id as any)}
-				>
-					<svelte:component this={t2.icon} class="w-4 h-4" />
-					{t2.label}
-				</button>
-			{/each}
+
+			<button class={['tab-btn', tab==='providers' ? 'tab-active' : 'tab-inactive'].join(' ')} onclick={() => switchTab('providers')}>
+				<Cpu class="w-4 h-4" />{t('settings_providers')}
+			</button>
+			<button class={['tab-btn', tab==='git' ? 'tab-active' : 'tab-inactive'].join(' ')} onclick={() => switchTab('git')}>
+				<GitBranch class="w-4 h-4" />{t('settings_git')}
+			</button>
+			<button class={['tab-btn', tab==='audit' ? 'tab-active' : 'tab-inactive'].join(' ')} onclick={() => switchTab('audit')}>
+				<Clock class="w-4 h-4" />Audit Log
+			</button>
+			<button class={['tab-btn', tab==='backup' ? 'tab-active' : 'tab-inactive'].join(' ')} onclick={() => switchTab('backup')}>
+				<Database class="w-4 h-4" />Yedekleme
+			</button>
+			<button class={['tab-btn', tab==='social' ? 'tab-active' : 'tab-inactive'].join(' ')} onclick={() => switchTab('social')}>
+				<Link class="w-4 h-4" />Entegrasyonlar
+			</button>
+			<button class={['tab-btn', tab==='databases' ? 'tab-active' : 'tab-inactive'].join(' ')} onclick={() => switchTab('databases')}>
+				<Table2 class="w-4 h-4" />Veritabanları
+			</button>
+
 		</div>
 	</div>
 
@@ -1846,7 +1844,34 @@
 	scrollbar-width: none;
 	-ms-overflow-style: none;
 }
-.tab-scroll::-webkit-scrollbar {
-	display: none;
+.tab-scroll::-webkit-scrollbar { display: none; }
+
+.tab-btn {
+	position: relative;
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	padding: 0.625rem 1rem;
+	font-size: 0.875rem;
+	font-weight: 500;
+	white-space: nowrap;
+	flex-shrink: 0;
+	transition: color 0.15s;
+	border: none;
+	background: transparent;
+	cursor: pointer;
 }
+.tab-btn::after {
+	content: '';
+	position: absolute;
+	bottom: 0; left: 0; right: 0;
+	height: 2px;
+	border-radius: 9999px;
+	transition: background 0.15s;
+}
+.tab-active { color: hsl(var(--foreground)); }
+.tab-active::after { background: hsl(var(--primary)); }
+.tab-inactive { color: hsl(var(--muted-foreground)); }
+.tab-inactive:hover { color: hsl(var(--foreground)); }
+.tab-inactive::after { background: transparent; }
 </style>
