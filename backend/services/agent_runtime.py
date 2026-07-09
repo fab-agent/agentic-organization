@@ -100,6 +100,20 @@ _BUILTIN_SCHEMAS: dict[str, dict] = {
         },
         "required": ["content"],
     },
+    "db_query": {
+        "type": "object",
+        "properties": {
+            "sql": {"type": "string", "description": "SELECT SQL query to execute"},
+        },
+        "required": ["sql"],
+    },
+    "function": {
+        "type": "object",
+        "properties": {
+            "params": {"type": "string", "description": "JSON string of parameters to pass to the function"},
+        },
+        "required": [],
+    },
     "instagram_post": {
         "type": "object",
         "properties": {
@@ -143,15 +157,30 @@ def build_tool_definitions(skills: list[Skill]) -> list[dict]:
                     "required": ["input"],
                 }
         elif s.skill_type == "function":
-            parameters = {
-                "type": "object",
-                "properties": {"params": {"type": "string", "description": "JSON params string"}},
-                "required": [],
-            }
+            parameters = _BUILTIN_SCHEMAS.get("function", parameters)
+
+        elif s.skill_type == "database":
+            # Inject schema context into tool description so LLM knows the DB structure
+            parameters = _BUILTIN_SCHEMAS.get("db_query", parameters)
+
+        description = s.description or s.name
+        if s.skill_type == "database":
+            db_id = cfg.get("db_id", "")
+            if db_id:
+                try:
+                    from models import DatabaseConnection
+                    from services.database_service import build_schema_context
+                    with get_session() as _db:
+                        db_row = _db.get(DatabaseConnection, db_id)
+                    if db_row and db_row.schema_json:
+                        ctx = build_schema_context(db_row.schema_json, db_row.examples_json)
+                        description = f"{description}\n\n{ctx}"
+                except Exception:
+                    pass
 
         tools.append({
             "name": s.name.replace(" ", "_").lower(),
-            "description": s.description or s.name,
+            "description": description,
             "parameters": parameters,
             "_skill_id": s.id,
             "_skill_type": s.skill_type,
@@ -202,7 +231,18 @@ async def execute_skill(tool_name: str, args: dict, skills: list[Skill], session
             return str(result)
 
         elif skill.skill_type == "function":
-            return f"[Function execution deferred — {skill.name}]"
+            # Inject the stored code into args so the builtin handler can run it
+            code = cfg.get("code", "")
+            result = await execute_builtin("function", {**args, "__code__": code},
+                                           session_id=session_id, agent_id=agent_id)
+            return str(result)
+
+        elif skill.skill_type == "database":
+            # db_id stored in config; inject it so the builtin knows which DB to query
+            db_id = cfg.get("db_id", "")
+            result = await execute_builtin("db_query", {**args, "db_id": db_id},
+                                           session_id=session_id, agent_id=agent_id)
+            return str(result)
 
     except Exception as e:
         return f"[Tool error: {e}]"

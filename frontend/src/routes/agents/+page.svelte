@@ -10,6 +10,7 @@
 	import { companyStore } from '$lib/stores/company.svelte';
 	import { changeRequests as crApi } from '$lib/api/change_requests';
 	import { providers as providerApi, type ModelDef, type PriceTier } from '$lib/api/providers';
+	import { api } from '$lib/api/client.js';
 	import { t } from '$lib/i18n/index.svelte';
 
 	// ── Dynamic models ────────────────────────────────────────────────────────
@@ -50,7 +51,7 @@
 		'Yönetim':            ['Şirket Politikası', 'Etik Kurallar', 'Karar Yetki Matrisi'],
 	};
 
-	type LocalSkill = { name: string; version: string; description: string };
+	type LocalSkill = { name: string; version: string; description: string; skill_type?: string; config_json?: string };
 
 	const SKILL_LIBRARY: LocalSkill[] = [
 		{ name: 'Code Review',    version: '2.1',  description: 'PR inceleme ve best practice kontrolü' },
@@ -81,18 +82,25 @@
 	];
 
 	const SKILL_TYPES = [
-		{ value: 'builtin',  label: 'Dahili',   hint: 'Platform hazır araçları' },
-		{ value: 'mcp',      label: 'MCP',       hint: 'Model Context Protocol sunucusu' },
-		{ value: 'http',     label: 'HTTP API',  hint: 'REST webhook veya API' },
-		{ value: 'function', label: 'Fonksiyon', hint: 'Özel Python kodu' },
+		{ value: 'builtin',  label: 'Dahili',     hint: 'Platform hazır araçları' },
+		{ value: 'mcp',      label: 'MCP',         hint: 'Model Context Protocol sunucusu' },
+		{ value: 'http',     label: 'HTTP API',    hint: 'REST webhook veya API' },
+		{ value: 'function', label: 'Fonksiyon',   hint: 'Özel Python kodu (run(args) → str)' },
+		{ value: 'database', label: 'Veritabanı',  hint: 'SQL sorgu — semantik şema ile' },
 	];
 
 	const BUILTIN_FUNCTIONS = [
-		{ value: 'web_search',     label: 'Web Arama' },
-		{ value: 'code_execution', label: 'Kod Çalıştırma' },
-		{ value: 'file_read',      label: 'Dosya Okuma' },
-		{ value: 'text_to_chart',  label: 'Grafik Üretimi' },
+		{ value: 'web_search',      label: 'Web Arama' },
+		{ value: 'journal_write',   label: 'Günlük Yaz' },
+		{ value: 'instagram_post',  label: 'Instagram Gönderi' },
+		{ value: 'whatsapp_send',   label: 'WhatsApp Mesaj' },
+		{ value: 'delegate_to_agent', label: 'Ajan Delegasyonu' },
+		{ value: 'text_to_chart',   label: 'Grafik Üretimi' },
 	];
+
+	// ── Database list (for database skill type) ───────────────────────────────
+	type DBItem = { id: string; name: string; db_type: string; status: string };
+	let databases = $state<DBItem[]>([]);
 
 	function slugify(text: string): string {
 		return text.toLowerCase()
@@ -134,6 +142,11 @@
 			availableModels = [];
 		} finally {
 			modelsLoading = false;
+		}
+		try {
+			databases = await api.get<DBItem[]>('/databases/');
+		} catch {
+			databases = [];
 		}
 	});
 
@@ -307,18 +320,40 @@
 		http_url: '', http_method: 'POST',
 		builtin_fn: 'web_search',
 		fn_code: '',
+		db_id: '',
 	});
 
 	function addCustomSkill() {
-		const { name, version, description } = customSkill;
+		const { name, version, description, skill_type } = customSkill;
 		if (!name.trim()) return;
 		if (isSkillSelected(name)) return;
+
+		let config_json: string | undefined;
+		if (skill_type === 'builtin') {
+			config_json = JSON.stringify({ function_name: customSkill.builtin_fn });
+		} else if (skill_type === 'mcp') {
+			config_json = JSON.stringify({
+				url: customSkill.mcp_url,
+				transport: customSkill.mcp_transport,
+				auth_type: customSkill.mcp_auth_type,
+				auth_value: customSkill.mcp_auth_value || undefined,
+			});
+		} else if (skill_type === 'http') {
+			config_json = JSON.stringify({ url: customSkill.http_url, method: customSkill.http_method });
+		} else if (skill_type === 'function') {
+			config_json = JSON.stringify({ code: customSkill.fn_code });
+		} else if (skill_type === 'database') {
+			config_json = JSON.stringify({ db_id: customSkill.db_id });
+		}
+
 		form.selectedSkills = [...form.selectedSkills, {
 			name: name.trim(),
 			version: version.trim() || '1.0',
 			description: description.trim(),
+			skill_type,
+			config_json,
 		}];
-		customSkill = { ...customSkill, name: '', version: '', description: '', mcp_url: '', http_url: '', fn_code: '' };
+		customSkill = { ...customSkill, name: '', version: '', description: '', mcp_url: '', http_url: '', fn_code: '', db_id: '' };
 	}
 
 	// ── AI skill suggestion ───────────────────────────────────────────────────
@@ -795,9 +830,28 @@
 						<textarea
 							class="textarea-input text-xs font-mono mb-2"
 							bind:value={customSkill.fn_code}
-							placeholder="def run(params: dict) -> dict:&#10;    result = ...&#10;    return result"
-							rows="5"
+							placeholder="def run(args: dict) -> str:&#10;    # args içindeki parametrelere erişin&#10;    value = args.get('input', '')&#10;    return f'Sonuç: &#123;value&#125;'"
+							rows="6"
 						></textarea>
+						<p class="text-xs text-muted-foreground mb-2">
+							Fonksiyon <code>run(args: dict) → str</code> imzasına sahip olmalı. Güvenli ortamda çalışır (5 sn timeout).
+						</p>
+					{/if}
+
+					{#if customSkill.skill_type === 'database'}
+						<div class="space-y-1.5 mb-2">
+							<select class="select-input text-xs h-8" bind:value={customSkill.db_id}>
+								<option value="">Veritabanı seçin...</option>
+								{#each databases as db}
+									<option value={db.id}>{db.name} ({db.db_type}) {db.status === 'ok' ? '✓' : '⚠'}</option>
+								{/each}
+							</select>
+							{#if databases.length === 0}
+								<p class="text-xs text-muted-foreground">
+									Henüz veritabanı eklenmemiş — <a href="/settings" class="underline">Ayarlar → Veritabanları</a>
+								</p>
+							{/if}
+						</div>
 					{/if}
 
 					<Button size="sm" variant="outline" onclick={addCustomSkill} disabled={!customSkill.name.trim()} class="h-8 px-3 text-xs w-full">

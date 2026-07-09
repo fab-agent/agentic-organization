@@ -323,3 +323,20 @@ class WorkJournalEntry(SQLModel, table=True):
     title: Optional[str] = None
     content: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class DatabaseConnection(SQLModel, table=True):
+    """External database connection with semantic annotations."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    company_id: Optional[str] = Field(default=None, foreign_key="company.id", index=True)
+    name: str                          # Human-friendly label
+    db_type: str                       # "sqlite" | "postgresql" | "mysql"
+    # Connection string encrypted (e.g. postgresql://user:pass@host/db)
+    encrypted_dsn: str
+    # JSON: {tables: {table_name: {description, columns: {col: description}, row_count}}}
+    schema_json: Optional[str] = None
+    # JSON: [{sql, description}] — user-provided example queries
+    examples_json: Optional[str] = None
+    status: str = Field(default="unchecked")  # "ok" | "error" | "unchecked"
+    last_checked: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)

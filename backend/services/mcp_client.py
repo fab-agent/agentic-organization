@@ -91,6 +91,12 @@ async def execute_builtin(function_name: str, args: dict, session_id: str | None
     if function_name == "journal_write":
         return await _journal_write(args, session_id, agent_id)
 
+    if function_name == "db_query":
+        return await _db_query(args)
+
+    if function_name == "function":
+        return _run_function(args)
+
     return f"[Built-in '{function_name}' not implemented]"
 
 
@@ -245,3 +251,92 @@ async def _journal_write(args: dict, session_id: str | None, agent_id: str | Non
 
     title_part = f'"{title}"' if title else "günlük kaydı"
     return f"✅ Günlüğe yazıldı: {title_part}"
+
+
+async def _db_query(args: dict) -> str:
+    """Builtin: execute a SELECT query against a configured database connection."""
+    db_id = args.get("db_id", "")
+    sql = args.get("sql", "").strip()
+
+    if not db_id:
+        return "[db_query] db_id gerekli — skill config'inde database_id belirtin"
+    if not sql:
+        return "[db_query] sql gerekli"
+
+    from database import get_session as _gs
+    from models import DatabaseConnection
+    from core.security import decrypt
+    from services.database_service import execute_query
+    import json
+
+    with _gs() as db:
+        row = db.get(DatabaseConnection, db_id)
+        if not row:
+            return f"[db_query] '{db_id}' ID'li veritabanı bulunamadı"
+        dsn = decrypt(row.encrypted_dsn)
+        db_type = row.db_type
+
+    try:
+        result = execute_query(dsn, db_type, sql, limit=100)
+        cols = result["columns"]
+        rows = result["rows"]
+        if not rows:
+            return "Sorgu sonuç döndürmedi."
+        # Format as markdown table
+        header = " | ".join(cols)
+        sep = " | ".join(["---"] * len(cols))
+        body_lines = [" | ".join(str(v) for v in row) for row in rows[:50]]
+        table = "\n".join([header, sep] + body_lines)
+        note = f"\n\n_{len(rows)} satır döndü" + ("_" if len(rows) < 100 else " (ilk 100 gösteriliyor)_")
+        return table + note
+    except ValueError as e:
+        return f"[db_query] Güvenlik hatası: {e}"
+    except Exception as e:
+        return f"[db_query] Sorgu hatası: {e}"
+
+
+def _run_function(args: dict) -> str:
+    """
+    Builtin: execute user-defined Python code stored in skill config.
+    The code must define a function named `run(args: dict) -> str`.
+    Runs in a restricted namespace with a 5-second wall-clock timeout.
+    """
+    code = args.get("__code__", "")   # injected from skill config at call time
+    if not code:
+        return "[function] Çalıştırılacak kod bulunamadı (skill config'inde 'code' alanı gerekli)"
+
+    import threading
+    result_holder: list = []
+    error_holder: list = []
+
+    _SAFE_BUILTINS = {
+        "print": print, "len": len, "str": str, "int": int, "float": float,
+        "bool": bool, "list": list, "dict": dict, "tuple": tuple, "set": set,
+        "range": range, "enumerate": enumerate, "zip": zip, "map": map,
+        "filter": filter, "sorted": sorted, "sum": sum, "min": min, "max": max,
+        "abs": abs, "round": round, "isinstance": isinstance, "type": type,
+        "repr": repr, "json": __import__("json"),
+    }
+
+    def _exec():
+        try:
+            namespace: dict = {"__builtins__": _SAFE_BUILTINS}
+            exec(compile(code, "<skill>", "exec"), namespace)
+            fn = namespace.get("run")
+            if not callable(fn):
+                error_holder.append("Kod 'run(args)' fonksiyonu tanımlamalı")
+                return
+            result = fn({k: v for k, v in args.items() if k != "__code__"})
+            result_holder.append(str(result) if result is not None else "")
+        except Exception as e:
+            error_holder.append(f"Çalışma hatası: {e}")
+
+    t = threading.Thread(target=_exec, daemon=True)
+    t.start()
+    t.join(timeout=5)
+
+    if t.is_alive():
+        return "[function] Zaman aşımı (5 saniye)"
+    if error_holder:
+        return f"[function] {error_holder[0]}"
+    return result_holder[0] if result_holder else ""

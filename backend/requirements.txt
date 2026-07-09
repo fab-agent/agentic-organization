@@ -17,3 +17,6 @@ passlib[bcrypt]>=1.7
 resend>=2.0
 PyGithub>=2.3
 bcrypt>=4.0
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+PyMySQL>=1.1

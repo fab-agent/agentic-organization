@@ -29,12 +29,17 @@
 		History,
 		ShieldCheck,
 		Share2,
-		MessageSquare
+		MessageSquare,
+		Table2,
+		Code2,
+		Plus,
+		RefreshCcw,
+		AlertCircle
 	} from '@lucide/svelte';
 	import { t } from '$lib/i18n/index.svelte';
 
 	// ── Tabs ─────────────────────────────────────────────────────────────────
-	let tab = $state<'providers' | 'git' | 'audit' | 'backup' | 'social'>('providers');
+	let tab = $state<'providers' | 'git' | 'audit' | 'backup' | 'social' | 'databases'>('providers');
 
 	// ── Provider state ────────────────────────────────────────────────────────
 	type ProviderCard = ProviderStatus & {
@@ -379,11 +384,95 @@
 		}
 	}
 
-	function switchTab(newTab: 'providers' | 'git' | 'audit' | 'backup' | 'social') {
+	// ── Database state ───────────────────────────────────────────────────────
+	type DBConn = {
+		id: string; name: string; db_type: string; status: string;
+		last_checked: string | null; created_at: string;
+		schema?: { tables: Record<string, {
+			description: string; row_count: number;
+			columns: Record<string, { type: string; nullable: boolean; primary_key: boolean; foreign_key: string | null; description: string }>;
+		}> };
+		examples?: Array<{ sql: string; description: string }>;
+	};
+
+	let databases = $state<DBConn[]>([]);
+	let dbLoading = $state(false);
+	let dbError = $state('');
+	let dbSuccess = $state('');
+	let showAddDB = $state(false);
+	let discoveringId = $state<string | null>(null);
+	let selectedDB = $state<DBConn | null>(null);
+
+	let dbForm = $state({ name: '', db_type: 'postgresql', dsn: '' });
+
+	async function loadDatabases() {
+		dbLoading = true;
+		try {
+			databases = await api.get<DBConn[]>('/databases/');
+		} catch (e: any) {
+			dbError = e?.message ?? 'Yüklenemedi';
+		} finally {
+			dbLoading = false;
+		}
+	}
+
+	async function addDatabase() {
+		dbError = '';
+		try {
+			await api.post('/databases/', { ...dbForm });
+			dbForm = { name: '', db_type: 'postgresql', dsn: '' };
+			showAddDB = false;
+			dbSuccess = 'Veritabanı eklendi.';
+			await loadDatabases();
+		} catch (e: any) {
+			dbError = e?.message ?? 'Eklenemedi';
+		}
+	}
+
+	async function deleteDatabase(id: string) {
+		try {
+			await api.delete(`/databases/${id}`);
+			if (selectedDB?.id === id) selectedDB = null;
+			await loadDatabases();
+		} catch (e: any) {
+			dbError = e?.message ?? 'Silinemedi';
+		}
+	}
+
+	async function discoverSchema(id: string) {
+		discoveringId = id;
+		dbError = '';
+		try {
+			const updated = await api.post<DBConn>(`/databases/${id}/discover`, {});
+			databases = databases.map(d => d.id === id ? updated : d);
+			if (selectedDB?.id === id) selectedDB = updated;
+			dbSuccess = 'Şema keşfedildi.';
+		} catch (e: any) {
+			dbError = e?.message ?? 'Şema keşfedilemedi';
+		} finally {
+			discoveringId = null;
+		}
+	}
+
+	async function saveAnnotations() {
+		if (!selectedDB) return;
+		try {
+			await api.patch(`/databases/${selectedDB.id}/annotate`, {
+				schema_json: JSON.stringify(selectedDB.schema),
+				examples_json: JSON.stringify(selectedDB.examples ?? []),
+			});
+			dbSuccess = 'Açıklamalar kaydedildi.';
+		} catch (e: any) {
+			dbError = e?.message ?? 'Kaydedilemedi';
+		}
+	}
+
+	function switchTab(newTab: 'providers' | 'git' | 'audit' | 'backup' | 'social' | 'databases') {
 		tab = newTab;
 		if (newTab === 'audit') loadAuditLogs();
 		if (newTab === 'backup') loadBackup();
 		if (newTab === 'social') loadSocial();
+		if (newTab === 'databases') loadDatabases();
 	}
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
@@ -483,6 +572,18 @@
 		>
 			<Share2 class="w-4 h-4" />
 			Sosyal Medya
+		</button>
+		<button
+			class={[
+				'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-x-2',
+				tab === 'databases'
+					? 'border-primary text-foreground'
+					: 'border-transparent text-muted-foreground hover:text-foreground'
+			].join(' ')}
+			onclick={() => switchTab('databases')}
+		>
+			<Table2 class="w-4 h-4" />
+			Veritabanları
 		</button>
 	</div>
 
@@ -1141,6 +1242,176 @@
 						</div>
 					</div>
 				{/if}
+			{/if}
+		</div>
+	{/if}
+
+	<!-- ── DATABASES TAB ────────────────────────────────────────────────── -->
+	{#if tab === 'databases'}
+		<div class="space-y-5">
+			<p class="text-sm text-muted-foreground">
+				Ajanlara veritabanı sorgu yetenekleri ekleyin. Şema keşfi ve semantik açıklamalar sayesinde
+				yapay zeka tabloları ve kolonları anlayarak doğru SQL üretir.
+			</p>
+
+			{#if dbError}
+				<div class="flex items-center gap-x-2 text-sm text-destructive bg-destructive/10 px-4 py-3 rounded-xl">
+					<XCircle class="w-4 h-4 flex-shrink-0" />{dbError}
+				</div>
+			{/if}
+			{#if dbSuccess}
+				<div class="flex items-center gap-x-2 text-sm text-emerald-700 bg-emerald-50 px-4 py-3 rounded-xl">
+					<CheckCircle2 class="w-4 h-4 flex-shrink-0" />{dbSuccess}
+				</div>
+			{/if}
+
+			<!-- Add DB form -->
+			{#if showAddDB}
+				<div class="rounded-2xl border bg-card p-5 space-y-3">
+					<div class="grid grid-cols-2 gap-3">
+						<div>
+							<label class="block text-xs font-medium text-muted-foreground mb-1.5" for="db-name">İsim</label>
+							<input id="db-name" type="text" bind:value={dbForm.name} placeholder="Müşteri DB"
+								class="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
+						</div>
+						<div>
+							<label class="block text-xs font-medium text-muted-foreground mb-1.5" for="db-type">Tür</label>
+							<select id="db-type" bind:value={dbForm.db_type} class="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring">
+								<option value="postgresql">PostgreSQL</option>
+								<option value="mysql">MySQL / MariaDB</option>
+								<option value="sqlite">SQLite</option>
+							</select>
+						</div>
+					</div>
+					<div>
+						<label class="block text-xs font-medium text-muted-foreground mb-1.5" for="db-dsn">
+							Bağlantı Dizesi (DSN)
+						</label>
+						<input id="db-dsn" type="text" bind:value={dbForm.dsn}
+							placeholder={dbForm.db_type === 'sqlite' ? '/data/mydb.db' : dbForm.db_type === 'postgresql' ? 'postgresql://user:pass@host:5432/dbname' : 'mysql+pymysql://user:pass@host/dbname'}
+							class="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-ring" />
+					</div>
+					<div class="flex justify-end gap-x-2">
+						<Button variant="ghost" size="sm" class="h-8 px-3 text-xs" onclick={() => showAddDB = false}>İptal</Button>
+						<Button variant="default" size="sm" class="h-8 px-4 text-xs"
+							disabled={!dbForm.name.trim() || !dbForm.dsn.trim()}
+							onclick={addDatabase}>Bağlan</Button>
+					</div>
+				</div>
+			{/if}
+
+			<!-- DB list -->
+			{#if dbLoading}
+				<div class="flex justify-center py-10"><Loader2 class="w-5 h-5 animate-spin text-muted-foreground" /></div>
+			{:else if databases.length === 0 && !showAddDB}
+				<div class="text-center py-12 text-muted-foreground">
+					<Table2 class="w-8 h-8 mx-auto mb-3 opacity-30" />
+					<p class="text-sm">Henüz veritabanı yok</p>
+					<Button variant="outline" size="sm" class="mt-4 h-8 px-4 text-xs" onclick={() => showAddDB = true}>
+						<Plus class="w-3.5 h-3.5 mr-1.5" /> Veritabanı Ekle
+					</Button>
+				</div>
+			{:else}
+				<div class="flex justify-between items-center">
+					<span class="text-xs text-muted-foreground">{databases.length} bağlantı</span>
+					<Button variant="outline" size="sm" class="h-8 px-3 text-xs" onclick={() => showAddDB = !showAddDB}>
+						<Plus class="w-3.5 h-3.5 mr-1" /> Ekle
+					</Button>
+				</div>
+
+				<div class="space-y-2">
+					{#each databases as db}
+						<div class="rounded-xl border bg-card overflow-hidden">
+							<div class="flex items-center gap-x-3 px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors"
+								onclick={() => selectedDB = (selectedDB?.id === db.id ? null : { ...db })}>
+								<div class={['w-2 h-2 rounded-full flex-shrink-0',
+									db.status === 'ok' ? 'bg-emerald-500' : 'bg-amber-400'].join(' ')}></div>
+								<div class="flex-1 min-w-0">
+									<div class="text-sm font-medium">{db.name}</div>
+									<div class="text-xs text-muted-foreground">{db.db_type}
+										{#if db.schema}· {Object.keys(db.schema.tables ?? {}).length} tablo{/if}
+									</div>
+								</div>
+								<div class="flex items-center gap-x-1.5">
+									<Button variant="ghost" size="sm" class="h-7 px-2 text-xs gap-x-1"
+										disabled={discoveringId === db.id}
+										onclick={(e) => { e.stopPropagation(); discoverSchema(db.id); }}>
+										{#if discoveringId === db.id}
+											<Loader2 class="w-3 h-3 animate-spin" />
+										{:else}
+											<RefreshCcw class="w-3 h-3" />
+										{/if}
+										Keşfet
+									</Button>
+									<Button variant="ghost" size="sm" class="h-7 px-2 text-destructive hover:text-destructive text-xs"
+										onclick={(e) => { e.stopPropagation(); deleteDatabase(db.id); }}>
+										<Trash2 class="w-3 h-3" />
+									</Button>
+								</div>
+							</div>
+
+							<!-- Schema browser & annotations -->
+							{#if selectedDB?.id === db.id && selectedDB.schema}
+								<div class="border-t px-4 py-4 space-y-4">
+									<p class="text-xs text-muted-foreground">Tablo ve kolon açıklamalarını düzenleyin. Bu açıklamalar ajan SQL üretirken kullanılır.</p>
+									{#each Object.entries(selectedDB.schema.tables ?? {}) as [tname, tdata]}
+										<div class="space-y-2">
+											<div class="flex items-start gap-x-2">
+												<Table2 class="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+												<div class="flex-1 space-y-1.5">
+													<div class="flex items-center gap-x-2">
+														<span class="font-mono text-xs font-semibold">{tname}</span>
+														<span class="text-xs text-muted-foreground">{tdata.row_count.toLocaleString()} satır</span>
+													</div>
+													<input type="text" bind:value={tdata.description}
+														placeholder="Bu tablo ne içeriyor? (ör: Müşteri kayıtları)"
+														class="w-full h-8 px-2.5 text-xs rounded-lg border border-input bg-muted/40 focus:outline-none focus:ring-1 focus:ring-ring" />
+													<div class="pl-3 border-l border-border/50 space-y-1.5">
+														{#each Object.entries(tdata.columns) as [cname, cdata]}
+															<div class="flex items-center gap-x-2">
+																<Code2 class="w-3 h-3 text-muted-foreground/50 flex-shrink-0" />
+																<span class="font-mono text-xs text-muted-foreground w-32 flex-shrink-0 truncate">{cname}</span>
+																<span class="text-xs text-muted-foreground/60 w-20 flex-shrink-0 truncate">{cdata.type}</span>
+																{#if cdata.primary_key}<span class="text-xs text-amber-600">PK</span>{/if}
+																{#if cdata.foreign_key}<span class="text-xs text-blue-500 truncate max-w-20" title={cdata.foreign_key}>→{cdata.foreign_key}</span>{/if}
+																<input type="text" bind:value={cdata.description}
+																	placeholder="Açıklama..."
+																	class="flex-1 h-7 px-2 text-xs rounded border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring" />
+															</div>
+														{/each}
+													</div>
+												</div>
+											</div>
+										</div>
+									{/each}
+
+									<!-- Example queries -->
+									<div class="space-y-2">
+										<p class="text-xs font-medium text-muted-foreground">Örnek Sorgular
+											<span class="font-normal">(ajan bu örneklerden öğrenir)</span>
+										</p>
+										{#each (selectedDB.examples ?? []) as ex, i}
+											<div class="space-y-1">
+												<input type="text" bind:value={ex.description} placeholder="Açıklama..."
+													class="w-full h-7 px-2.5 text-xs rounded border border-input bg-background focus:outline-none" />
+												<textarea bind:value={ex.sql} rows="2"
+													class="w-full px-2.5 py-1.5 text-xs font-mono rounded border border-input bg-muted/40 focus:outline-none resize-none"></textarea>
+											</div>
+										{/each}
+										<Button variant="ghost" size="sm" class="h-7 px-2 text-xs"
+											onclick={() => { if (selectedDB) selectedDB.examples = [...(selectedDB.examples ?? []), { sql: '', description: '' }]; }}>
+											<Plus class="w-3 h-3 mr-1" /> Örnek Ekle
+										</Button>
+									</div>
+
+									<Button variant="default" size="sm" class="h-8 px-4 text-xs" onclick={saveAnnotations}>
+										Açıklamaları Kaydet
+									</Button>
+								</div>
+							{/if}
+						</div>
+					{/each}
+				</div>
 			{/if}
 		</div>
 	{/if}
