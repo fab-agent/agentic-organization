@@ -209,7 +209,7 @@
     <!-- Badge -->
     <div class="badge mb-8">
       <span style="width:7px;height:7px;background:#10b981;border-radius:50%;display:inline-block;animation:pulse 2s infinite"></span>
-      <span class="text-emerald-400 font-medium text-xs tracking-wide">Open Source · Self-Hosted · v0.5</span>
+      <span class="text-emerald-400 font-medium text-xs tracking-wide">Open Source · Self-Hosted · v0.6</span>
     </div>
 
     <!-- Headline -->
@@ -406,6 +406,33 @@
         <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="f8.desc">Ajanlara Instagram Business ve WhatsApp Business skill'i ekle. Gönderi oluştur, mesaj gönder — doğrudan sohbet arayüzünden, Meta Graph API üzerinden.</p>
       </div>
 
+      <!-- 9 -->
+      <div class="card p-6">
+        <div class="feat-icon" style="background:rgba(16,185,129,0.1)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><polyline points="7 8 10 11 15 6"/></svg>
+        </div>
+        <h3 class="font-semibold text-base mb-2" data-i18n="f9.title">AI Telemetri Dashboard</h3>
+        <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="f9.desc">Şirket geneli ve kullanıcıya özel AI kullanım metrikleri: oturum sayıları, token harcaması, aktif ajan durumu. Her kullanıcı kendi aktivitesini görür.</p>
+      </div>
+
+      <!-- 10 -->
+      <div class="card p-6">
+        <div class="feat-icon" style="background:rgba(99,102,241,0.1)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2A2.5 2.5 0 0112 4.5v15a2.5 2.5 0 01-4.96.44 2.5 2.5 0 01-2.96-3.08 3 3 0 01-.34-5.58 2.5 2.5 0 013.32-3.97A2.5 2.5 0 019.5 2z"/><path d="M14.5 2A2.5 2.5 0 0112 4.5v15a2.5 2.5 0 004.96.44 2.5 2.5 0 002.96-3.08 3 3 0 00.34-5.58 2.5 2.5 0 00-3.32-3.97A2.5 2.5 0 0014.5 2z"/></svg>
+        </div>
+        <h3 class="font-semibold text-base mb-2" data-i18n="f10.title">Uzun Dönem Ajan Hafızası</h3>
+        <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="f10.desc">Kapanan oturumlar AI tarafından özetlenerek hafıza kaydına dönüşür. Personel panelinden ve dashboard'dan izlenebilir; ajanın geçmiş bağlamı korunur.</p>
+      </div>
+
+      <!-- 11 -->
+      <div class="card p-6">
+        <div class="feat-icon" style="background:rgba(14,165,233,0.1)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.77a19.79 19.79 0 01-3.07-8.67A2 2 0 012 .9h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+        </div>
+        <h3 class="font-semibold text-base mb-2" data-i18n="f11.title">Telegram Bildirimleri</h3>
+        <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="f11.desc">Davet ve şifre sıfırlama bildirimleri Telegram Bot API üzerinden anında iletilir. E-posta altyapısına gerek yok; bot token AES-256 ile şifreli saklanır.</p>
+      </div>
+
     </div>
   </div>
 </section>
@@ -594,6 +621,12 @@ const LANGS = {
     'f7.desc': 'Tek tıkla veritabanı yedeği — AWS S3, Cloudflare R2 veya MinIO\'ya. Kimlik bilgileri AES-256 ile şifreli saklanır.',
     'f8.title': 'Sosyal Medya Skill\'leri',
     'f8.desc': 'Ajanlara Instagram Business ve WhatsApp Business skill\'i ekle. Gönderi oluştur, mesaj gönder — doğrudan sohbet arayüzünden.',
+    'f9.title': 'AI Telemetri Dashboard',
+    'f9.desc': 'Şirket geneli ve kullanıcıya özel AI kullanım metrikleri: oturum sayıları, token harcaması, aktif ajan durumu. Her kullanıcı kendi aktivitesini görür.',
+    'f10.title': 'Uzun Dönem Ajan Hafızası',
+    'f10.desc': 'Kapanan oturumlar AI tarafından özetlenerek hafıza kaydına dönüşür. Personel panelinden ve dashboard\'dan izlenebilir; ajanın geçmiş bağlamı korunur.',
+    'f11.title': 'Telegram Bildirimleri',
+    'f11.desc': 'Davet ve şifre sıfırlama bildirimleri Telegram Bot API üzerinden anında iletilir. E-posta altyapısına gerek yok; bot token AES-256 ile şifreli saklanır.',
     'how.label': 'Nasıl Çalışır',
     'how.title': 'Üç adımda kurulum',
     'step1.title': 'Organizasyonunu Tanımla',
@@ -647,6 +680,12 @@ const LANGS = {
     'f7.desc': 'One-click database backup to AWS S3, Cloudflare R2, or MinIO. Credentials stored encrypted with AES-256. History tracked in the dashboard.',
     'f8.title': 'Social Media Skills',
     'f8.desc': 'Give agents Instagram Business and WhatsApp Business skills. Create posts, send messages — directly from the chat interface via Meta Graph API.',
+    'f9.title': 'AI Telemetry Dashboard',
+    'f9.desc': 'Company-wide and per-user AI usage metrics: session counts, token spend, active agent status. Every user sees their own activity at a glance.',
+    'f10.title': 'Long-Term Agent Memory',
+    'f10.desc': 'Closed sessions are automatically summarized by AI into memory records. Visible from the personnel panel and dashboard; agent context is preserved across conversations.',
+    'f11.title': 'Telegram Notifications',
+    'f11.desc': 'Invitations and password-reset notifications delivered instantly via Telegram Bot API. No email infrastructure needed; bot token stored encrypted with AES-256.',
     'how.label': 'How It Works',
     'how.title': 'Set up in three steps',
     'step1.title': 'Define Your Organization',
@@ -700,6 +739,12 @@ const LANGS = {
     'f7.desc': 'Ein-Klick-Datenbank-Backup zu AWS S3, Cloudflare R2 oder MinIO. AES-256-Verschlüsselung.',
     'f8.title': 'Social-Media-Skills',
     'f8.desc': 'Agenten mit Instagram Business und WhatsApp Business Skills ausstatten. Posts und Nachrichten direkt aus dem Chat.',
+    'f9.title': 'KI-Telemetrie-Dashboard',
+    'f9.desc': 'Unternehmensweite und benutzerspezifische KI-Nutzungsmetriken: Sitzungsanzahl, Token-Verbrauch, aktiver Agentenstatus.',
+    'f10.title': 'Langzeitgedächtnis für Agenten',
+    'f10.desc': 'Abgeschlossene Sitzungen werden automatisch zusammengefasst. Im Personalpanel und Dashboard sichtbar; Agentenkontext bleibt erhalten.',
+    'f11.title': 'Telegram-Benachrichtigungen',
+    'f11.desc': 'Einladungen und Passwortrücksetzungen über Telegram Bot API zugestellt. Kein E-Mail-Dienst nötig; Bot-Token AES-256-verschlüsselt.',
     'how.label': 'Wie es funktioniert',
     'how.title': 'In drei Schritten einrichten',
     'step1.title': 'Ihre Organisation definieren',
@@ -753,6 +798,12 @@ const LANGS = {
     'f7.desc': 'Copia de seguridad con un clic a AWS S3, Cloudflare R2 o MinIO. Credenciales cifradas con AES-256.',
     'f8.title': 'Skills de Redes Sociales',
     'f8.desc': 'Dota a los agentes con skills de Instagram Business y WhatsApp Business. Publica posts y envía mensajes desde el chat.',
+    'f9.title': 'Dashboard de Telemetría IA',
+    'f9.desc': 'Métricas de uso de IA para toda la empresa y por usuario: sesiones, gasto en tokens, estado de agentes activos.',
+    'f10.title': 'Memoria a Largo Plazo',
+    'f10.desc': 'Las sesiones cerradas se resumen automáticamente en registros de memoria. Visible en el panel de personal y el dashboard.',
+    'f11.title': 'Notificaciones por Telegram',
+    'f11.desc': 'Invitaciones y restablecimientos de contraseña entregados instantáneamente por Telegram Bot API. Sin infraestructura de correo necesaria.',
     'how.label': 'Cómo Funciona',
     'how.title': 'Configuración en tres pasos',
     'step1.title': 'Define Tu Organización',
