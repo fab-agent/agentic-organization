@@ -85,17 +85,35 @@
 				return;
 			}
 			if (authStore.isLoggedIn) {
-				companyStore.load();
-				loadA2ACount();
+				await loadCompanies();
 			}
 		})();
 		const timer = setInterval(loadA2ACount, 30000);
 		return () => clearInterval(timer);
 	});
 
+	// Re-runs when auth state changes — handles post-setup / post-login navigation
+	$effect(() => {
+		if (authStore.isLoggedIn && !companyStore.loaded) {
+			loadCompanies();
+		}
+	});
+
 	$effect(() => {
 		if (companyStore.active) loadA2ACount();
 	});
+
+	async function loadCompanies() {
+		await companyStore.load();
+		// Prefer a company the user is actually a member of
+		const user = authStore.user;
+		if (user?.companies.length && companyStore.list.length) {
+			const myCompany = companyStore.list.find(c =>
+				user.companies.some(uc => uc.company_id === c.id)
+			);
+			if (myCompany) companyStore.setActive(myCompany);
+		}
+	}
 
 	async function loadA2ACount() {
 		if (!authStore.isLoggedIn) return;
