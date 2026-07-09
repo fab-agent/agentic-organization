@@ -8,6 +8,48 @@ Platform güncellemelerinin kronolojik kaydı.
 
 ---
 
+## v0.6 — 9 Temmuz 2026
+
+### Özellikler
+
+#### Canlı Dashboard & AI Telemetrisi
+- Dashboard tamamen yeniden yazıldı: şirkete özel gerçek zamanlı metrikler (insan/ajan sayısı, aktif ajan, bugünkü/toplam oturum, token kullanımı, hafıza kaydı sayısı).
+- Kullanıcıya özel bölüm: platformda bir personel kaydına bağlı kullanıcılar kendi oturumlarını, token kullanımını ve uzun dönem hafıza özetlerini doğrudan dashboard'da görür.
+- Yeni backend endpoint'leri: `GET /dashboard/stats` (şirket telemetrisi) ve `GET /dashboard/me` (kullanıcı telemetrisi).
+- `/auth/me` yanıtı artık her şirket üyeliği için `personnel_id` alanını döner.
+
+#### Şirket Bilgi Paneli (company.md)
+- Navbar'daki şirket adının yanına dişli ikonu eklendi; tıklanınca vizyon, misyon, değerler ve hedefleri gösteren sağ side panel açılır.
+- Yönetici ve üzeri roller düzenleyebilir; kullanıcılar salt okunur görür.
+- Dashboard'daki eski company.md kart widget'ı kaldırıldı.
+
+#### Personel Side Panel
+- İnsan personele satır tıklamasıyla açılan sağ panel: bilgi (departman, yönetici, e-posta, platform durumu), son oturumlar, uzun dönem hafıza özetleri.
+- Panel 3 modlu: `view` (bilgi görüntüleme) → `edit` (formu panel içinde düzenleme, geri oku ile view'e dönüş) → `create` (yeni personel).
+- Personel oluşturma/düzenleme popup diyaloğu tamamen kaldırıldı.
+
+#### Ajan Hafızası Görüntüleme
+- Yeni backend endpoint: `GET /sessions/memories?personnel_id=...` — kapalı oturumların AI tarafından oluşturulan özetlerini döner.
+- Personel side panel'inde ve kullanıcı dashboard'unda oturum listesi ve hafıza özetleri görünür.
+
+#### Telegram Bildirim Entegrasyonu
+- Resend e-posta entegrasyonu tamamen kaldırıldı; davet ve şifre sıfırlama bildirimleri artık Telegram Bot API üzerinden iletilir.
+- **Ayarlar → Entegrasyonlar** sekmesi: bot token ve admin chat ID yapılandırması, test mesajı gönderme, bot bilgisi gösterimi.
+- Bot token AES-256 ile şifreli saklanır; `TelegramConfig` tablosu Alembic migration ile eklendi.
+
+#### AI Sağlayıcılar Sekmesi Yeniden Tasarımı
+- Ayarlar → Sağlayıcılar: sadece anahtar girilmiş sağlayıcılar gösterilir; yapılandırılmamışlar "Sağlayıcı Ekle" dropdown akışıyla eklenir.
+- Geçersiz durumdaki eski kayıtlar temizlendi.
+
+### UI İyileştirmeleri
+
+- **Ayarlar tabları kaydırılabilir:** 6 sekme küçük ekranlarda yatay scroll ile erişilebilir; scrollbar gizli.
+- **Sidebar daraltma:** Masaüstünde sidebar `w-60 → w-16` arasında geçiş yapar; ikonlar görünür, etiketler gizlenir.
+- **Şirket seçici navbara taşındı:** Sidebar alt kısmındaki büyük şirket kartı kaldırıldı; navbar'a kompakt dropdown olarak eklendi.
+- **Sağ panel overlay:** Ajanlar ve personel sayfalarındaki side panel içeriği itmek yerine üzerine gelir (`position: fixed`).
+
+---
+
 ## v0.5 — 9 Temmuz 2026
 
 ### Güvenlik
