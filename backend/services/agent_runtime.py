@@ -534,7 +534,7 @@ async def _stream_anthropic(
 
 _OPENAI_BASE_URLS = {
     "openai": "https://api.openai.com/v1",
-    "qwen":   "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "qwen":   "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",  # intl default; overridden by stored base_url
 }
 
 async def _stream_openai_compatible(
@@ -552,6 +552,14 @@ async def _stream_openai_compatible(
     from openai import OpenAI
 
     base_url = _OPENAI_BASE_URLS.get(provider, "https://api.openai.com/v1")
+    if provider == "qwen":
+        from database import get_session as _gs
+        from models import ProviderKey as _PK
+        from sqlmodel import select as _sel
+        with _gs() as _db:
+            _row = _db.exec(_sel(_PK).where(_PK.provider == "qwen")).first()
+            if _row and _row.base_url:
+                base_url = _row.base_url
     client = OpenAI(api_key=api_key, base_url=base_url)
 
     messages = [{"role": "system", "content": system_prompt}]

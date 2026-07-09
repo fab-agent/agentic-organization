@@ -82,6 +82,7 @@ class ProviderKey(SQLModel, table=True):
     provider: str = Field(unique=True)          # "anthropic" | "openai" | "google" | "mistral"
     encrypted_key: str
     status: str = Field(default="unconfigured") # "active" | "invalid" | "unconfigured"
+    base_url: Optional[str] = None              # override endpoint (e.g. dashscope-intl vs dashscope)
     last_tested: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

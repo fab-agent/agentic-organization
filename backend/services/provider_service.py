@@ -110,8 +110,31 @@ PROVIDER_CONFIGS: dict[str, dict] = {
 SUPPORTED_PROVIDERS = list(PROVIDER_CONFIGS.keys())
 
 
+_QWEN_ENDPOINTS = [
+    "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
+    "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+]
+
+
+def detect_qwen_base_url(plain_key: str) -> str | None:
+    """Try both DashScope endpoints and return the base URL of whichever responds 200."""
+    cfg = PROVIDER_CONFIGS["qwen"]
+    for url in _QWEN_ENDPOINTS:
+        try:
+            with httpx.Client(timeout=10) as client:
+                resp = client.post(url, json=cfg["body"], headers=cfg["headers"](plain_key))
+            if resp.status_code in (200, 201):
+                return url.rsplit("/chat/completions", 1)[0]
+        except Exception:
+            pass
+    return None
+
+
 def test_provider_key(provider: str, plain_key: str) -> bool:
     """Returns True if the key is valid for the given provider."""
+    if provider == "qwen":
+        return detect_qwen_base_url(plain_key) is not None
+
     cfg = PROVIDER_CONFIGS.get(provider)
     if not cfg:
         return False

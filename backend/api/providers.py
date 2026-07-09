@@ -12,6 +12,7 @@ from schemas import ConfigPatch, SetProviderKey
 from services.provider_service import (
     PROVIDER_CONFIGS,
     SUPPORTED_PROVIDERS,
+    detect_qwen_base_url,
     get_provider_models,
     test_provider_key,
 )
@@ -103,7 +104,8 @@ def set_provider_key(provider: str, body: SetProviderKey,
     if not plain_key:
         raise HTTPException(status_code=422, detail="Key cannot be empty")
 
-    valid = test_provider_key(provider, plain_key)
+    base_url = detect_qwen_base_url(plain_key) if provider == "qwen" else None
+    valid = (base_url is not None) if provider == "qwen" else test_provider_key(provider, plain_key)
     encrypted = encrypt(plain_key)
     now = datetime.utcnow()
 
@@ -113,6 +115,7 @@ def set_provider_key(provider: str, body: SetProviderKey,
         if row:
             row.encrypted_key = encrypted
             row.status = "active" if valid else "invalid"
+            row.base_url = base_url
             row.last_tested = now
             session.add(row)
         else:
@@ -120,6 +123,7 @@ def set_provider_key(provider: str, body: SetProviderKey,
                 provider=provider,
                 encrypted_key=encrypted,
                 status="active" if valid else "invalid",
+                base_url=base_url,
                 last_tested=now,
             )
             session.add(row)
@@ -151,7 +155,12 @@ def test_existing_key(provider: str, _: User = Depends(require_manager)):
             raise HTTPException(status_code=404, detail="No key configured for this provider")
 
         plain_key = decrypt(row.encrypted_key)
-        valid = test_provider_key(provider, plain_key)
+        if provider == "qwen":
+            base_url = detect_qwen_base_url(plain_key)
+            valid = base_url is not None
+            row.base_url = base_url
+        else:
+            valid = test_provider_key(provider, plain_key)
         row.status = "active" if valid else "invalid"
         row.last_tested = datetime.utcnow()
         session.add(row)
