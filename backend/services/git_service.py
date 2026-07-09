@@ -104,10 +104,13 @@ class GitSyncService:
 
     # ── Export (DB → YAML files) ──────────────────────────────────────────────
 
-    def export_to_files(self, session: Session) -> list[Path]:
+    def export_to_files(self, session: Session, company_id: Optional[str] = None) -> list[Path]:
         written: list[Path] = []
 
-        for dept in session.exec(select(Department)).all():
+        dept_q = select(Department)
+        if company_id:
+            dept_q = dept_q.where(Department.company_id == company_id)
+        for dept in session.exec(dept_q).all():
             path = REPO_DIR / "departments" / f"{dept.slug}.yaml"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(
@@ -116,7 +119,10 @@ class GitSyncService:
             )
             written.append(path)
 
-        for agent in session.exec(select(Personnel).where(Personnel.type == "agent")).all():
+        agent_q = select(Personnel).where(Personnel.type == "agent")
+        if company_id:
+            agent_q = agent_q.where(Personnel.company_id == company_id)
+        for agent in session.exec(agent_q).all():
             cfg = session.exec(select(AgentConfig).where(AgentConfig.personnel_id == agent.id)).first()
             if not cfg:
                 continue
@@ -139,7 +145,7 @@ class GitSyncService:
 
     # ── Import (YAML files → DB) ──────────────────────────────────────────────
 
-    def import_from_files(self, session: Session) -> int:
+    def import_from_files(self, session: Session, company_id: Optional[str] = None) -> int:
         changed = 0
 
         dept_dir = REPO_DIR / "departments"
@@ -148,7 +154,10 @@ class GitSyncService:
                 try:
                     data = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
                     slug = data.get("id") or f.stem
-                    dept = session.exec(select(Department).where(Department.slug == slug)).first()
+                    q = select(Department).where(Department.slug == slug)
+                    if company_id:
+                        q = q.where(Department.company_id == company_id)
+                    dept = session.exec(q).first()
                     if not dept:
                         continue
                     if data.get("name"):        dept.name        = data["name"]
@@ -168,7 +177,10 @@ class GitSyncService:
                 try:
                     data = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
                     slug  = data.get("id") or f.parent.name
-                    agent = session.exec(select(Personnel).where(Personnel.slug == slug)).first()
+                    q = select(Personnel).where(Personnel.slug == slug)
+                    if company_id:
+                        q = q.where(Personnel.company_id == company_id)
+                    agent = session.exec(q).first()
                     if not agent:
                         continue
                     cfg = session.exec(select(AgentConfig).where(AgentConfig.personnel_id == agent.id)).first()
@@ -206,7 +218,7 @@ class GitSyncService:
             repo.remotes.origin.pull(config.branch)
 
             sha     = repo.head.commit.hexsha
-            count   = self.import_from_files(session)
+            count   = self.import_from_files(session, company_id=config.company_id)
 
             config.last_synced     = datetime.utcnow()
             config.last_commit_sha = sha
@@ -236,7 +248,7 @@ class GitSyncService:
             repo = self._get_repo(config)
             repo.remotes.origin.pull(config.branch)
 
-            written = self.export_to_files(session)
+            written = self.export_to_files(session, company_id=config.company_id)
             if not written:
                 log.status  = "no_changes"
                 log.message = "Dışa aktarılacak kayıt yok"
@@ -302,7 +314,10 @@ class GitSyncService:
 
         diffs: list[dict] = []
 
-        for agent in session.exec(select(Personnel).where(Personnel.type == "agent")).all():
+        agent_q = select(Personnel).where(Personnel.type == "agent")
+        if config.company_id:
+            agent_q = agent_q.where(Personnel.company_id == config.company_id)
+        for agent in session.exec(agent_q).all():
             yaml_path = REPO_DIR / "agents" / agent.slug / "agent.yaml"
             cfg = session.exec(select(AgentConfig).where(AgentConfig.personnel_id == agent.id)).first()
             if not cfg:
@@ -323,7 +338,10 @@ class GitSyncService:
             except Exception:
                 diffs.append({"type": "agent", "slug": agent.slug, "change": "parse_error"})
 
-        for dept in session.exec(select(Department)).all():
+        dept_q = select(Department)
+        if config.company_id:
+            dept_q = dept_q.where(Department.company_id == config.company_id)
+        for dept in session.exec(dept_q).all():
             yaml_path = REPO_DIR / "departments" / f"{dept.slug}.yaml"
             if not yaml_path.exists():
                 diffs.append({"type": "department", "slug": dept.slug, "change": "missing_in_repo"})
