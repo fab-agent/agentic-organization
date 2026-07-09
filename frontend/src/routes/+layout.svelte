@@ -70,7 +70,10 @@
 				const res = await fetch(`${API_URL}/auth/setup-status`);
 				if (res.ok) {
 					const { needs_setup } = await res.json();
-					if (needs_setup) { goto('/setup'); return; }
+					if (needs_setup && $page.url.pathname !== '/setup') {
+						goto('/setup');
+						return;
+					}
 				}
 			} catch {}
 
@@ -95,6 +98,7 @@
 	});
 
 	async function loadA2ACount() {
+		if (!authStore.isLoggedIn) return;
 		try {
 			const { count } = await a2aApi.pendingCount(companyStore.active?.id);
 			a2aPendingCount = count;
