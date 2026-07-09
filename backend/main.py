@@ -43,6 +43,7 @@ from api.social_media import router as social_media_router
 from api.journal import router as journal_router
 from api.database import router as database_router
 from api.telegram_config import router as telegram_router
+from api.dashboard import router as dashboard_router
 
 app = FastAPI(
     title="3rdParty Agent Organization API",
@@ -93,6 +94,7 @@ app.include_router(social_media_router)
 app.include_router(journal_router)
 app.include_router(database_router)
 app.include_router(telegram_router)
+app.include_router(dashboard_router)
 
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────

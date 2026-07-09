@@ -2,125 +2,51 @@
 	import { onMount } from 'svelte';
 	import Button from '$lib/components/ui/button.svelte';
 	import Card from '$lib/components/ui/card.svelte';
-	import Input from '$lib/components/ui/input.svelte';
-	import { Plus, Building2, Edit, X, Target, ShieldCheck, Loader, AlertCircle } from '@lucide/svelte';
-	import { departments as deptApi } from '$lib/api/departments';
-	import { personnel } from '$lib/api/personnel';
+	import {
+		Users, Bot, MessageSquare, Zap, BrainCircuit, Clock,
+		TrendingUp, Activity, UserCheck, Loader, ChevronRight,
+		Cpu, Plus,
+	} from '@lucide/svelte';
+	import { dashboardApi, type CompanyStats, type MyDashboard } from '$lib/api/dashboard';
 	import { companyStore } from '$lib/stores/company.svelte';
-	import { t, type TranslationKey } from '$lib/i18n/index.svelte';
+	import { authStore } from '$lib/stores/auth.svelte';
+	import { t } from '$lib/i18n/index.svelte';
 
-	// ── Live stats ─────────────────────────────────────────────────────────────
-	let statsLoading = $state(true);
-	let totalPersonnel = $state(0);
-	let activeAgents   = $state(0);
-	let totalDepts     = $state(0);
-	let totalPolicies  = $state(0);
+	let stats = $state<CompanyStats | null>(null);
+	let myData = $state<MyDashboard | null>(null);
+	let loading = $state(true);
 
-	async function loadStats() {
-		statsLoading = true;
+	async function load() {
+		loading = true;
 		try {
 			const cid = companyStore.active?.id;
-			const [depts, people] = await Promise.all([
-				deptApi.list(cid),
-				personnel.list({ company_id: cid }),
+			[stats, myData] = await Promise.all([
+				dashboardApi.stats(cid),
+				dashboardApi.me(cid),
 			]);
-			totalPersonnel = people.length;
-			activeAgents   = people.filter(p => p.agent_config?.status === 'active').length;
-			totalDepts     = depts.length;
-			totalPolicies  = depts.reduce((s, d) => s + d.policies.length, 0);
+		} catch {
+			// ignore
 		} finally {
-			statsLoading = false;
+			loading = false;
 		}
 	}
 
-	onMount(loadStats);
+	onMount(load);
+	$effect(() => { if (companyStore.active) load(); });
 
-	$effect(() => {
-		if (companyStore.active) loadStats();
-	});
+	const activeCompanyId = $derived(companyStore.active?.id ?? '');
+	const isManager = $derived(authStore.can(activeCompanyId, 'dept_head'));
+	const userName = $derived(authStore.user?.name?.split(' ')[0] ?? 'Merhaba');
 
-	// ── Company edit panel ─────────────────────────────────────────────────────
-	let panelOpen = $state(false);
-
-	type Goal = { id: number; text: string; done: boolean };
-	type CompanyData = {
-		name: string;
-		sector: string;
-		website: string;
-		vision: string;
-		mission: string;
-		values: string[];
-		goals: Goal[];
-	};
-
-	function defaultCompany(): CompanyData {
-		return {
-			name: companyStore.active?.name ?? '',
-			sector: companyStore.active?.sector ?? '',
-			website: companyStore.active?.website ?? '',
-			vision: 'Teknoloji ile iş süreçlerini dönüştüren, insan-ajan iş birliğinde sektörün referans noktası olmak.',
-			mission: 'Kurumların agentic süreçleri güvenli, izlenebilir ve yönetilebilir biçimde devreye almasını sağlamak.',
-			values: ['Şeffaflık', 'Güven', 'Sürekli Öğrenme', 'İnsan Odaklılık', 'Ölçülebilir Etki'],
-			goals: [
-				{ id: 1, text: 'Agentic süreçleri 5 departmanda devreye almak', done: false },
-				{ id: 2, text: '15 aktif ajan oluşturmak', done: false },
-				{ id: 3, text: 'Tüm departmanlara özel policy kütüphanesi oluşturmak', done: false },
-				{ id: 4, text: 'Ajan performans izleme dashboard\'unu kurmak', done: false },
-			],
-		};
+	function fmtTokens(n: number): string {
+		if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+		if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+		return String(n);
 	}
 
-	let company: CompanyData = $state(defaultCompany());
-
-	$effect(() => {
-		if (companyStore.active) {
-			company.name    = companyStore.active.name;
-			company.sector  = companyStore.active.sector ?? '';
-			company.website = companyStore.active.website ?? '';
-		}
-	});
-
-	let editCompany: CompanyData = $state(defaultCompany());
-	let newValue = $state('');
-	let newGoal  = $state('');
-
-	function openPanel() {
-		editCompany = {
-			...company,
-			values: [...company.values],
-			goals: company.goals.map(g => ({ ...g }))
-		};
-		newValue = '';
-		newGoal  = '';
-		panelOpen = true;
-	}
-
-	async function saveCompany() {
-		company = { ...editCompany, values: [...editCompany.values], goals: editCompany.goals.map(g => ({...g})) };
-		panelOpen = false;
-	}
-
-	function addValue() {
-		const v = newValue.trim();
-		if (!v || editCompany.values.includes(v)) return;
-		editCompany.values = [...editCompany.values, v];
-		newValue = '';
-	}
-
-	function removeValue(v: string) {
-		editCompany.values = editCompany.values.filter(x => x !== v);
-	}
-
-	function addGoal() {
-		const txt = newGoal.trim();
-		if (!txt) return;
-		const maxId = editCompany.goals.reduce((m, g) => Math.max(m, g.id), 0);
-		editCompany.goals = [...editCompany.goals, { id: maxId + 1, text: txt, done: false }];
-		newGoal = '';
-	}
-
-	function removeGoal(id: number) {
-		editCompany.goals = editCompany.goals.filter(g => g.id !== id);
+	function fmtDate(iso: string): string {
+		const d = new Date(iso);
+		return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 	}
 </script>
 
@@ -128,271 +54,246 @@
 	<title>Dashboard • fab.engineering</title>
 </svelte:head>
 
-<div class={['space-y-8 transition-all duration-200', panelOpen ? 'lg:mr-[600px]' : ''].join(' ')}>
+<div class="space-y-8">
 
 	<!-- Header -->
-	<div class="flex items-end justify-between">
+	<div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
 		<div>
-			<h1 class="font-display text-3xl tracking-tight">{t('dash_title')}</h1>
-			<p class="text-muted-foreground mt-1.5">{company.name} • {t('dash_overview')}</p>
+			<h1 class="font-display text-3xl tracking-tight">Merhaba, {userName} 👋</h1>
+			<p class="text-muted-foreground mt-1">
+				{companyStore.active?.name ?? ''} · {new Date().toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' })}
+			</p>
 		</div>
-		<a href="/personnel">
-			<Button class="gap-x-2">
-				<Plus class="w-4 h-4" />
-				<span>{t('dash_new_personnel')}</span>
-			</Button>
-		</a>
+		{#if isManager}
+			<a href="/personnel">
+				<Button class="gap-x-2 w-full sm:w-auto">
+					<Plus class="w-4 h-4" />
+					{t('dash_new_personnel')}
+				</Button>
+			</a>
+		{/if}
 	</div>
 
-	<!-- Stats Cards -->
-	<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-		{#each [
-			{ labelKey: 'dash_stat_total_personnel', value: totalPersonnel, color: '' },
-			{ labelKey: 'dash_stat_active_agent',    value: activeAgents,   color: 'text-emerald-600' },
-			{ labelKey: 'dash_stat_dept',            value: totalDepts,     color: '' },
-			{ labelKey: 'dash_stat_policy',          value: totalPolicies,  color: '' },
-		] as stat}
-			<Card class="p-6">
-				<div class="text-sm text-muted-foreground">{t(stat.labelKey as TranslationKey)}</div>
-				{#if statsLoading}
-					<div class="mt-2 h-10 w-16 rounded-lg bg-muted animate-pulse"></div>
-				{:else}
-					<div class="text-4xl font-semibold tracking-tighter mt-2 {stat.color}">{stat.value}</div>
+	<!-- ── Company-wide telemetry (managers+) ─────────────────────────────── -->
+	{#if isManager}
+		<section>
+			<div class="flex items-center gap-2 mb-4">
+				<Activity class="w-4 h-4 text-muted-foreground" />
+				<span class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Şirket Telemetrisi</span>
+			</div>
+			<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+				{#if loading}
+					{#each Array(6) as _}
+						<Card class="p-4">
+							<div class="h-3 w-16 bg-muted rounded animate-pulse mb-3"></div>
+							<div class="h-8 w-10 bg-muted rounded animate-pulse"></div>
+						</Card>
+					{/each}
+				{:else if stats}
+					<Card class="p-4">
+						<div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+							<Users class="w-3.5 h-3.5" /> İnsan
+						</div>
+						<div class="text-3xl font-semibold tracking-tighter">{stats.human_count}</div>
+					</Card>
+					<Card class="p-4">
+						<div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+							<Bot class="w-3.5 h-3.5" /> Ajan
+						</div>
+						<div class="text-3xl font-semibold tracking-tighter">{stats.agent_count}</div>
+						<div class="text-xs text-emerald-600 font-medium mt-1">{stats.active_agents} aktif</div>
+					</Card>
+					<Card class="p-4">
+						<div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+							<MessageSquare class="w-3.5 h-3.5" /> Bugün Oturum
+						</div>
+						<div class="text-3xl font-semibold tracking-tighter">{stats.today_sessions}</div>
+						<div class="text-xs text-muted-foreground mt-1">{stats.total_sessions} toplam</div>
+					</Card>
+					<Card class="p-4">
+						<div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+							<Activity class="w-3.5 h-3.5" /> Aktif Oturum
+						</div>
+						<div class="text-3xl font-semibold tracking-tighter {stats.active_sessions > 0 ? 'text-emerald-600' : ''}">{stats.active_sessions}</div>
+					</Card>
+					<Card class="p-4">
+						<div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+							<Zap class="w-3.5 h-3.5" /> Token (Bugün)
+						</div>
+						<div class="text-3xl font-semibold tracking-tighter">{fmtTokens(stats.today_tokens)}</div>
+						<div class="text-xs text-muted-foreground mt-1">{fmtTokens(stats.total_tokens)} toplam</div>
+					</Card>
+					<Card class="p-4">
+						<div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+							<BrainCircuit class="w-3.5 h-3.5" /> Hafıza
+						</div>
+						<div class="text-3xl font-semibold tracking-tighter">{stats.memory_count}</div>
+						<div class="text-xs text-muted-foreground mt-1">uzun dönem</div>
+					</Card>
 				{/if}
-			</Card>
-		{/each}
-	</div>
+			</div>
+		</section>
+	{/if}
 
-	<!-- company.md preview -->
-	<Card class="p-6">
-		<div class="flex items-center justify-between mb-5">
-			<div class="flex items-center gap-x-3">
-				<div class="w-9 h-9 rounded-xl bg-muted flex items-center justify-center">
-					<Building2 class="w-4 h-4 text-muted-foreground" />
+	<!-- ── Personal dashboard ─────────────────────────────────────────────── -->
+	{#if myData?.linked}
+		<section>
+			<div class="flex items-center gap-2 mb-4">
+				<UserCheck class="w-4 h-4 text-muted-foreground" />
+				<span class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Benim Aktivitem</span>
+				{#if myData.personnel_name}
+					<span class="text-xs text-muted-foreground">· {myData.personnel_name}</span>
+				{/if}
+			</div>
+
+			<!-- Personal stats row -->
+			<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+				<Card class="p-4">
+					<div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+						<MessageSquare class="w-3.5 h-3.5" /> Bugün Oturum
+					</div>
+					<div class="text-3xl font-semibold tracking-tighter">{myData.today_sessions ?? 0}</div>
+					<div class="text-xs text-muted-foreground mt-1">{myData.total_sessions ?? 0} toplam</div>
+				</Card>
+				<Card class="p-4">
+					<div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+						<Activity class="w-3.5 h-3.5" /> Aktif Oturum
+					</div>
+					<div class="text-3xl font-semibold tracking-tighter {(myData.active_sessions ?? 0) > 0 ? 'text-emerald-600' : ''}">{myData.active_sessions ?? 0}</div>
+				</Card>
+				<Card class="p-4">
+					<div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+						<Zap class="w-3.5 h-3.5" /> Token (Bugün)
+					</div>
+					<div class="text-3xl font-semibold tracking-tighter">{fmtTokens(myData.today_tokens ?? 0)}</div>
+					<div class="text-xs text-muted-foreground mt-1">{fmtTokens(myData.total_tokens ?? 0)} toplam</div>
+				</Card>
+				<Card class="p-4">
+					<div class="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+						<BrainCircuit class="w-3.5 h-3.5" /> Hafıza
+					</div>
+					<div class="text-3xl font-semibold tracking-tighter">{myData.memories?.length ?? 0}</div>
+					<div class="text-xs text-muted-foreground mt-1">uzun dönem</div>
+				</Card>
+			</div>
+
+			<div class="grid lg:grid-cols-2 gap-6">
+
+				<!-- Recent sessions -->
+				<Card class="p-5">
+					<div class="flex items-center justify-between mb-4">
+						<div class="flex items-center gap-2">
+							<MessageSquare class="w-4 h-4 text-muted-foreground" />
+							<span class="font-semibold text-sm">Son Oturumlar</span>
+						</div>
+						<a href="/agents" class="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors">
+							Tümü <ChevronRight class="w-3 h-3" />
+						</a>
+					</div>
+					{#if loading}
+						<div class="space-y-2">
+							{#each Array(3) as _}
+								<div class="h-12 bg-muted rounded-lg animate-pulse"></div>
+							{/each}
+						</div>
+					{:else if !myData.recent_sessions?.length}
+						<div class="flex flex-col items-center justify-center py-8 text-center gap-2">
+							<MessageSquare class="w-8 h-8 text-muted-foreground/40" />
+							<p class="text-sm text-muted-foreground">Henüz oturum yok.</p>
+						</div>
+					{:else}
+						<div class="space-y-2">
+							{#each myData.recent_sessions as s}
+								<div class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-muted/30 border border-border/50 hover:bg-muted/50 transition-colors">
+									<div class="w-2 h-2 rounded-full flex-shrink-0 {s.status === 'active' ? 'bg-emerald-500 animate-pulse' : 'bg-muted-foreground/30'}"></div>
+									<div class="flex-1 min-w-0">
+										<div class="text-sm font-medium truncate">{s.title ?? 'Oturum'}</div>
+										<div class="text-xs text-muted-foreground">{fmtDate(s.updated_at)}</div>
+									</div>
+									<span class="text-xs px-2 py-0.5 rounded-md font-medium flex-shrink-0
+										{s.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground'}">
+										{s.status === 'active' ? 'Aktif' : 'Kapalı'}
+									</span>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				</Card>
+
+				<!-- Memories -->
+				<Card class="p-5">
+					<div class="flex items-center gap-2 mb-4">
+						<BrainCircuit class="w-4 h-4 text-muted-foreground" />
+						<span class="font-semibold text-sm">Uzun Dönem Hafıza</span>
+					</div>
+					{#if loading}
+						<div class="space-y-2">
+							{#each Array(2) as _}
+								<div class="h-16 bg-muted rounded-lg animate-pulse"></div>
+							{/each}
+						</div>
+					{:else if !myData.memories?.length}
+						<div class="flex flex-col items-center justify-center py-8 text-center gap-2">
+							<BrainCircuit class="w-8 h-8 text-muted-foreground/40" />
+							<p class="text-sm text-muted-foreground">Henüz hafıza özeti yok.</p>
+							<p class="text-xs text-muted-foreground">Oturumlar kapandığında AI özet oluşturur.</p>
+						</div>
+					{:else}
+						<div class="space-y-2 max-h-64 overflow-y-auto">
+							{#each myData.memories as m}
+								<div class="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+									<p class="text-xs leading-relaxed text-foreground/80">{m.summary}</p>
+									<div class="flex items-center gap-1 mt-1.5 text-xs text-muted-foreground">
+										<Clock class="w-3 h-3" />
+										{new Date(m.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}
+									</div>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				</Card>
+
+			</div>
+		</section>
+	{:else if !loading && myData && !myData.linked}
+		<!-- User logged in but not linked to a personnel record -->
+		<Card class="p-6">
+			<div class="flex items-center gap-3 mb-3">
+				<div class="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center">
+					<UserCheck class="w-5 h-5 text-amber-600" />
 				</div>
 				<div>
-					<div class="font-semibold tracking-tight">company.md</div>
-					<div class="text-xs text-muted-foreground">{t('dash_company_md_desc')}</div>
+					<div class="font-semibold">Personel kaydı bulunamadı</div>
+					<div class="text-sm text-muted-foreground">Hesabınız henüz bir personel kaydına bağlı değil.</div>
 				</div>
 			</div>
+		</Card>
+	{/if}
 
-			<Button variant="outline" size="sm" class="gap-x-2 text-xs h-8" onclick={openPanel}>
-				<Edit class="w-3.5 h-3.5" />
-				<span>{t('edit')}</span>
-			</Button>
+	<!-- ── Quick links (all users) ────────────────────────────────────────── -->
+	<section>
+		<div class="flex items-center gap-2 mb-4">
+			<TrendingUp class="w-4 h-4 text-muted-foreground" />
+			<span class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Hızlı Erişim</span>
 		</div>
-
-		<div class="space-y-4 text-sm">
-			<div>
-				<div class="font-semibold text-base">{company.name}</div>
-				<div class="text-xs text-muted-foreground mt-0.5">{company.sector}</div>
-			</div>
-
-			<div class="space-y-1">
-				<div class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('dash_vision')}</div>
-				<p class="text-muted-foreground leading-relaxed">{company.vision}</p>
-			</div>
-
-			<div class="space-y-1">
-				<div class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('dash_mission')}</div>
-				<p class="text-muted-foreground leading-relaxed">{company.mission}</p>
-			</div>
-
-			{#if company.values.length > 0}
-				<div class="space-y-2">
-					<div class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('dash_values')}</div>
-					<div class="flex flex-wrap gap-1.5">
-						{#each company.values as val}
-							<span class="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium">{val}</span>
-						{/each}
-					</div>
-				</div>
-			{/if}
-
-			{#if company.goals.length > 0}
-				<div class="space-y-2">
-					<div class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{t('dash_goals')}</div>
-					<ul class="space-y-1.5">
-						{#each company.goals as goal}
-							<li class="flex items-start gap-x-2.5">
-								<div class="mt-0.5 w-4 h-4 rounded bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center flex-shrink-0">
-									<div class="w-2 h-2 rounded-sm bg-emerald-500"></div>
-								</div>
-								<span class="text-muted-foreground">{goal.text}</span>
-							</li>
-						{/each}
-					</ul>
-				</div>
-			{/if}
-		</div>
-	</Card>
-</div>
-
-<!-- ── Company Edit Panel ────────────────────────────────────────────────────── -->
-<div
-	class={[
-		'fixed top-0 right-0 h-full w-full max-w-[600px] bg-background border-l shadow-xl z-40',
-		'flex flex-col transition-transform duration-200 ease-out',
-		panelOpen ? 'translate-x-0' : 'translate-x-full'
-	].join(' ')}
-	aria-label={t('dash_panel_aria')}
->
-	<!-- Header -->
-	<div class="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
-		<div class="flex items-center gap-2.5">
-			<div class="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
-				<Building2 class="w-4 h-4 text-muted-foreground" />
-			</div>
-			<div>
-				<div class="font-semibold text-sm">{t('dash_company_info')}</div>
-				<div class="text-xs text-muted-foreground">{t('dash_company_md_subtitle')}</div>
-			</div>
-		</div>
-		<Button variant="ghost" size="icon" onclick={() => (panelOpen = false)} aria-label={t('close')}>
-			<X class="w-4 h-4" />
-		</Button>
-	</div>
-
-	<!-- Body -->
-	<div class="flex-1 overflow-y-auto px-6 py-5 space-y-7">
-
-		<!-- ① Kimlik -->
-		<section class="space-y-4">
-			<div class="section-label"><span class="section-badge">1</span>{t('dash_company_identity')}</div>
-			<div class="grid sm:grid-cols-2 gap-4">
-				<div class="space-y-1.5 sm:col-span-2">
-					<label class="text-sm font-medium" for="co-name">{t('dash_company_name')}</label>
-					<Input id="co-name" bind:value={editCompany.name} placeholder="Acme Corp" />
-				</div>
-				<div class="space-y-1.5">
-					<label class="text-sm font-medium" for="co-sector">{t('dash_sector')}</label>
-					<Input id="co-sector" bind:value={editCompany.sector} placeholder="Yazılım & SaaS" />
-				</div>
-				<div class="space-y-1.5">
-					<label class="text-sm font-medium" for="co-web">{t('dash_website')}</label>
-					<Input id="co-web" bind:value={editCompany.website} placeholder="https://..." />
-				</div>
-			</div>
-		</section>
-
-		<!-- ② Vizyon & Misyon -->
-		<section class="space-y-4">
-			<div class="section-label"><span class="section-badge">2</span>{t('dash_vision_mission')}</div>
-			<div class="space-y-1.5">
-				<label class="text-sm font-medium" for="co-vision">{t('dash_vision')}</label>
-				<textarea id="co-vision" bind:value={editCompany.vision}
-					class="textarea" rows="3"
-					placeholder={t('dash_vision_ph')}></textarea>
-			</div>
-			<div class="space-y-1.5">
-				<label class="text-sm font-medium" for="co-mission">{t('dash_mission')}</label>
-				<textarea id="co-mission" bind:value={editCompany.mission}
-					class="textarea" rows="3"
-					placeholder={t('dash_mission_ph')}></textarea>
-			</div>
-		</section>
-
-		<!-- ③ Değerler -->
-		<section class="space-y-4">
-			<div class="section-label"><span class="section-badge">3</span>{t('dash_company_values')}</div>
-			{#if editCompany.values.length > 0}
-				<div class="flex flex-wrap gap-2">
-					{#each editCompany.values as val}
-						<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
-							{val}
-							<button type="button" onclick={() => removeValue(val)} class="hover:text-destructive transition-colors" aria-label={t('remove')}>
-								<X class="w-3 h-3" />
-							</button>
-						</span>
-					{/each}
-				</div>
-			{/if}
-			<div class="flex gap-2">
-				<Input bind:value={newValue} placeholder={t('dash_new_value_ph')} onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addValue(); } }} class="flex-1" />
-				<Button variant="outline" onclick={addValue} disabled={!newValue.trim()}>
-					<Plus class="w-3.5 h-3.5" />
-					{t('add')}
-				</Button>
-			</div>
-		</section>
-
-		<!-- ④ Hedefler -->
-		<section class="space-y-4">
-			<div class="section-label"><span class="section-badge">4</span>{t('dash_company_goals')}</div>
-			{#if editCompany.goals.length > 0}
-				<div class="space-y-2">
-					{#each editCompany.goals as goal}
-						<div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/60 border border-border/50 group/goal">
-							<div class="w-3.5 h-3.5 rounded-sm bg-emerald-500/20 border border-emerald-500/50 flex-shrink-0"></div>
-							<span class="text-sm flex-1">{goal.text}</span>
-							<button type="button" onclick={() => removeGoal(goal.id)}
-								class="text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover/goal:opacity-100"
-								aria-label={t('remove')}>
-								<X class="w-3.5 h-3.5" />
-							</button>
+		<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+			{#each [
+				{ href: '/agents',    label: 'Ajanlar',    icon: Bot,           desc: 'Agent yönetimi' },
+				{ href: '/personnel', label: 'Personel',   icon: Users,         desc: 'Ekip üyeleri' },
+				{ href: '/settings',  label: 'Ayarlar',    icon: Cpu,           desc: 'AI sağlayıcıları' },
+				{ href: '/orgtree',   label: 'Org Şeması', icon: TrendingUp,    desc: 'Hiyerarşi görünümü' },
+			] as item}
+				<a href={item.href} class="block">
+					<Card class="p-4 hover:border-primary/40 hover:shadow-sm transition-all cursor-pointer h-full">
+						<div class="w-8 h-8 rounded-lg bg-muted flex items-center justify-center mb-3">
+							<item.icon class="w-4 h-4 text-muted-foreground" />
 						</div>
-					{/each}
-				</div>
-			{/if}
-			<div class="flex gap-2">
-				<Input bind:value={newGoal} placeholder={t('dash_new_goal_ph')} onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addGoal(); } }} class="flex-1" />
-				<Button variant="outline" onclick={addGoal} disabled={!newGoal.trim()}>
-					<Plus class="w-3.5 h-3.5" />
-					{t('add')}
-				</Button>
-			</div>
-		</section>
+						<div class="font-medium text-sm">{item.label}</div>
+						<div class="text-xs text-muted-foreground mt-0.5">{item.desc}</div>
+					</Card>
+				</a>
+			{/each}
+		</div>
+	</section>
 
-	</div>
-
-	<!-- Footer -->
-	<div class="border-t px-6 py-4 flex gap-3 justify-end flex-shrink-0 bg-background">
-		<Button variant="outline" onclick={() => (panelOpen = false)}>{t('cancel')}</Button>
-		<Button onclick={saveCompany}>{t('save')}</Button>
-	</div>
 </div>
-
-{#if panelOpen}
-	<div class="fixed inset-0 z-30 bg-black/40 lg:hidden" onclick={() => (panelOpen = false)} aria-hidden="true"></div>
-{/if}
-
-<style>
-	.section-label {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		font-size: 0.6875rem;
-		font-weight: 700;
-		color: hsl(var(--muted-foreground));
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
-	}
-	.section-badge {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 1.25rem;
-		height: 1.25rem;
-		border-radius: 9999px;
-		background: hsl(var(--primary) / 0.1);
-		color: hsl(var(--primary));
-		font-size: 0.625rem;
-		font-weight: 700;
-		flex-shrink: 0;
-	}
-	.textarea {
-		display: flex;
-		width: 100%;
-		border-radius: 0.375rem;
-		border: 1px solid hsl(var(--input));
-		background: hsl(var(--background));
-		padding: 0.5rem 0.75rem;
-		font-size: 0.875rem;
-		box-shadow: var(--shadow-sm);
-		resize: vertical;
-		outline: none;
-	}
-	.textarea:focus-visible {
-		ring: 1px solid hsl(var(--ring));
-	}
-</style>

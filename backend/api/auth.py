@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlmodel import select
 
 from database import get_session
-from models import Company, CompanyMember, User
+from models import Company, CompanyMember, Personnel, User
 from schemas import ChangePasswordRequest, InviteRequest, LoginRequest, SetupRequest
 from services.auth import (
     create_access_token,
@@ -177,11 +177,17 @@ def me(user: User = Depends(get_current_user)):
         for m in memberships:
             co = session.get(Company, m.company_id)
             if co:
+                person = session.exec(
+                    select(Personnel)
+                    .where(Personnel.user_id == user.id)
+                    .where(Personnel.company_id == m.company_id)
+                ).first()
                 companies.append({
                     "company_id": m.company_id,
                     "company_name": co.name,
                     "role": m.role,
                     "scope_id": m.scope_id,
+                    "personnel_id": person.id if person else None,
                 })
     return {
         "id": user.id,

@@ -5,6 +5,7 @@ export type UserCompany = {
 	company_name: string;
 	role: 'founder' | 'executive' | 'dept_head' | 'agent_owner' | 'user';
 	scope_id: string | null;
+	personnel_id: string | null;
 };
 
 export type AuthUser = {

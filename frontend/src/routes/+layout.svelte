@@ -27,6 +27,9 @@
 		Inbox,
 		ChevronLeft,
 		ChevronRight,
+		Settings2,
+		Edit,
+		Trash2,
 	} from '@lucide/svelte';
 	import type { Snippet } from 'svelte';
 	import { companyStore } from '$lib/stores/company.svelte';
@@ -34,6 +37,7 @@
 	import { i18n, type Locale } from '$lib/i18n/index.svelte';
 	import type { Company } from '$lib/api/companies';
 	import { a2aApi } from '$lib/api/a2a';
+	import Input from '$lib/components/ui/input.svelte';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -129,6 +133,65 @@
 	function logout() { authStore.logout(); goto('/login'); }
 
 	const isPublicPage = $derived(PUBLIC_ROUTES.some(r => $page.url.pathname.startsWith(r)));
+
+	// ── Company.md panel ──────────────────────────────────────────────────────
+	type Goal = { id: number; text: string; done: boolean };
+	type CompanyMd = {
+		name: string; sector: string; website: string;
+		vision: string; mission: string;
+		values: string[]; goals: Goal[];
+	};
+
+	let coMdOpen = $state(false);
+	let coMdEdit = $state<CompanyMd>({
+		name: '', sector: '', website: '',
+		vision: 'Teknoloji ile iş süreçlerini dönüştüren, insan-ajan iş birliğinde sektörün referans noktası olmak.',
+		mission: 'Kurumların agentic süreçleri güvenli, izlenebilir ve yönetilebilir biçimde devreye almasını sağlamak.',
+		values: ['Şeffaflık', 'Güven', 'Sürekli Öğrenme', 'İnsan Odaklılık', 'Ölçülebilir Etki'],
+		goals: [
+			{ id: 1, text: 'Agentic süreçleri 5 departmanda devreye almak', done: false },
+			{ id: 2, text: '15 aktif ajan oluşturmak', done: false },
+			{ id: 3, text: 'Tüm departmanlara özel policy kütüphanesi oluşturmak', done: false },
+		],
+	});
+	let coNewValue = $state('');
+	let coNewGoal  = $state('');
+
+	function openCoMd() {
+		coMdEdit = {
+			...coMdEdit,
+			name: active?.name ?? coMdEdit.name,
+			sector: (active as any)?.sector ?? coMdEdit.sector,
+			website: (active as any)?.website ?? coMdEdit.website,
+			values: [...coMdEdit.values],
+			goals: coMdEdit.goals.map(g => ({ ...g })),
+		};
+		coNewValue = ''; coNewGoal = '';
+		coMdOpen = true;
+		companyMenuOpen = false;
+	}
+
+	function coAddValue() {
+		const v = coNewValue.trim();
+		if (!v || coMdEdit.values.includes(v)) return;
+		coMdEdit = { ...coMdEdit, values: [...coMdEdit.values, v] };
+		coNewValue = '';
+	}
+	function coRemoveValue(v: string) {
+		coMdEdit = { ...coMdEdit, values: coMdEdit.values.filter(x => x !== v) };
+	}
+	function coAddGoal() {
+		const txt = coNewGoal.trim();
+		if (!txt) return;
+		const maxId = coMdEdit.goals.reduce((m, g) => Math.max(m, g.id), 0);
+		coMdEdit = { ...coMdEdit, goals: [...coMdEdit.goals, { id: maxId + 1, text: txt, done: false }] };
+		coNewGoal = '';
+	}
+	function coRemoveGoal(id: number) {
+		coMdEdit = { ...coMdEdit, goals: coMdEdit.goals.filter(g => g.id !== id) };
+	}
+
+	const canManageCompany = $derived(can('dept_head'));
 
 	const ROLE_WEIGHT: Record<string, number> = {
 		founder: 5, executive: 4, dept_head: 3, agent_owner: 2, user: 1,
@@ -231,6 +294,14 @@
 							</div>
 						{/if}
 					</div>
+
+					<!-- Company.md gear icon -->
+					{#if active}
+						<Button variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground hover:text-foreground"
+							onclick={openCoMd} title="Şirket bilgileri">
+							<Settings2 class="w-4 h-4" />
+						</Button>
+					{/if}
 
 					<!-- Language picker -->
 					<div class="relative">
@@ -457,5 +528,212 @@
 			{@render children()}
 		</div>
 	</div>
+
+	<!-- ── Company.md Side Panel ─────────────────────────────────────────────── -->
+	{#if coMdOpen}
+		<div class="fixed inset-0 z-30 bg-black/40 lg:hidden" onclick={() => (coMdOpen = false)} aria-hidden="true"></div>
+	{/if}
+	<aside class="co-md-panel {coMdOpen ? 'translate-x-0' : 'translate-x-full'}">
+		<!-- Header -->
+		<div class="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
+			<div class="flex items-center gap-2.5">
+				<div class="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
+					<Building2 class="w-4 h-4 text-muted-foreground" />
+				</div>
+				<div>
+					<div class="font-semibold text-sm">Şirket Bilgileri</div>
+					<div class="text-xs text-muted-foreground">company.md</div>
+				</div>
+			</div>
+			<Button variant="ghost" size="icon" onclick={() => (coMdOpen = false)}>
+				<X class="w-4 h-4" />
+			</Button>
+		</div>
+
+		<!-- Body -->
+		<div class="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+
+			<!-- Identity -->
+			<section class="space-y-4">
+				<div class="co-section-label"><span class="co-badge">1</span>Kimlik</div>
+				{#if canManageCompany}
+					<div class="grid sm:grid-cols-2 gap-3">
+						<div class="space-y-1.5 sm:col-span-2">
+							<label class="text-sm font-medium" for="co-name">Şirket Adı</label>
+							<Input id="co-name" bind:value={coMdEdit.name} placeholder="Acme Corp" />
+						</div>
+						<div class="space-y-1.5">
+							<label class="text-sm font-medium" for="co-sector">Sektör</label>
+							<Input id="co-sector" bind:value={coMdEdit.sector} placeholder="Yazılım & SaaS" />
+						</div>
+						<div class="space-y-1.5">
+							<label class="text-sm font-medium" for="co-web">Web Sitesi</label>
+							<Input id="co-web" bind:value={coMdEdit.website} placeholder="https://..." />
+						</div>
+					</div>
+				{:else}
+					<div class="space-y-1.5 text-sm">
+						<div class="font-semibold text-base">{coMdEdit.name || active?.name}</div>
+						{#if coMdEdit.sector}<div class="text-muted-foreground">{coMdEdit.sector}</div>{/if}
+						{#if coMdEdit.website}<a href={coMdEdit.website} class="text-primary text-xs">{coMdEdit.website}</a>{/if}
+					</div>
+				{/if}
+			</section>
+
+			<!-- Vision & Mission -->
+			<section class="space-y-4">
+				<div class="co-section-label"><span class="co-badge">2</span>Vizyon & Misyon</div>
+				{#if canManageCompany}
+					<div class="space-y-3">
+						<div class="space-y-1.5">
+							<label class="text-sm font-medium" for="co-vision">Vizyon</label>
+							<textarea id="co-vision" bind:value={coMdEdit.vision} class="co-textarea" rows="3" placeholder="Uzun vadeli hedef..."></textarea>
+						</div>
+						<div class="space-y-1.5">
+							<label class="text-sm font-medium" for="co-mission">Misyon</label>
+							<textarea id="co-mission" bind:value={coMdEdit.mission} class="co-textarea" rows="3" placeholder="Günlük amaç..."></textarea>
+						</div>
+					</div>
+				{:else}
+					<div class="space-y-3">
+						{#if coMdEdit.vision}
+							<div>
+								<div class="text-xs font-semibold text-muted-foreground mb-1">VİZYON</div>
+								<p class="text-sm text-muted-foreground leading-relaxed">{coMdEdit.vision}</p>
+							</div>
+						{/if}
+						{#if coMdEdit.mission}
+							<div>
+								<div class="text-xs font-semibold text-muted-foreground mb-1">MİSYON</div>
+								<p class="text-sm text-muted-foreground leading-relaxed">{coMdEdit.mission}</p>
+							</div>
+						{/if}
+					</div>
+				{/if}
+			</section>
+
+			<!-- Values -->
+			<section class="space-y-3">
+				<div class="co-section-label"><span class="co-badge">3</span>Değerler</div>
+				{#if coMdEdit.values.length > 0}
+					<div class="flex flex-wrap gap-2">
+						{#each coMdEdit.values as val}
+							<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
+								{val}
+								{#if canManageCompany}
+									<button type="button" onclick={() => coRemoveValue(val)} class="hover:text-destructive transition-colors" aria-label="Kaldır">
+										<X class="w-3 h-3" />
+									</button>
+								{/if}
+							</span>
+						{/each}
+					</div>
+				{/if}
+				{#if canManageCompany}
+					<div class="flex gap-2">
+						<Input bind:value={coNewValue} placeholder="Yeni değer..." class="flex-1"
+							onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); coAddValue(); } }} />
+						<Button variant="outline" size="sm" onclick={coAddValue} disabled={!coNewValue.trim()}>
+							<Plus class="w-3.5 h-3.5" />
+						</Button>
+					</div>
+				{/if}
+			</section>
+
+			<!-- Goals -->
+			<section class="space-y-3">
+				<div class="co-section-label"><span class="co-badge">4</span>Hedefler</div>
+				{#if coMdEdit.goals.length > 0}
+					<div class="space-y-2">
+						{#each coMdEdit.goals as goal}
+							<div class="flex items-start gap-2 px-3 py-2 rounded-lg bg-muted/60 border border-border/50 group/g">
+								<div class="w-3.5 h-3.5 rounded-sm bg-emerald-500/20 border border-emerald-500/50 flex-shrink-0 mt-0.5"></div>
+								<span class="text-sm flex-1">{goal.text}</span>
+								{#if canManageCompany}
+									<button type="button" onclick={() => coRemoveGoal(goal.id)}
+										class="text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover/g:opacity-100 flex-shrink-0"
+										aria-label="Kaldır">
+										<X class="w-3.5 h-3.5" />
+									</button>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				{/if}
+				{#if canManageCompany}
+					<div class="flex gap-2">
+						<Input bind:value={coNewGoal} placeholder="Yeni hedef..." class="flex-1"
+							onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); coAddGoal(); } }} />
+						<Button variant="outline" size="sm" onclick={coAddGoal} disabled={!coNewGoal.trim()}>
+							<Plus class="w-3.5 h-3.5" />
+						</Button>
+					</div>
+				{/if}
+			</section>
+		</div>
+
+		{#if canManageCompany}
+			<div class="border-t px-6 py-4 flex gap-3 justify-end flex-shrink-0 bg-card">
+				<Button variant="outline" onclick={() => (coMdOpen = false)}>İptal</Button>
+				<Button onclick={() => (coMdOpen = false)}>Kaydet</Button>
+			</div>
+		{/if}
+	</aside>
+
 </div>
 {/if}
+
+
+<style>
+.co-md-panel {
+	position: fixed;
+	top: 0; right: 0; bottom: 0;
+	width: 520px;
+	max-width: 100vw;
+	background: hsl(var(--card));
+	border-left: 1px solid hsl(var(--border));
+	box-shadow: -8px 0 32px rgba(0,0,0,0.08);
+	z-index: 40;
+	display: flex;
+	flex-direction: column;
+	transition: transform 0.2s cubic-bezier(0.32,0.72,0,1);
+}
+.co-section-label {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-size: 0.6875rem;
+	font-weight: 700;
+	color: hsl(var(--muted-foreground));
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+}
+.co-badge {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.25rem;
+	height: 1.25rem;
+	border-radius: 9999px;
+	background: hsl(var(--primary) / 0.1);
+	color: hsl(var(--primary));
+	font-size: 0.625rem;
+	font-weight: 700;
+	flex-shrink: 0;
+}
+.co-textarea {
+	display: flex;
+	width: 100%;
+	border-radius: 0.375rem;
+	border: 1px solid hsl(var(--input));
+	background: hsl(var(--background));
+	padding: 0.5rem 0.75rem;
+	font-size: 0.875rem;
+	resize: vertical;
+	outline: none;
+	font-family: inherit;
+}
+.co-textarea:focus {
+	box-shadow: 0 0 0 1px hsl(var(--ring));
+}
+</style>
