@@ -8,6 +8,56 @@ Platform güncellemelerinin kronolojik kaydı.
 
 ---
 
+## v0.5 — 9 Temmuz 2026
+
+### Güvenlik
+
+#### Şirket Düzeyi Yetkilendirme
+- Tüm API uç noktaları (`companies`, `departments`, `personnel`, `org-tree`, `sessions`) artık JWT sahibinin ilgili şirkete üyeliğini doğrular.
+- Bir kullanıcı birden fazla şirkette üye olabilir; liste endpoint'leri yalnızca erişimi olan şirketlerin verilerini döner.
+- `check_company_membership()` ve `_get_person_and_check_membership()` yardımcı fonksiyonları eklendi.
+
+#### Pydantic Doğrulaması
+- Auth endpoint'leri (`login`, `setup`, `change-password`, `invite`) artık `body: dict` yerine güçlü tipli Pydantic şemaları kullanır.
+- E-posta normalizasyonu ve minimum şifre uzunluğu (8 karakter) doğrulaması schema seviyesinde uygulanır.
+
+#### SSE Oturum Temizliği
+- Sunucu-taraflı olaylar (SSE) kesildiğinde oturum durumu `active`'den `idle`'a geçer; artık askıda kalmaz.
+
+#### Şifre Değiştirme Zorunluluğu
+- Davet edilen kullanıcılar ilk girişte `/set-password` sayfasına yönlendirilir; bu sayfa atlanamaz.
+
+### Altyapı
+
+#### Veritabanı Migrasyonları (Alembic)
+- Alembic entegrasyonu tamamlandı; artık `alembic revision --autogenerate` ile şema değişiklikleri izlenebilir.
+- SQLite `ALTER TABLE` desteği için `render_as_batch=True` aktif.
+
+#### Yapılandırılmış JSON Loglama
+- `logs/app.log` dosyasına JSON formatında günlük; 30 günlük otomatik rotasyon.
+- HTTP istek/yanıt logging middleware eklendi (method, path, status, ms).
+
+#### Nginx Hız Sınırlama
+- Üretim ortamı için `docker-compose.prod.yml` + `nginx.conf`: login endpoint'i IP başına dakikada 5 istek, genel API 60 istek.
+
+#### Cloudflare Tunnel
+- HTTPS kurulumu için Cloudflare Tunnel rehberi README'ye eklendi (Option C).
+
+### Özellikler
+
+#### S3/R2/MinIO Yedekleme
+- **Ayarlar → Yedekleme** sekmesi: S3, Cloudflare R2 veya MinIO uyumlu depolama yapılandırması.
+- `sqlite3.backup()` API ile güvenli çevrimiçi yedek alma, boto3 ile yükleme.
+- Yedekleme geçmişi (son 20 yedek), anlık yedek alma butonu, kimlik bilgileri şifreli saklanır.
+
+#### Sosyal Medya Ajan Skill'leri
+- `instagram_post` builtin skill: Instagram Business hesabına Graph API v21.0 üzerinden fotoğraf paylaşımı.
+- `whatsapp_send` builtin skill: WhatsApp Business Cloud API üzerinden metin mesajı gönderimi.
+- **Ayarlar → Sosyal Medya** sekmesi: IG User ID + Access Token, WA Phone Number ID + Access Token yapılandırması; kimlik bilgileri AES-256 ile şifreli saklanır.
+- Ajan yapılandırmasında bu skill'leri builtin olarak ekleyerek herhangi bir ajan sosyal medya paylaşımı yapabilir.
+
+---
+
 ## v0.4 — 2 Temmuz 2026
 
 ### Yeni Özellikler
