@@ -614,79 +614,32 @@
 	</div>
 
 	<!-- Tabs -->
-	<div class="flex gap-x-1 mb-8 border-b overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-		<button
-			class={[
-				'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-x-2 whitespace-nowrap flex-shrink-0',
-				tab === 'providers'
-					? 'border-primary text-foreground'
-					: 'border-transparent text-muted-foreground hover:text-foreground'
-			].join(' ')}
-			onclick={() => switchTab('providers')}
-		>
-			<Cpu class="w-4 h-4" />
-			{t('settings_providers')}
-		</button>
-		<button
-			class={[
-				'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-x-2 whitespace-nowrap flex-shrink-0',
-				tab === 'git'
-					? 'border-primary text-foreground'
-					: 'border-transparent text-muted-foreground hover:text-foreground'
-			].join(' ')}
-			onclick={() => switchTab('git')}
-		>
-			<GitBranch class="w-4 h-4" />
-			{t('settings_git')}
-		</button>
-		<button
-			class={[
-				'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-x-2 whitespace-nowrap flex-shrink-0',
-				tab === 'audit'
-					? 'border-primary text-foreground'
-					: 'border-transparent text-muted-foreground hover:text-foreground'
-			].join(' ')}
-			onclick={() => switchTab('audit')}
-		>
-			<Clock class="w-4 h-4" />
-			Audit Log
-		</button>
-		<button
-			class={[
-				'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-x-2 whitespace-nowrap flex-shrink-0',
-				tab === 'backup'
-					? 'border-primary text-foreground'
-					: 'border-transparent text-muted-foreground hover:text-foreground'
-			].join(' ')}
-			onclick={() => switchTab('backup')}
-		>
-			<Database class="w-4 h-4" />
-			Yedekleme
-		</button>
-		<button
-			class={[
-				'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-x-2 whitespace-nowrap flex-shrink-0',
-				tab === 'social'
-					? 'border-primary text-foreground'
-					: 'border-transparent text-muted-foreground hover:text-foreground'
-			].join(' ')}
-			onclick={() => switchTab('social')}
-		>
-			<Link class="w-4 h-4" />
-			Entegrasyonlar
-		</button>
-		<button
-			class={[
-				'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-x-2 whitespace-nowrap flex-shrink-0',
-				tab === 'databases'
-					? 'border-primary text-foreground'
-					: 'border-transparent text-muted-foreground hover:text-foreground'
-			].join(' ')}
-			onclick={() => switchTab('databases')}
-		>
-			<Table2 class="w-4 h-4" />
-			Veritabanları
-		</button>
+	<div class="relative mb-8">
+		<div class="absolute bottom-0 left-0 right-0 h-px bg-border"></div>
+		<div class="tab-scroll flex gap-x-1">
+			{#each [
+				{ id: 'providers', icon: Cpu,       label: t('settings_providers') },
+				{ id: 'git',       icon: GitBranch, label: t('settings_git') },
+				{ id: 'audit',     icon: Clock,     label: 'Audit Log' },
+				{ id: 'backup',    icon: Database,  label: 'Yedekleme' },
+				{ id: 'social',    icon: Link,      label: 'Entegrasyonlar' },
+				{ id: 'databases', icon: Table2,    label: 'Veritabanları' },
+			] as t2}
+				<button
+					class={[
+						'relative z-10 px-4 py-2.5 text-sm font-medium transition-colors flex items-center gap-x-2 whitespace-nowrap flex-shrink-0',
+						'after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:rounded-full after:transition-colors',
+						tab === t2.id
+							? 'text-foreground after:bg-primary'
+							: 'text-muted-foreground hover:text-foreground after:bg-transparent'
+					].join(' ')}
+					onclick={() => switchTab(t2.id as any)}
+				>
+					<svelte:component this={t2.icon} class="w-4 h-4" />
+					{t2.label}
+				</button>
+			{/each}
+		</div>
 	</div>
 
 	<!-- ── PROVIDERS TAB ─────────────────────────────────────────────────── -->
@@ -1885,3 +1838,15 @@
 	</div>
 	{/if}
 </div>
+
+
+<style>
+.tab-scroll {
+	overflow-x: auto;
+	scrollbar-width: none;
+	-ms-overflow-style: none;
+}
+.tab-scroll::-webkit-scrollbar {
+	display: none;
+}
+</style>
