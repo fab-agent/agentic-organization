@@ -20,7 +20,7 @@ function Hero() {
           fontSize: 13, color: '#94a3b8',
         }}>
           <span style={{width: 8, height: 8, background: '#22c55e', borderRadius: '50%', display: 'inline-block'}}></span>
-          v0.2 · Aktif Geliştirme
+          v0.5 · Aktif Geliştirme
         </div>
 
         <Heading as="h1" style={{
