@@ -5,13 +5,17 @@
 	import Dialog from '$lib/components/ui/dialog.svelte';
 	import Table from '$lib/components/ui/table.svelte';
 	import Input from '$lib/components/ui/input.svelte';
-	import { Plus, Pencil, Trash2, Users, Bot, Loader, Mail, ShieldCheck, UserCheck, X, Building, User, BrainCircuit, MessageSquare, Clock } from '@lucide/svelte';
+	import {
+		Plus, Pencil, Trash2, Users, Bot, Loader, Mail,
+		ShieldCheck, UserCheck, X, Building, User,
+		BrainCircuit, MessageSquare, Clock, ChevronLeft,
+	} from '@lucide/svelte';
 	import { personnel as personnelApi, type PersonnelItem, type PersonnelCreate } from '$lib/api/personnel';
-	import { sessionsApi, type Session, type AgentMemory } from '$lib/api/sessions';
 	import { departments as deptApi, type Department } from '$lib/api/departments';
 	import { companyStore } from '$lib/stores/company.svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
 	import { invitePersonnel } from '$lib/api/client';
+	import { sessionsApi, type Session, type AgentMemory } from '$lib/api/sessions';
 	import { t } from '$lib/i18n/index.svelte';
 
 	let people: PersonnelItem[] = $state([]);
@@ -36,10 +40,7 @@
 	}
 
 	onMount(load);
-
-	$effect(() => {
-		if (companyStore.active) load();
-	});
+	$effect(() => { if (companyStore.active) load(); });
 
 	function slugify(text: string): string {
 		return text
@@ -50,28 +51,42 @@
 			.replace(/\s+/g, '-').replace(/-+/g, '-');
 	}
 
-	// ── Form ──────────────────────────────────────────────────────────────────
-	let showFormDialog = $state(false);
-	let editingId: string | null = $state(null);
+	// ── Side panel: view / edit / create ─────────────────────────────────────
+	type PanelMode = 'view' | 'edit' | 'create';
+	let panelMode   = $state<PanelMode | null>(null);
+	let selectedPerson = $state<PersonnelItem | null>(null);
+	let panelSessions  = $state<Session[]>([]);
+	let panelMemories  = $state<AgentMemory[]>([]);
+	let panelLoading   = $state(false);
+
 	let form = $state<PersonnelCreate & { title: string; email: string }>({
 		name: '', slug: '', title: '', role: '',
 		type: 'human', department_id: '', manager_id: '', email: '',
 	});
 
 	$effect(() => {
-		if (editingId === null) {
+		if (panelMode === 'create') {
 			form.slug = slugify(form.name);
 		}
 	});
 
-	function openCreate() {
-		editingId = null;
-		form = { name: '', slug: '', title: '', role: '', type: 'human', department_id: '', manager_id: '', email: '' };
-		showFormDialog = true;
+	function openView(p: PersonnelItem) {
+		selectedPerson = p;
+		panelMode = 'view';
+		panelSessions = [];
+		panelMemories = [];
+		panelLoading = true;
+		Promise.all([
+			sessionsApi.list({ personnel_id: p.id }),
+			sessionsApi.memories(p.id),
+		]).then(([s, m]) => {
+			panelSessions = s;
+			panelMemories = m;
+		}).catch(() => {}).finally(() => { panelLoading = false; });
 	}
 
 	function openEdit(p: PersonnelItem) {
-		editingId = p.id;
+		selectedPerson = p;
 		form = {
 			name: p.name, slug: p.slug, title: p.title ?? '',
 			role: p.role ?? '', type: p.type,
@@ -79,8 +94,16 @@
 			manager_id: p.manager_id ?? '',
 			email: (p as any).email ?? '',
 		};
-		showFormDialog = true;
+		panelMode = 'edit';
 	}
+
+	function openCreate() {
+		selectedPerson = null;
+		form = { name: '', slug: '', title: '', role: '', type: 'human', department_id: '', manager_id: '', email: '' };
+		panelMode = 'create';
+	}
+
+	function closePanel() { panelMode = null; selectedPerson = null; }
 
 	async function save() {
 		if (!form.name.trim()) return;
@@ -94,14 +117,16 @@
 				department_id: form.department_id || undefined,
 				manager_id: form.manager_id || undefined,
 			};
-			if (editingId) {
-				const updated = await personnelApi.update(editingId, payload);
-				people = people.map(p => p.id === editingId ? updated : p);
+			if (panelMode === 'edit' && selectedPerson) {
+				const updated = await personnelApi.update(selectedPerson.id, payload);
+				people = people.map(p => p.id === selectedPerson!.id ? updated : p);
+				selectedPerson = updated;
+				panelMode = 'view';
 			} else {
 				const created = await personnelApi.create(payload);
 				people = [...people, created];
+				closePanel();
 			}
-			showFormDialog = false;
 		} catch (e) {
 			alert((e as Error).message);
 		} finally {
@@ -122,6 +147,7 @@
 			people = people.filter(p => p.id !== deleteTarget!.id);
 			deleteTarget = null;
 			showDeleteDialog = false;
+			closePanel();
 		} catch (e) {
 			alert((e as Error).message);
 		} finally {
@@ -159,7 +185,6 @@
 		try {
 			await invitePersonnel(inviteTarget.id, inviteRole);
 			inviteDone = true;
-			// Update local record to show has_user
 			people = people.map(p =>
 				p.id === inviteTarget!.id ? { ...p, has_user: true } as any : p
 			);
@@ -170,32 +195,6 @@
 			inviting = false;
 		}
 	}
-
-	// ── Side panel ───────────────────────────────────────────────────────────
-	let selectedPerson = $state<PersonnelItem | null>(null);
-	let panelSessions = $state<Session[]>([]);
-	let panelMemories = $state<AgentMemory[]>([]);
-	let panelLoading = $state(false);
-
-	function openPanel(p: PersonnelItem) {
-		selectedPerson = p;
-		panelSessions = [];
-		panelMemories = [];
-	}
-	function closePanel() { selectedPerson = null; }
-
-	$effect(() => {
-		if (!selectedPerson) return;
-		const pid = selectedPerson.id;
-		panelLoading = true;
-		Promise.all([
-			sessionsApi.list({ personnel_id: pid }),
-			sessionsApi.memories(pid),
-		]).then(([s, m]) => {
-			panelSessions = s;
-			panelMemories = m;
-		}).catch(() => {}).finally(() => { panelLoading = false; });
-	});
 
 	// ── Permissions ───────────────────────────────────────────────────────────
 	const activeCompanyId = $derived(companyStore.active?.id ?? '');
@@ -266,8 +265,8 @@
 				</thead>
 				<tbody class="divide-y">
 					{#each people as person (person.id)}
-						<tr class="hover:bg-muted/30 transition-colors cursor-pointer {selectedPerson?.id === person.id ? 'bg-muted/40' : ''}"
-							onclick={(e) => { if ((e.target as HTMLElement).closest('button')) return; openPanel(person); }}>
+						<tr class="hover:bg-muted/30 transition-colors cursor-pointer {selectedPerson?.id === person.id && panelMode === 'view' ? 'bg-muted/40' : ''}"
+							onclick={(e) => { if ((e.target as HTMLElement).closest('button')) return; openView(person); }}>
 							<td class="px-4 py-3">
 								<div class="flex items-center gap-3">
 									<div class="h-9 w-9 rounded-lg ring-1 ring-border flex-shrink-0 bg-muted flex items-center justify-center">
@@ -355,83 +354,7 @@
 	{/if}
 </div>
 
-<!-- Create / Edit Dialog -->
-<Dialog bind:open={showFormDialog} label={editingId ? t('personnel_edit_title') : t('personnel_add_title')}>
-	<div class="space-y-5">
-		<h2 class="font-display text-xl tracking-tight">
-			{editingId ? t('personnel_edit_title') : t('personnel_add_title')}
-		</h2>
-
-		<div class="space-y-4">
-			<div class="grid grid-cols-2 gap-3">
-				<div class="space-y-1.5">
-					<label class="text-sm font-medium" for="person-name">{t('personnel_name_label')}</label>
-					<Input id="person-name" bind:value={form.name} placeholder="Ahmet Yılmaz" autocomplete="off" />
-				</div>
-				<div class="space-y-1.5">
-					<label class="text-sm font-medium" for="person-slug">{t('personnel_slug_label')}</label>
-					<Input id="person-slug" bind:value={form.slug} placeholder="ahmet-yilmaz" autocomplete="off" class="font-mono text-xs" />
-				</div>
-			</div>
-
-			<div class="grid grid-cols-2 gap-3">
-				<div class="space-y-1.5">
-					<label class="text-sm font-medium" for="person-title">{t('personnel_title_label')}</label>
-					<Input id="person-title" bind:value={form.title} placeholder="Yazılım Mühendisi" autocomplete="off" />
-				</div>
-				<div class="space-y-1.5">
-					<label class="text-sm font-medium" for="person-role">{t('personnel_role_label')}</label>
-					<Input id="person-role" bind:value={form.role} placeholder="Engineer" autocomplete="off" />
-				</div>
-			</div>
-
-			<div class="grid grid-cols-2 gap-3">
-				<div class="space-y-1.5">
-					<label class="text-sm font-medium" for="person-type">{t('personnel_type_label')}</label>
-					<select id="person-type" class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" bind:value={form.type}>
-						<option value="human">{t('personnel_type_human')}</option>
-						<option value="agent">{t('personnel_type_agent')}</option>
-					</select>
-				</div>
-				<div class="space-y-1.5">
-					<label class="text-sm font-medium" for="person-dept">{t('personnel_dept_label')}</label>
-					<select id="person-dept" class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" bind:value={form.department_id}>
-						<option value="">{t('select_placeholder')}</option>
-						{#each depts as d}
-							<option value={d.id}>{d.name}</option>
-						{/each}
-					</select>
-				</div>
-			</div>
-
-			<div class="space-y-1.5">
-				<label class="text-sm font-medium" for="person-manager">{t('personnel_manager_label')}</label>
-				<select id="person-manager" class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" bind:value={form.manager_id}>
-					<option value="">{t('select_placeholder')}</option>
-					{#each people.filter(p => p.type === 'human') as p}
-						<option value={p.id}>{p.name}</option>
-					{/each}
-				</select>
-			</div>
-
-			{#if form.type === 'human'}
-				<div class="space-y-1.5">
-					<label class="text-sm font-medium" for="person-email">{t('personnel_email_label')} <span class="text-muted-foreground font-normal">{t('personnel_email_hint')}</span></label>
-					<Input id="person-email" type="email" bind:value={form.email} placeholder="ahmet@sirket.com" autocomplete="off" />
-				</div>
-			{/if}
-		</div>
-
-		<div class="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
-			<Button variant="outline" onclick={() => (showFormDialog = false)} class="sm:w-auto">{t('cancel')}</Button>
-			<Button onclick={save} disabled={!form.name.trim() || saving} class="sm:w-auto">
-				{saving ? t('saving') : editingId ? t('update') : t('add')}
-			</Button>
-		</div>
-	</div>
-</Dialog>
-
-<!-- Invite Dialog -->
+<!-- Invite Dialog (kept as dialog — simple confirmation flow) -->
 <Dialog bind:open={showInviteDialog} label={t('personnel_invite_title')}>
 	<div class="space-y-5">
 		<div>
@@ -461,14 +384,12 @@
 					</select>
 					<p class="text-xs text-muted-foreground">{t('personnel_invite_role_hint')}</p>
 				</div>
-
 				{#if inviteError}
 					<div class="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
 						{inviteError}
 					</div>
 				{/if}
 			</div>
-
 			<div class="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
 				<Button variant="outline" onclick={() => { showInviteDialog = false; inviteTarget = null; }} class="sm:w-auto">{t('cancel')}</Button>
 				<Button onclick={confirmInvite} disabled={inviting} class="sm:w-auto gap-2">
@@ -485,7 +406,7 @@
 	</div>
 </Dialog>
 
-<!-- Delete Confirmation -->
+<!-- Delete Dialog -->
 <Dialog bind:open={showDeleteDialog} label={t('personnel_delete_title')}>
 	<div class="space-y-4">
 		<h2 class="font-display text-xl tracking-tight">{t('personnel_delete_title')}</h2>
@@ -501,144 +422,236 @@
 	</div>
 </Dialog>
 
-<!-- ── Personnel Side Panel ────────────────────────────────────────────── -->
-{#if selectedPerson}
-	<!-- Backdrop for mobile -->
+<!-- ── Side Panel ────────────────────────────────────────────────────────── -->
+{#if panelMode !== null}
 	<div class="fixed inset-0 z-30 bg-black/30 lg:hidden" onclick={closePanel} aria-hidden="true"></div>
 
 	<aside class="person-panel">
+
 		<!-- Header -->
-		<div class="flex items-start justify-between p-5 border-b border-border flex-shrink-0">
-			<div class="flex items-center gap-3">
-				<div class="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-border flex-shrink-0">
-					<span class="text-base font-bold text-primary">{selectedPerson.name.charAt(0)}</span>
+		<div class="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
+			{#if panelMode === 'view'}
+				<div class="flex items-center gap-3">
+					<div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center ring-1 ring-border flex-shrink-0">
+						<span class="text-base font-bold text-primary">{selectedPerson?.name.charAt(0)}</span>
+					</div>
+					<div>
+						<div class="font-semibold text-base leading-tight">{selectedPerson?.name}</div>
+						<div class="text-sm text-muted-foreground mt-0.5">{selectedPerson?.title ?? selectedPerson?.role ?? '—'}</div>
+					</div>
 				</div>
-				<div>
-					<div class="font-semibold text-base leading-tight">{selectedPerson.name}</div>
-					<div class="text-sm text-muted-foreground mt-0.5">{selectedPerson.title ?? selectedPerson.role ?? '—'}</div>
+			{:else}
+				<div class="flex items-center gap-2">
+					{#if panelMode === 'edit'}
+						<button class="text-muted-foreground hover:text-foreground" onclick={() => (selectedPerson ? openView(selectedPerson) : closePanel())} aria-label="Geri">
+							<ChevronLeft class="w-5 h-5" />
+						</button>
+					{/if}
+					<span class="font-semibold text-base">
+						{panelMode === 'edit' ? 'Personeli Düzenle' : 'Yeni Personel'}
+					</span>
 				</div>
-			</div>
-			<button class="text-muted-foreground hover:text-foreground mt-0.5" onclick={closePanel}>
+			{/if}
+			<button class="text-muted-foreground hover:text-foreground ml-2 flex-shrink-0" onclick={closePanel}>
 				<X class="w-5 h-5" />
 			</button>
 		</div>
 
 		<!-- Body -->
-		<div class="flex-1 overflow-y-auto p-5 space-y-5">
+		<div class="flex-1 overflow-y-auto">
 
-			<!-- Info rows -->
-			<div class="space-y-3">
-				<div class="flex items-center gap-3 text-sm">
-					<Building class="w-4 h-4 text-muted-foreground flex-shrink-0" />
-					<span class="text-muted-foreground w-24 flex-shrink-0">Departman</span>
-					<span class="font-medium">{selectedPerson.department_name ?? '—'}</span>
-				</div>
-				<div class="flex items-center gap-3 text-sm">
-					<User class="w-4 h-4 text-muted-foreground flex-shrink-0" />
-					<span class="text-muted-foreground w-24 flex-shrink-0">Yönetici</span>
-					<span class="font-medium">{selectedPerson.manager_name ?? '—'}</span>
-				</div>
-				{#if (selectedPerson as any).email}
-					<div class="flex items-center gap-3 text-sm">
-						<Mail class="w-4 h-4 text-muted-foreground flex-shrink-0" />
-						<span class="text-muted-foreground w-24 flex-shrink-0">E-posta</span>
-						<span class="font-medium font-mono text-xs">{(selectedPerson as any).email}</span>
+			<!-- ── VIEW MODE ── -->
+			{#if panelMode === 'view' && selectedPerson}
+				<div class="p-5 space-y-5">
+					<!-- Info rows -->
+					<div class="space-y-3">
+						<div class="flex items-center gap-3 text-sm">
+							<Building class="w-4 h-4 text-muted-foreground flex-shrink-0" />
+							<span class="text-muted-foreground w-24 flex-shrink-0">Departman</span>
+							<span class="font-medium">{selectedPerson.department_name ?? '—'}</span>
+						</div>
+						<div class="flex items-center gap-3 text-sm">
+							<User class="w-4 h-4 text-muted-foreground flex-shrink-0" />
+							<span class="text-muted-foreground w-24 flex-shrink-0">Yönetici</span>
+							<span class="font-medium">{selectedPerson.manager_name ?? '—'}</span>
+						</div>
+						{#if (selectedPerson as any).email}
+							<div class="flex items-center gap-3 text-sm">
+								<Mail class="w-4 h-4 text-muted-foreground flex-shrink-0" />
+								<span class="text-muted-foreground w-24 flex-shrink-0">E-posta</span>
+								<span class="font-medium font-mono text-xs">{(selectedPerson as any).email}</span>
+							</div>
+						{/if}
+						<div class="flex items-center gap-3 text-sm">
+							<ShieldCheck class="w-4 h-4 text-muted-foreground flex-shrink-0" />
+							<span class="text-muted-foreground w-24 flex-shrink-0">Platform</span>
+							{#if (selectedPerson as any).has_user}
+								<span class="inline-flex items-center gap-1.5 text-emerald-600 font-medium">
+									<UserCheck class="w-3.5 h-3.5" /> Aktif kullanıcı
+								</span>
+							{:else if (selectedPerson as any).email}
+								<span class="text-muted-foreground">Davet bekliyor</span>
+							{:else}
+								<span class="text-muted-foreground">E-posta yok</span>
+							{/if}
+						</div>
 					</div>
-				{/if}
-				<div class="flex items-center gap-3 text-sm">
-					<ShieldCheck class="w-4 h-4 text-muted-foreground flex-shrink-0" />
-					<span class="text-muted-foreground w-24 flex-shrink-0">Platform</span>
-					{#if (selectedPerson as any).has_user}
-						<span class="inline-flex items-center gap-1.5 text-emerald-600 font-medium">
-							<UserCheck class="w-3.5 h-3.5" /> Aktif kullanıcı
-						</span>
-					{:else if (selectedPerson as any).email}
-						<span class="text-muted-foreground">Davet bekliyor</span>
-					{:else}
-						<span class="text-muted-foreground">E-posta yok</span>
-					{/if}
-				</div>
-			</div>
 
-			{#if selectedPerson.role}
-				<div class="rounded-xl bg-muted/50 px-4 py-3">
-					<div class="text-xs font-medium text-muted-foreground mb-1">Rol</div>
-					<div class="text-sm font-medium">{selectedPerson.role}</div>
+					{#if selectedPerson.role}
+						<div class="rounded-xl bg-muted/50 px-4 py-3">
+							<div class="text-xs font-medium text-muted-foreground mb-1">Rol</div>
+							<div class="text-sm font-medium">{selectedPerson.role}</div>
+						</div>
+					{/if}
+
+					<!-- Sessions -->
+					<div>
+						<div class="flex items-center gap-2 mb-3">
+							<MessageSquare class="w-4 h-4 text-muted-foreground" />
+							<span class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Oturumlar</span>
+							{#if panelLoading}
+								<Loader class="w-3 h-3 animate-spin text-muted-foreground ml-auto" />
+							{/if}
+						</div>
+						{#if panelSessions.length === 0 && !panelLoading}
+							<p class="text-xs text-muted-foreground">Henüz oturum yok.</p>
+						{:else}
+							<div class="space-y-2">
+								{#each panelSessions.slice(0, 3) as s}
+									<div class="rounded-lg border border-border bg-muted/30 px-3 py-2">
+										<div class="flex items-center justify-between gap-2">
+											<span class="text-xs font-medium truncate">{s.title ?? 'Oturum'}</span>
+											<span class="text-xs px-1.5 py-0.5 rounded-md font-medium flex-shrink-0
+												{s.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground'}">
+												{s.status === 'active' ? 'Aktif' : 'Kapalı'}
+											</span>
+										</div>
+										<div class="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+											<Clock class="w-3 h-3" />
+											{new Date(s.updated_at).toLocaleDateString('tr-TR', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}
+										</div>
+									</div>
+								{/each}
+							</div>
+						{/if}
+					</div>
+
+					<!-- Memories -->
+					<div>
+						<div class="flex items-center gap-2 mb-3">
+							<BrainCircuit class="w-4 h-4 text-muted-foreground" />
+							<span class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Uzun Dönem Hafıza</span>
+						</div>
+						{#if panelMemories.length === 0 && !panelLoading}
+							<p class="text-xs text-muted-foreground">Henüz hafıza kaydı yok. Oturumlar kapandığında özetler burada görünür.</p>
+						{:else}
+							<div class="space-y-2">
+								{#each panelMemories as m}
+									<div class="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+										<p class="text-xs leading-relaxed">{m.summary}</p>
+										<div class="flex items-center gap-1 mt-1.5 text-xs text-muted-foreground">
+											<Clock class="w-3 h-3" />
+											{new Date(m.created_at).toLocaleDateString('tr-TR', { day:'numeric', month:'short', year:'numeric' })}
+										</div>
+									</div>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				</div>
+
+			<!-- ── EDIT / CREATE MODE ── -->
+			{:else if panelMode === 'edit' || panelMode === 'create'}
+				<div class="p-5 space-y-4">
+					<div class="grid grid-cols-2 gap-3">
+						<div class="space-y-1.5">
+							<label class="text-sm font-medium" for="p-name">{t('personnel_name_label')}</label>
+							<Input id="p-name" bind:value={form.name} placeholder="Ahmet Yılmaz" autocomplete="off" />
+						</div>
+						<div class="space-y-1.5">
+							<label class="text-sm font-medium" for="p-slug">{t('personnel_slug_label')}</label>
+							<Input id="p-slug" bind:value={form.slug} placeholder="ahmet-yilmaz" autocomplete="off" class="font-mono text-xs" />
+						</div>
+					</div>
+
+					<div class="grid grid-cols-2 gap-3">
+						<div class="space-y-1.5">
+							<label class="text-sm font-medium" for="p-title">{t('personnel_title_label')}</label>
+							<Input id="p-title" bind:value={form.title} placeholder="Yazılım Mühendisi" autocomplete="off" />
+						</div>
+						<div class="space-y-1.5">
+							<label class="text-sm font-medium" for="p-role">{t('personnel_role_label')}</label>
+							<Input id="p-role" bind:value={form.role} placeholder="Engineer" autocomplete="off" />
+						</div>
+					</div>
+
+					<div class="grid grid-cols-2 gap-3">
+						<div class="space-y-1.5">
+							<label class="text-sm font-medium" for="p-type">{t('personnel_type_label')}</label>
+							<select id="p-type" class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" bind:value={form.type}>
+								<option value="human">{t('personnel_type_human')}</option>
+								<option value="agent">{t('personnel_type_agent')}</option>
+							</select>
+						</div>
+						<div class="space-y-1.5">
+							<label class="text-sm font-medium" for="p-dept">{t('personnel_dept_label')}</label>
+							<select id="p-dept" class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" bind:value={form.department_id}>
+								<option value="">{t('select_placeholder')}</option>
+								{#each depts as d}
+									<option value={d.id}>{d.name}</option>
+								{/each}
+							</select>
+						</div>
+					</div>
+
+					<div class="space-y-1.5">
+						<label class="text-sm font-medium" for="p-manager">{t('personnel_manager_label')}</label>
+						<select id="p-manager" class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" bind:value={form.manager_id}>
+							<option value="">{t('select_placeholder')}</option>
+							{#each people.filter(p => p.type === 'human') as p}
+								<option value={p.id}>{p.name}</option>
+							{/each}
+						</select>
+					</div>
+
+					{#if form.type === 'human'}
+						<div class="space-y-1.5">
+							<label class="text-sm font-medium" for="p-email">
+								{t('personnel_email_label')} <span class="text-muted-foreground font-normal">{t('personnel_email_hint')}</span>
+							</label>
+							<Input id="p-email" type="email" bind:value={form.email} placeholder="ahmet@sirket.com" autocomplete="off" />
+						</div>
+					{/if}
 				</div>
 			{/if}
-
-			<!-- Sessions (Short-term) -->
-			<div>
-				<div class="flex items-center gap-2 mb-3">
-					<MessageSquare class="w-4 h-4 text-muted-foreground" />
-					<span class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Oturumlar</span>
-					{#if panelLoading}
-						<Loader class="w-3 h-3 animate-spin text-muted-foreground ml-auto" />
-					{/if}
-				</div>
-				{#if panelSessions.length === 0 && !panelLoading}
-					<p class="text-xs text-muted-foreground">Henüz oturum yok.</p>
-				{:else}
-					<div class="space-y-2">
-						{#each panelSessions.slice(0, 3) as s}
-							<div class="rounded-lg border border-border bg-muted/30 px-3 py-2">
-								<div class="flex items-center justify-between gap-2">
-									<span class="text-xs font-medium truncate">{s.title ?? 'Oturum'}</span>
-									<span class="text-xs px-1.5 py-0.5 rounded-md font-medium flex-shrink-0
-										{s.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground'}">
-										{s.status === 'active' ? 'Aktif' : 'Kapalı'}
-									</span>
-								</div>
-								<div class="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-									<Clock class="w-3 h-3" />
-									{new Date(s.updated_at).toLocaleDateString('tr-TR', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' })}
-								</div>
-							</div>
-						{/each}
-					</div>
-				{/if}
-			</div>
-
-			<!-- Memories (Long-term) -->
-			<div>
-				<div class="flex items-center gap-2 mb-3">
-					<BrainCircuit class="w-4 h-4 text-muted-foreground" />
-					<span class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Uzun Dönem Hafıza</span>
-				</div>
-				{#if panelMemories.length === 0 && !panelLoading}
-					<p class="text-xs text-muted-foreground">Henüz hafıza kaydı yok. Oturumlar kapandığında özetler burada görünür.</p>
-				{:else}
-					<div class="space-y-2">
-						{#each panelMemories as m}
-							<div class="rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-								<p class="text-xs leading-relaxed">{m.summary}</p>
-								<div class="flex items-center gap-1 mt-1.5 text-xs text-muted-foreground">
-									<Clock class="w-3 h-3" />
-									{new Date(m.created_at).toLocaleDateString('tr-TR', { day:'numeric', month:'short', year:'numeric' })}
-								</div>
-							</div>
-						{/each}
-					</div>
-				{/if}
-			</div>
 		</div>
 
-		<!-- Footer actions -->
-		{#if canManage}
+		<!-- Footer -->
+		{#if panelMode === 'view' && canManage}
 			<div class="flex gap-2 p-4 border-t border-border flex-shrink-0">
-				{#if (selectedPerson as any).email && !(selectedPerson as any).has_user}
+				{#if (selectedPerson as any)?.email && !(selectedPerson as any)?.has_user}
 					<Button variant="outline" size="sm" class="flex-1 gap-1.5"
-						onclick={() => { openInvite(selectedPerson!); closePanel(); }}>
+						onclick={() => { openInvite(selectedPerson!); }}>
 						<Mail class="w-3.5 h-3.5" /> Davet Et
 					</Button>
 				{/if}
 				<Button variant="outline" size="sm" class="flex-1 gap-1.5"
-					onclick={() => { openEdit(selectedPerson!); closePanel(); }}>
+					onclick={() => openEdit(selectedPerson!)}>
 					<Pencil class="w-3.5 h-3.5" /> Düzenle
 				</Button>
 				<Button variant="ghost" size="sm" class="text-destructive hover:text-destructive hover:bg-destructive/10 gap-1.5"
-					onclick={() => { deleteTarget = selectedPerson; showDeleteDialog = true; closePanel(); }}>
+					onclick={() => { deleteTarget = selectedPerson; showDeleteDialog = true; }}>
 					<Trash2 class="w-3.5 h-3.5" />
+				</Button>
+			</div>
+		{:else if panelMode === 'edit' || panelMode === 'create'}
+			<div class="flex gap-2 p-4 border-t border-border flex-shrink-0">
+				<Button variant="outline" class="flex-1"
+					onclick={() => (panelMode === 'edit' && selectedPerson ? openView(selectedPerson) : closePanel())}>
+					{t('cancel')}
+				</Button>
+				<Button class="flex-1" onclick={save} disabled={!form.name.trim() || saving}>
+					{saving ? t('saving') : panelMode === 'edit' ? t('update') : t('add')}
 				</Button>
 			</div>
 		{/if}
@@ -649,7 +662,7 @@
 .person-panel {
 	position: fixed;
 	top: 0; right: 0; bottom: 0;
-	width: 380px;
+	width: 420px;
 	max-width: 100vw;
 	background: hsl(var(--card));
 	border-left: 1px solid hsl(var(--border));
