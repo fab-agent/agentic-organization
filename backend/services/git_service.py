@@ -74,7 +74,7 @@ class GitSyncService:
         # Local paths (file://, /path, relative) — no auth needed
         if url.startswith("file://") or url.startswith("/") or not url.startswith("http"):
             return url
-        token = decrypt(config.encrypted_token)
+        token = decrypt(config.encrypted_token).strip()
         if not url.endswith(".git"):
             url += ".git"
         if config.provider in ("github", "gitea"):
