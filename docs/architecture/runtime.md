@@ -38,7 +38,7 @@ Policies you must follow:
   - {policy_1}
   - {policy_2}
 
-Available tools/skills: web_search, send_email
+Available tools/skills: web_search, telegram_send
 
 Respond helpfully and concisely. Use tools when they would help.
 ```

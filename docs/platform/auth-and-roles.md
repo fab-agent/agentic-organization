@@ -143,12 +143,17 @@ Token, `JWT_SECRET` ortam değişkeniyle imzalanır. Süre dolunca yeniden giri�
 
 ---
 
-## E-posta Altyapısı
+## Telegram Bildirim Altyapısı
 
-Tüm sistem e-postaları [Resend](https://resend.com) üzerinden `noreply@fab.limited` adresinden gönderilir. `EMAIL_FROM` ortam değişkeni ile özelleştirilebilir.
+Davet ve şifre sıfırlama bildirimleri **Telegram Bot API** üzerinden iletilir. E-posta altyapısı gerektirmez; anlık teslimat ve çift yönlü iletişim sağlar.
 
-Gönderilen e-posta türleri:
-- **Davet maili:** Geçici şifre ile hoş geldiniz mesajı
-- **Şifre sıfırlama maili:** Admin sıfırlama sonrası yeni geçici şifre
+Gönderilen bildirim türleri:
+- **Davet bildirimi:** Yeni kullanıcının geçici şifresi admin chat'e iletilir
+- **Şifre yenileme:** Süresi dolan geçici şifre yenilendiğinde bildirim gönderilir
+- **Admin sıfırlama:** Yönetici şifre sıfırladığında yeni geçici şifre bildirilir
 
-Kurulum detayları için → [Kurulum — Resend Kurulumu](../getting-started/installation.md#resend-kurulumu)
+Yapılandırma: **Ayarlar → Entegrasyonlar → Telegram Bildirimleri** bölümünden BotFather token'ı ve admin chat ID girilir.
+
+Telegram yapılandırılmamışsa geçici şifreler API yanıtında ve arayüzde gösterilir.
+
+Kurulum detayları için → [Kurulum — Telegram Bot Kurulumu](../getting-started/installation.md#telegram-bot-kurulumu)

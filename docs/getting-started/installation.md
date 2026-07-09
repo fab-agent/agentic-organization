@@ -110,10 +110,9 @@ Kurulum formu yalnızca veritabanı boşken görünür. Bir kullanıcı oluştur
 JWT_SECRET=gizli-ve-uzun-rastgele-bir-dize    # JWT imzalama anahtarı — en az 32 karakter
 # İlk yönetici hesabı kurulum sihirbazıyla oluşturulur (/setup sayfası)
 
-# --- E-posta / Davet Sistemi (Zorunlu) ---
-RESEND_API_KEY=re_...                         # Resend.com API anahtarı (davet e-postaları için)
-EMAIL_FROM=noreply@fab.limited               # Gönderen e-posta adresi
-APP_URL=http://localhost:5173                 # Frontend adresi (e-postalardaki bağlantılar için)
+# --- Bildirim Sistemi ---
+APP_URL=http://localhost:5173                 # Frontend adresi (Telegram bildirimlerindeki bağlantılar için)
+# Telegram bot ayarları Ayarlar → Entegrasyonlar arayüzünden yapılır, .env gerektirmez
 
 # --- AI Sağlayıcıları (Opsiyonel) ---
 ANTHROPIC_API_KEY=sk-ant-...
@@ -131,19 +130,21 @@ AI anahtarları `.env` yerine **Ayarlar → AI Sağlayıcıları** sayfasından 
 :::
 
 :::caution
-`JWT_SECRET` ve `RESEND_API_KEY` değerlerini ayarlamadan platformu başlatmayın. `JWT_SECRET`'ın tahmin edilemez ve en az 32 karakter uzunluğunda olduğundan emin olun. İlk yönetici hesabı kurulum sihirbazından oluşturulur; sabit bir şifre tanımlamanıza gerek yoktur.
+`JWT_SECRET` değerini ayarlamadan platformu başlatmayın. `JWT_SECRET`'ın tahmin edilemez ve en az 32 karakter uzunluğunda olduğundan emin olun. İlk yönetici hesabı kurulum sihirbazından oluşturulur; sabit bir şifre tanımlamanıza gerek yoktur.
 :::
 
 ---
 
-## Resend Kurulumu
+## Telegram Bot Kurulumu
 
-Davet e-postaları [Resend](https://resend.com) üzerinden gönderilir.
+Davet ve şifre sıfırlama bildirimleri Telegram üzerinden iletilir. `.env` ayarı gerekmez; tüm yapılandırma arayüzden yapılır.
 
-1. [resend.com](https://resend.com) adresinden ücretsiz hesap açın.
-2. **API Keys** bölümünden yeni bir anahtar oluşturun.
-3. Anahtarı `RESEND_API_KEY` değişkenine yapıştırın.
-4. `EMAIL_FROM` alanına Resend'de doğruladığınız bir domain'e ait e-posta adresini girin (örn. `noreply@sirketiniz.com`). Domain doğrulaması yapmak istemiyorsanız `noreply@fab.limited` ile başlayabilirsiniz.
+1. Telegram'da [@BotFather](https://t.me/BotFather) botuna `/newbot` komutunu gönderin.
+2. Bot adı ve kullanıcı adı belirleyin; BotFather size bir **token** verecektir (`123456789:AAF...` formatında).
+3. Bildirimlerin gideceği chat'e botunuzu ekleyin veya bota `/start` gönderin.
+4. [@userinfobot](https://t.me/userinfobot) ile chat ID'nizi öğrenin (grup için negatif sayı olacaktır).
+5. Platformda **Ayarlar → Entegrasyonlar → Telegram Bildirimleri** bölümüne girerek token ve chat ID'yi kaydedin. "Bağlan" butonuna bastığınızda bot doğrulanır.
+6. "Test" butonu ile admin chat'e doğrulama mesajı göndererek kurulumu tamamlayın.
 
 ---
 
