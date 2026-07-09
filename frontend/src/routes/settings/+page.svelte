@@ -33,6 +33,7 @@
 		Table2,
 		Code2,
 		Plus,
+		X,
 		RefreshCcw,
 		AlertCircle
 	} from '@lucide/svelte';
@@ -54,6 +55,15 @@
 
 	let providerCards = $state<ProviderCard[]>([]);
 	let providerLoading = $state(true);
+	let showAddProvider = $state(false);
+	let addProviderSlug = $state('');
+	let addProviderKey = $state('');
+	let addProviderShowKey = $state(false);
+	let addProviderSaving = $state(false);
+	let addProviderError = $state('');
+
+	const configuredProviders = $derived(providerCards.filter((c) => c.has_key));
+	const unconfiguredProviders = $derived(providerCards.filter((c) => !c.has_key));
 
 	async function loadProviders() {
 		providerLoading = true;
@@ -63,7 +73,7 @@
 				...p,
 				keyInput: '',
 				showKey: false,
-				editMode: !p.has_key,
+				editMode: false,
 				saving: false,
 				testing: false,
 				deleting: false,
@@ -71,6 +81,28 @@
 			}));
 		} finally {
 			providerLoading = false;
+		}
+	}
+
+	async function addProvider() {
+		if (!addProviderSlug || !addProviderKey.trim()) return;
+		addProviderSaving = true;
+		addProviderError = '';
+		try {
+			const updated = await providerApi.setKey(addProviderSlug, addProviderKey.trim());
+			const card = providerCards.find((c) => c.provider === addProviderSlug);
+			if (card) Object.assign(card, updated, { keyInput: '', showKey: false, editMode: false, saving: false, error: updated.status === 'invalid' ? t('settings_provider_invalid_err') : '' });
+			if (updated.status === 'active') {
+				showAddProvider = false;
+				addProviderSlug = '';
+				addProviderKey = '';
+			} else {
+				addProviderError = t('settings_provider_invalid_err');
+			}
+		} catch {
+			addProviderError = t('settings_provider_save_err');
+		} finally {
+			addProviderSaving = false;
 		}
 	}
 
@@ -589,175 +621,171 @@
 
 	<!-- ── PROVIDERS TAB ─────────────────────────────────────────────────── -->
 	{#if tab === 'providers'}
-		<div class="mb-4">
-			<p class="text-sm text-muted-foreground">
-				{t('settings_providers_desc')}
-			</p>
-		</div>
+		<div class="space-y-4">
 
-		{#if providerLoading}
-			<div class="flex items-center gap-x-2 text-muted-foreground py-12 justify-center">
-				<Loader2 class="w-4 h-4 animate-spin" />
-				<span class="text-sm">{t('loading')}</span>
-			</div>
-		{:else}
-			<div class="space-y-3">
-				{#each providerCards as card (card.provider)}
-					{@const isActive = card.status === 'active'}
-					{@const isInvalid = card.status === 'invalid'}
+			{#if providerLoading}
+				<div class="flex items-center gap-x-2 text-muted-foreground py-12 justify-center">
+					<Loader2 class="w-4 h-4 animate-spin" />
+					<span class="text-sm">{t('loading')}</span>
+				</div>
+			{:else}
+				<!-- Active / invalid providers -->
+				{#if configuredProviders.length === 0}
+					<div class="text-center py-12 text-muted-foreground">
+						<Cpu class="w-8 h-8 mx-auto mb-3 opacity-30" />
+						<p class="text-sm">Henüz AI sağlayıcısı eklenmemiş</p>
+					</div>
+				{:else}
+					<div class="space-y-3">
+						{#each configuredProviders as card (card.provider)}
+							{@const isActive = card.status === 'active'}
+							{@const isInvalid = card.status === 'invalid'}
+							<div class={['rounded-2xl border bg-card transition-all',
+								isActive ? 'border-emerald-500/30' : 'border-destructive/30'].join(' ')}>
 
-					<div
-						class={[
-							'rounded-2xl border bg-card transition-all',
-							isActive ? 'border-emerald-500/30' : isInvalid ? 'border-destructive/30' : 'border-border'
-						].join(' ')}
-					>
-						<!-- Card header -->
-						<div class="flex items-center justify-between px-5 py-4">
-							<div class="flex items-center gap-x-3">
-								<!-- Status dot -->
-								{#if isActive}
-									<CheckCircle2 class="w-5 h-5 text-emerald-500 flex-shrink-0" />
-								{:else if isInvalid}
-									<AlertTriangle class="w-5 h-5 text-destructive flex-shrink-0" />
-								{:else}
-									<Circle class="w-5 h-5 text-muted-foreground/40 flex-shrink-0" />
-								{/if}
-								<div>
-									<div class="font-semibold text-sm">{card.display_name}</div>
-									{#if isActive}
-										<div class="text-xs text-muted-foreground mt-0.5">
-											{t('settings_provider_last_tested')} {relativeTime(card.last_tested)}
+								<div class="flex items-center justify-between px-5 py-4">
+									<div class="flex items-center gap-x-3">
+										{#if isActive}
+											<CheckCircle2 class="w-5 h-5 text-emerald-500 flex-shrink-0" />
+										{:else}
+											<AlertTriangle class="w-5 h-5 text-destructive flex-shrink-0" />
+										{/if}
+										<div>
+											<div class="font-semibold text-sm">{card.display_name}</div>
+											{#if isActive}
+												<div class="text-xs text-muted-foreground mt-0.5">
+													{t('settings_provider_last_tested')} {relativeTime(card.last_tested)}
+												</div>
+											{:else}
+												<div class="text-xs text-destructive mt-0.5">{t('settings_provider_invalid')}</div>
+											{/if}
 										</div>
-									{:else if isInvalid}
-										<div class="text-xs text-destructive mt-0.5">{t('settings_provider_invalid')}</div>
-									{:else}
-										<div class="text-xs text-muted-foreground mt-0.5">{t('settings_provider_unconfigured')}</div>
-									{/if}
+									</div>
+									<div class="flex items-center gap-x-2">
+										{#if isActive}
+											<Button variant="ghost" size="sm" class="h-8 px-3 text-xs"
+												onclick={() => (card.editMode = !card.editMode)}>
+												{t('settings_provider_update_key')}
+											</Button>
+											<Button variant="ghost" size="sm" class="h-8 px-3 text-xs gap-x-1.5"
+												disabled={card.testing} onclick={() => testKey(card)}>
+												{#if card.testing}<Loader2 class="w-3.5 h-3.5 animate-spin" />{:else}<RefreshCw class="w-3.5 h-3.5" />{/if}
+												{t('settings_provider_test')}
+											</Button>
+										{/if}
+										<Button variant="ghost" size="sm"
+											class="h-8 px-3 text-xs text-destructive hover:text-destructive gap-x-1.5"
+											disabled={card.deleting} onclick={() => deleteKey(card)}>
+											{#if card.deleting}<Loader2 class="w-3.5 h-3.5 animate-spin" />{:else}<Trash2 class="w-3.5 h-3.5" />{/if}
+											{t('settings_provider_delete')}
+										</Button>
+									</div>
 								</div>
-							</div>
 
-							<!-- Action buttons -->
-							<div class="flex items-center gap-x-2">
-								{#if isActive}
-									<Button
-										variant="ghost"
-										size="sm"
-										class="h-8 px-3 text-xs gap-x-1.5"
-										onclick={() => (card.editMode = !card.editMode)}
-									>
-										{t('settings_provider_update_key')}
-									</Button>
-									<Button
-										variant="ghost"
-										size="sm"
-										class="h-8 px-3 text-xs gap-x-1.5"
-										disabled={card.testing}
-										onclick={() => testKey(card)}
-									>
-										{#if card.testing}
-											<Loader2 class="w-3.5 h-3.5 animate-spin" />
-										{:else}
-											<RefreshCw class="w-3.5 h-3.5" />
-										{/if}
-										{t('settings_provider_test')}
-									</Button>
-									<Button
-										variant="ghost"
-										size="sm"
-										class="h-8 px-3 text-xs text-destructive hover:text-destructive gap-x-1.5"
-										disabled={card.deleting}
-										onclick={() => deleteKey(card)}
-									>
-										{#if card.deleting}
-											<Loader2 class="w-3.5 h-3.5 animate-spin" />
-										{:else}
-											<Trash2 class="w-3.5 h-3.5" />
-										{/if}
-										{t('settings_provider_delete')}
-									</Button>
-								{:else if isInvalid}
-									<Button
-										variant="ghost"
-										size="sm"
-										class="h-8 px-3 text-xs gap-x-1.5"
-										disabled={card.deleting}
-										onclick={() => deleteKey(card)}
-									>
-										{#if card.deleting}
-											<Loader2 class="w-3.5 h-3.5 animate-spin" />
-										{:else}
-											<Trash2 class="w-3.5 h-3.5" />
-										{/if}
-										{t('settings_provider_delete')}
-									</Button>
-								{/if}
-							</div>
-						</div>
-
-						<!-- Active: model chips -->
-						{#if isActive && card.models.length > 0}
-							<div class="px-5 pb-3 flex flex-wrap gap-1.5">
-								{#each card.models as model}
-									<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
-										{model.name}
-									</span>
-								{/each}
-							</div>
-						{/if}
-
-						<!-- Key input (unconfigured or editMode) -->
-						{#if card.editMode || isInvalid}
-							<div class="px-5 pb-4 pt-1 border-t border-border/50">
-								{#if card.error}
-									<div class="mb-3 text-xs text-destructive flex items-center gap-x-1.5">
-										<XCircle class="w-3.5 h-3.5 flex-shrink-0" />
-										{card.error}
+								<!-- Model chips -->
+								{#if isActive && card.models.length > 0}
+									<div class="px-5 pb-3 flex flex-wrap gap-1.5">
+										{#each card.models as model}
+											<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20">
+												{model.name}
+											</span>
+										{/each}
 									</div>
 								{/if}
-								<div class="flex gap-x-2">
-									<div class="relative flex-1">
-										<input
-											type={card.showKey ? 'text' : 'password'}
-											bind:value={card.keyInput}
-											placeholder={t('settings_provider_key_ph')}
-											class="w-full h-9 px-3 pr-10 text-sm rounded-lg border border-input bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring font-mono"
-											onkeydown={(e) => e.key === 'Enter' && saveKey(card)}
-										/>
-										<button
-											class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-											onclick={() => (card.showKey = !card.showKey)}
-											type="button"
-											tabindex="-1"
-										>
-											{#if card.showKey}
-												<EyeOff class="w-4 h-4" />
-											{:else}
-												<Eye class="w-4 h-4" />
-											{/if}
+
+								<!-- Key update form (editMode or invalid) -->
+								{#if card.editMode || isInvalid}
+									<div class="px-5 pb-4 pt-1 border-t border-border/50">
+										{#if card.error}
+											<div class="mb-3 text-xs text-destructive flex items-center gap-x-1.5">
+												<XCircle class="w-3.5 h-3.5 flex-shrink-0" />{card.error}
+											</div>
+										{/if}
+										<div class="flex gap-x-2">
+											<div class="relative flex-1">
+												<input type={card.showKey ? 'text' : 'password'}
+													bind:value={card.keyInput}
+													placeholder={t('settings_provider_key_ph')}
+													class="w-full h-9 px-3 pr-10 text-sm rounded-lg border border-input bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring font-mono"
+													onkeydown={(e) => e.key === 'Enter' && saveKey(card)} />
+												<button class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+													onclick={() => (card.showKey = !card.showKey)} type="button" tabindex="-1">
+													{#if card.showKey}<EyeOff class="w-4 h-4" />{:else}<Eye class="w-4 h-4" />{/if}
+												</button>
+											</div>
+											<Button variant="default" size="sm" class="h-9 px-4 text-xs"
+												disabled={card.saving || !card.keyInput.trim()} onclick={() => saveKey(card)}>
+												{#if card.saving}<Loader2 class="w-3.5 h-3.5 animate-spin mr-1.5" />{t('settings_provider_testing')}{:else}{t('settings_provider_save_test')}{/if}
+											</Button>
+										</div>
+									</div>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				{/if}
+
+				<!-- Add provider -->
+				{#if unconfiguredProviders.length > 0}
+					{#if !showAddProvider}
+						<Button variant="outline" size="sm" class="h-8 px-4 text-xs gap-x-1.5"
+							onclick={() => { showAddProvider = true; addProviderSlug = unconfiguredProviders[0].provider; }}>
+							<Plus class="w-3.5 h-3.5" /> Sağlayıcı Ekle
+						</Button>
+					{:else}
+						<div class="rounded-2xl border bg-card p-5 space-y-3">
+							<div class="flex items-center justify-between">
+								<span class="text-sm font-medium">Sağlayıcı Ekle</span>
+								<button class="text-muted-foreground hover:text-foreground"
+									onclick={() => { showAddProvider = false; addProviderError = ''; addProviderKey = ''; }}>
+									<X class="w-4 h-4" />
+								</button>
+							</div>
+							<div class="grid grid-cols-2 gap-3">
+								<div>
+									<label class="block text-xs font-medium text-muted-foreground mb-1.5">Sağlayıcı</label>
+									<select bind:value={addProviderSlug}
+										class="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring">
+										{#each unconfiguredProviders as p}
+											<option value={p.provider}>{p.display_name}</option>
+										{/each}
+									</select>
+								</div>
+								<div>
+									<label class="block text-xs font-medium text-muted-foreground mb-1.5">API Anahtarı</label>
+									<div class="relative">
+										<input type={addProviderShowKey ? 'text' : 'password'}
+											bind:value={addProviderKey}
+											placeholder="sk-..."
+											class="w-full h-9 px-3 pr-9 text-sm rounded-lg border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+											onkeydown={(e) => e.key === 'Enter' && addProvider()} />
+										<button class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+											onclick={() => (addProviderShowKey = !addProviderShowKey)} type="button" tabindex="-1">
+											{#if addProviderShowKey}<EyeOff class="w-4 h-4" />{:else}<Eye class="w-4 h-4" />{/if}
 										</button>
 									</div>
-									<Button
-										variant="default"
-										size="sm"
-										class="h-9 px-4 text-xs"
-										disabled={card.saving || !card.keyInput.trim()}
-										onclick={() => saveKey(card)}
-									>
-										{#if card.saving}
-											<Loader2 class="w-3.5 h-3.5 animate-spin mr-1.5" />
-											{t('settings_provider_testing')}
-										{:else}
-											{t('settings_provider_save_test')}
-										{/if}
-									</Button>
 								</div>
 							</div>
-						{/if}
-					</div>
-				{/each}
-			</div>
-		{/if}
+							{#if addProviderError}
+								<div class="text-xs text-destructive flex items-center gap-x-1.5">
+									<XCircle class="w-3.5 h-3.5 flex-shrink-0" />{addProviderError}
+								</div>
+							{/if}
+							<div class="flex justify-end gap-x-2">
+								<Button variant="ghost" size="sm" class="h-8 px-3 text-xs"
+									onclick={() => { showAddProvider = false; addProviderError = ''; addProviderKey = ''; }}>
+									İptal
+								</Button>
+								<Button variant="default" size="sm" class="h-8 px-4 text-xs"
+									disabled={addProviderSaving || !addProviderKey.trim()} onclick={addProvider}>
+									{#if addProviderSaving}<Loader2 class="w-3.5 h-3.5 animate-spin mr-1.5" />Test ediliyor...{:else}Bağlan{/if}
+								</Button>
+							</div>
+						</div>
+					{/if}
+				{/if}
+			{/if}
+		</div>
 	{/if}
 
 	<!-- ── GIT TAB ────────────────────────────────────────────────────────── -->
