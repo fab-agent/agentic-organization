@@ -92,6 +92,30 @@ _BUILTIN_SCHEMAS: dict[str, dict] = {
         },
         "required": ["to_agent_slug", "task"],
     },
+    "journal_write": {
+        "type": "object",
+        "properties": {
+            "content": {"type": "string", "description": "Journal entry text (markdown supported)"},
+            "title": {"type": "string", "description": "Optional short title for the entry"},
+        },
+        "required": ["content"],
+    },
+    "instagram_post": {
+        "type": "object",
+        "properties": {
+            "image_url": {"type": "string", "description": "Public HTTPS URL of the image to post"},
+            "caption": {"type": "string", "description": "Post caption (hashtags allowed)"},
+        },
+        "required": ["image_url", "caption"],
+    },
+    "whatsapp_send": {
+        "type": "object",
+        "properties": {
+            "message": {"type": "string", "description": "Text message to send"},
+            "to": {"type": "string", "description": "Recipient phone number in E.164 format (optional — uses default if omitted)"},
+        },
+        "required": ["message"],
+    },
 }
 
 

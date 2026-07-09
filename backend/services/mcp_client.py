@@ -88,6 +88,9 @@ async def execute_builtin(function_name: str, args: dict, session_id: str | None
     if function_name == "whatsapp_send":
         return await _whatsapp_send(args)
 
+    if function_name == "journal_write":
+        return await _journal_write(args, session_id, agent_id)
+
     return f"[Built-in '{function_name}' not implemented]"
 
 
@@ -214,3 +217,31 @@ async def _whatsapp_send(args: dict) -> str:
         return f"✅ WhatsApp mesajı gönderildi → `{recipient}`\nMesaj ID: `{msg_id}`\nİçerik: {message}"
     except Exception as e:
         return f"[whatsapp_send] Hata: {e}"
+
+
+async def _journal_write(args: dict, session_id: str | None, agent_id: str | None) -> str:
+    """Builtin: agent writes a work log entry to its own journal."""
+    content = args.get("content", "").strip()
+    title = args.get("title", "").strip() or None
+
+    if not content:
+        return "[journal_write] content gerekli"
+    if not agent_id:
+        return "[journal_write] agent_id bulunamadı"
+
+    from database import get_session as _gs
+    from models import WorkJournalEntry
+
+    with _gs() as db:
+        entry = WorkJournalEntry(
+            personnel_id=agent_id,
+            session_id=session_id,
+            author="agent",
+            title=title,
+            content=content,
+        )
+        db.add(entry)
+        db.commit()
+
+    title_part = f'"{title}"' if title else "günlük kaydı"
+    return f"✅ Günlüğe yazıldı: {title_part}"

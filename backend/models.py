@@ -311,3 +311,15 @@ class AgentMemory(SQLModel, table=True):
     session_id: Optional[str] = Field(default=None, foreign_key="agentsession.id")
     summary: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkJournalEntry(SQLModel, table=True):
+    """Agent-authored or human-authored work log entry."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    personnel_id: str = Field(foreign_key="personnel.id", index=True)
+    session_id: Optional[str] = Field(default=None, foreign_key="agentsession.id")
+    # author: "agent" | "human"
+    author: str = Field(default="agent")
+    title: Optional[str] = None
+    content: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)

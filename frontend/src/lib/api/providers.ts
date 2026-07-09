@@ -9,10 +9,15 @@ export interface ProviderStatus {
   last_tested: string | null;
 }
 
+export type PriceTier = 'low' | 'medium' | 'high' | 'premium';
+
 export interface ModelDef {
   id: string;
   name: string;
   provider: string;
+  tier: PriceTier;
+  input_per_m: number | null;   // USD per 1M input tokens
+  output_per_m: number | null;  // USD per 1M output tokens
 }
 
 export const providers = {

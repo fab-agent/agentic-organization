@@ -1,5 +1,41 @@
 import httpx
 
+# Cost tier: "low" (<$1/M input), "medium" ($1-5), "high" ($5-20), "premium" (>$20)
+# Approximate input token prices per 1M tokens as of mid-2026.
+# Update this table when providers change pricing.
+_PRICING: dict[str, dict] = {
+    # Anthropic
+    "claude-haiku-4-5-20251001": {"tier": "low",     "input_per_m": 0.80,  "output_per_m": 4.00},
+    "claude-sonnet-4-6":         {"tier": "medium",  "input_per_m": 3.00,  "output_per_m": 15.00},
+    "claude-opus-4-7":           {"tier": "premium", "input_per_m": 15.00, "output_per_m": 75.00},
+    # OpenAI
+    "gpt-4o-mini":               {"tier": "low",     "input_per_m": 0.15,  "output_per_m": 0.60},
+    "gpt-4o":                    {"tier": "medium",  "input_per_m": 2.50,  "output_per_m": 10.00},
+    "o1-mini":                   {"tier": "medium",  "input_per_m": 3.00,  "output_per_m": 12.00},
+    "o3-mini":                   {"tier": "medium",  "input_per_m": 1.10,  "output_per_m": 4.40},
+    # Google
+    "gemini-2.0-flash":          {"tier": "low",     "input_per_m": 0.10,  "output_per_m": 0.40},
+    "gemini-2.5-pro":            {"tier": "medium",  "input_per_m": 1.25,  "output_per_m": 10.00},
+    "gemini-2.5-flash":          {"tier": "low",     "input_per_m": 0.30,  "output_per_m": 2.50},
+    # Mistral
+    "mistral-small-latest":      {"tier": "low",     "input_per_m": 0.10,  "output_per_m": 0.30},
+    "mistral-large-latest":      {"tier": "medium",  "input_per_m": 2.00,  "output_per_m": 6.00},
+    "codestral-latest":          {"tier": "low",     "input_per_m": 0.20,  "output_per_m": 0.60},
+    # Qwen
+    "qwen-turbo":                {"tier": "low",     "input_per_m": 0.05,  "output_per_m": 0.20},
+    "qwen-long":                 {"tier": "low",     "input_per_m": 0.14,  "output_per_m": 0.14},
+    "qwen-plus":                 {"tier": "low",     "input_per_m": 0.40,  "output_per_m": 1.20},
+    "qwen-max":                  {"tier": "medium",  "input_per_m": 1.60,  "output_per_m": 6.00},
+}
+
+_DEFAULT_PRICING = {"tier": "medium", "input_per_m": None, "output_per_m": None}
+
+
+def _with_pricing(model_id: str, base: dict) -> dict:
+    p = _PRICING.get(model_id, _DEFAULT_PRICING)
+    return {**base, **p}
+
+
 PROVIDER_CONFIGS: dict[str, dict] = {
     "anthropic": {
         "display_name": "Anthropic (Claude)",
@@ -12,6 +48,8 @@ PROVIDER_CONFIGS: dict[str, dict] = {
             {"id": "claude-sonnet-4-6",         "name": "Claude Sonnet 4.6"},
             {"id": "claude-haiku-4-5-20251001", "name": "Claude Haiku 4.5"},
         ],
+        # No public /models endpoint — use curated list above
+        "models_url": None,
     },
     "openai": {
         "display_name": "OpenAI (GPT)",
@@ -23,7 +61,9 @@ PROVIDER_CONFIGS: dict[str, dict] = {
             {"id": "gpt-4o",      "name": "GPT-4o"},
             {"id": "gpt-4o-mini", "name": "GPT-4o Mini"},
             {"id": "o1-mini",     "name": "o1 Mini"},
+            {"id": "o3-mini",     "name": "o3 Mini"},
         ],
+        "models_url": None,
     },
     "google": {
         "display_name": "Google (Gemini)",
@@ -35,6 +75,8 @@ PROVIDER_CONFIGS: dict[str, dict] = {
             {"id": "gemini-2.5-pro",   "name": "Gemini 2.5 Pro"},
             {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash"},
         ],
+        # Google exposes a live /models list — we prefer it but fall back to curated
+        "models_url": "https://generativelanguage.googleapis.com/v1beta/models",
     },
     "mistral": {
         "display_name": "Mistral AI",
@@ -45,7 +87,9 @@ PROVIDER_CONFIGS: dict[str, dict] = {
         "models": [
             {"id": "mistral-large-latest", "name": "Mistral Large"},
             {"id": "mistral-small-latest", "name": "Mistral Small"},
+            {"id": "codestral-latest",     "name": "Codestral"},
         ],
+        "models_url": "https://api.mistral.ai/v1/models",
     },
     "qwen": {
         "display_name": "Alibaba Qwen",
@@ -59,6 +103,7 @@ PROVIDER_CONFIGS: dict[str, dict] = {
             {"id": "qwen-turbo", "name": "Qwen Turbo"},
             {"id": "qwen-long",  "name": "Qwen Long"},
         ],
+        "models_url": None,
     },
 }
 
@@ -82,5 +127,67 @@ def test_provider_key(provider: str, plain_key: str) -> bool:
         return False
 
 
-def get_provider_models(provider: str) -> list[dict]:
-    return [{"provider": provider, **m} for m in PROVIDER_CONFIGS[provider]["models"]]
+def fetch_live_models(provider: str, plain_key: str) -> list[dict] | None:
+    """
+    Try to fetch the live model list from the provider API.
+    Returns None if the provider has no models endpoint or the call fails.
+    Each model dict has: id, name, tier, input_per_m, output_per_m.
+    """
+    cfg = PROVIDER_CONFIGS.get(provider, {})
+    models_url = cfg.get("models_url")
+    if not models_url:
+        return None
+
+    try:
+        with httpx.Client(timeout=10) as client:
+            resp = client.get(models_url, headers=cfg["headers"](plain_key))
+        if not resp.is_success:
+            return None
+        data = resp.json()
+    except Exception:
+        return None
+
+    if provider == "google":
+        raw = data.get("models", [])
+        result = []
+        for m in raw:
+            mid = m.get("name", "").removeprefix("models/")
+            mname = m.get("displayName", mid)
+            # only include chat-capable models
+            if "generateContent" not in m.get("supportedGenerationMethods", []):
+                continue
+            if not any(k in mid for k in ("gemini", "palm")):
+                continue
+            result.append(_with_pricing(mid, {"id": mid, "name": mname}))
+        return result or None
+
+    if provider == "mistral":
+        raw = data.get("data", [])
+        result = []
+        for m in raw:
+            mid = m.get("id", "")
+            mname = mid.replace("-", " ").title()
+            result.append(_with_pricing(mid, {"id": mid, "name": mname}))
+        return result or None
+
+    return None
+
+
+def get_provider_models(provider: str, plain_key: str | None = None) -> list[dict]:
+    """
+    Return models for a provider with pricing metadata.
+    If plain_key is provided and the provider has a live endpoint, fetches dynamically.
+    Falls back to the curated list when live fetch is unavailable or fails.
+    """
+    cfg = PROVIDER_CONFIGS.get(provider, {})
+    curated = [
+        _with_pricing(m["id"], {"provider": provider, **m})
+        for m in cfg.get("models", [])
+    ]
+
+    if plain_key:
+        live = fetch_live_models(provider, plain_key)
+        if live:
+            return [{"provider": provider, **m} for m in live]
+
+    return curated

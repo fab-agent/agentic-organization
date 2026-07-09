@@ -48,7 +48,7 @@ def _provider_row(session, provider: str) -> ProviderKey | None:
     return session.exec(select(ProviderKey).where(ProviderKey.provider == provider)).first()
 
 
-def _provider_status_dict(row: ProviderKey | None, provider: str) -> dict:
+def _provider_status_dict(row: ProviderKey | None, provider: str, plain_key: str | None = None) -> dict:
     cfg = PROVIDER_CONFIGS[provider]
     if not row or row.status == "unconfigured":
         return {
@@ -59,12 +59,13 @@ def _provider_status_dict(row: ProviderKey | None, provider: str) -> dict:
             "models": [],
             "last_tested": None,
         }
+    models = get_provider_models(provider, plain_key) if row.status == "active" else []
     return {
         "provider": provider,
         "display_name": cfg["display_name"],
         "status": row.status,
         "has_key": True,
-        "models": cfg["models"] if row.status == "active" else [],
+        "models": models,
         "last_tested": row.last_tested.isoformat() if row.last_tested else None,
     }
 
@@ -80,14 +81,15 @@ def list_provider_status(_: User = Depends(get_current_user)):
 
 @router.get("/providers/models")
 def list_available_models(_: User = Depends(get_current_user)):
-    """Returns models from all active providers — used by the agent model picker."""
+    """Returns models from all active providers with pricing metadata."""
     with get_session() as session:
         active = session.exec(
             select(ProviderKey).where(ProviderKey.status == "active")
         ).all()
         models = []
         for row in active:
-            models.extend(get_provider_models(row.provider))
+            plain_key = decrypt(row.encrypted_key)
+            models.extend(get_provider_models(row.provider, plain_key))
         return models
 
 
@@ -124,7 +126,7 @@ def set_provider_key(provider: str, body: SetProviderKey,
         log_action(session, "update" if is_update else "create", "provider_key", entity_name=provider)
         session.commit()
         session.refresh(row)
-        return _provider_status_dict(row, provider)
+        return _provider_status_dict(row, provider, plain_key if valid else None)
 
 
 @router.delete("/providers/{provider}/key", status_code=204)

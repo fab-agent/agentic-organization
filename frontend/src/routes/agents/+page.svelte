@@ -9,16 +9,36 @@
 	import { departments as deptApi, type Department } from '$lib/api/departments';
 	import { companyStore } from '$lib/stores/company.svelte';
 	import { changeRequests as crApi } from '$lib/api/change_requests';
+	import { providers as providerApi, type ModelDef, type PriceTier } from '$lib/api/providers';
 	import { t } from '$lib/i18n/index.svelte';
 
-	// ── Static config ─────────────────────────────────────────────────────────
-	const MODELS = [
-		{ value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
-		{ value: 'claude-opus-4-7',   label: 'Claude Opus 4.7'   },
-		{ value: 'gpt-4o',            label: 'GPT-4o'            },
-		{ value: 'gemini-2.5-pro',    label: 'Gemini 2.5 Pro'    },
-		{ value: 'grok-4.3',          label: 'Grok 4.3'          },
-	];
+	// ── Dynamic models ────────────────────────────────────────────────────────
+	let availableModels = $state<ModelDef[]>([]);
+	let modelsLoading = $state(true);
+
+	const TIER_LABEL: Record<PriceTier, string> = {
+		low:     '$',
+		medium:  '$$',
+		high:    '$$$',
+		premium: '$$$$',
+	};
+	const TIER_COLOR: Record<PriceTier, string> = {
+		low:     'text-emerald-600',
+		medium:  'text-amber-500',
+		high:    'text-orange-500',
+		premium: 'text-red-500',
+	};
+
+	function modelLabel(m: ModelDef): string {
+		return m.name;
+	}
+	function modelTierHint(m: ModelDef): string {
+		const sign = TIER_LABEL[m.tier] ?? '?';
+		if (m.input_per_m != null) {
+			return `${sign} · $${m.input_per_m}/1M giriş`;
+		}
+		return sign;
+	}
 
 	const DEPT_POLICIES: Record<string, string[]> = {
 		'Yazılım Geliştirme': ['Yazılım Kalite Politikası', 'Güvenlik Politikası', 'Code Review SLA', 'Deployment Politikası'],
@@ -106,7 +126,16 @@
 		}
 	}
 
-	onMount(load);
+	onMount(async () => {
+		load();
+		try {
+			availableModels = await providerApi.models();
+		} catch {
+			availableModels = [];
+		} finally {
+			modelsLoading = false;
+		}
+	});
 
 	$effect(() => {
 		if (companyStore.active) load();
@@ -565,11 +594,36 @@
 					<div class="grid grid-cols-2 gap-3">
 						<div class="field">
 							<label for="ag-model">{t('agent_model_label')}</label>
-							<select id="ag-model" class="select-input" bind:value={form.model}>
-								{#each MODELS as m}
-									<option value={m.value}>{m.label}</option>
-								{/each}
-							</select>
+							{#if modelsLoading}
+								<div class="select-input text-muted-foreground text-sm flex items-center gap-x-2">
+									<span class="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+									Modeller yükleniyor...
+								</div>
+							{:else if availableModels.length === 0}
+								<div class="select-input text-muted-foreground text-sm">
+									Aktif AI sağlayıcısı yok — Ayarlar &gt; AI Sağlayıcılar
+								</div>
+							{:else}
+								<select id="ag-model" class="select-input" bind:value={form.model}>
+									{#each availableModels as m}
+										<option value={m.id}>{modelLabel(m)} · {modelTierHint(m)}</option>
+									{/each}
+								</select>
+								{#if form.model}
+									{@const selected = availableModels.find(m => m.id === form.model)}
+									{#if selected}
+										<p class="text-xs mt-1 {TIER_COLOR[selected.tier]}">
+											{#if selected.tier === 'premium'}⚠ Pahalı model — yüksek token kullanımında maliyet hızlı artar.
+											{:else if selected.tier === 'high'}Yüksek maliyetli model.
+											{:else if selected.tier === 'medium'}Orta maliyetli model.
+											{:else}Düşük maliyetli model.{/if}
+											{#if selected.input_per_m != null}
+												Giriş: ${selected.input_per_m}/1M · Çıkış: ${selected.output_per_m}/1M token.
+											{/if}
+										</p>
+									{/if}
+								{/if}
+							{/if}
 						</div>
 					</div>
 					<div class="field">
