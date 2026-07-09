@@ -91,6 +91,13 @@ def make_member(session, user_id, company_id, role="founder"):
     return m
 
 
+def make_company_for_user(session, user, name="Test Corp", slug="test-corp", role="founder"):
+    """Create a company and immediately add user as a member (mirrors the API create flow)."""
+    co = make_company(session, name=name, slug=slug)
+    make_member(session, user.id, co.id, role=role)
+    return co
+
+
 def make_personnel(session, company_id, name="BotAgent", slug="bot-agent",
                    type="agent", title="Test Agent"):
     p = models.Personnel(name=name, slug=slug, type=type,

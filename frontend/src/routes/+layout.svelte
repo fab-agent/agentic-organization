@@ -84,6 +84,10 @@
 				goto('/login');
 				return;
 			}
+			if (authStore.isLoggedIn && authStore.user?.must_change_password && path !== '/set-password') {
+				goto('/set-password');
+				return;
+			}
 			if (authStore.isLoggedIn) {
 				await loadCompanies();
 			}

@@ -2,10 +2,11 @@ import json as _json
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
 
 from api.audit import log_action
+from api.auth import check_company_membership, get_current_user
 from database import get_session
 from models import AgentConfig, Company, CompanyMember, Department, Personnel, Skill, User
 from schemas import AgentConfigCreate, AgentConfigUpdate, PersonnelCreate, PersonnelUpdate, SkillCreate, SkillUpdate
@@ -36,8 +37,6 @@ def _personnel_to_dict(p: Personnel, session) -> dict:
     manager = session.get(Personnel, p.manager_id) if p.manager_id else None
     cfg = session.exec(select(AgentConfig).where(AgentConfig.personnel_id == p.id)).first()
 
-    has_user = bool(p.user_id)
-
     result = {
         "id": p.id,
         "name": p.name,
@@ -47,7 +46,7 @@ def _personnel_to_dict(p: Personnel, session) -> dict:
         "type": p.type,
         "email": p.email,
         "user_id": p.user_id,
-        "has_user": has_user,
+        "has_user": bool(p.user_id),
         "department_id": p.department_id,
         "department_name": dept.name if dept else None,
         "manager_id": p.manager_id,
@@ -71,25 +70,46 @@ def _personnel_to_dict(p: Personnel, session) -> dict:
     return result
 
 
+def _get_person_and_check_membership(person_id: str, user_id: str, session) -> Personnel:
+    """Fetch personnel and verify caller is a member of the person's company."""
+    person = session.get(Personnel, person_id)
+    if not person:
+        raise HTTPException(status_code=404, detail="Personnel not found")
+    if person.company_id:
+        check_company_membership(user_id, person.company_id, session)
+    return person
+
+
 # ── Personnel CRUD ─────────────────────────────────────────────────────────────
 
 @router.get("/personnel")
-def list_personnel(department_id: Optional[str] = None, type: Optional[str] = None, company_id: Optional[str] = None):
+def list_personnel(current_user: User = Depends(get_current_user),
+                   department_id: Optional[str] = None,
+                   type: Optional[str] = None,
+                   company_id: Optional[str] = None):
     with get_session() as session:
-        q = select(Personnel)
+        if company_id:
+            check_company_membership(current_user.id, company_id, session)
+            q = select(Personnel).where(Personnel.company_id == company_id)
+        else:
+            memberships = session.exec(
+                select(CompanyMember).where(CompanyMember.user_id == current_user.id)
+            ).all()
+            user_company_ids = [m.company_id for m in memberships]
+            q = select(Personnel).where(Personnel.company_id.in_(user_company_ids))
         if department_id:
             q = q.where(Personnel.department_id == department_id)
         if type:
             q = q.where(Personnel.type == type)
-        if company_id:
-            q = q.where(Personnel.company_id == company_id)
         people = session.exec(q).all()
         return [_personnel_to_dict(p, session) for p in people]
 
 
 @router.post("/personnel", status_code=201)
-def create_personnel(body: PersonnelCreate):
+def create_personnel(body: PersonnelCreate, current_user: User = Depends(get_current_user)):
     with get_session() as session:
+        if body.company_id:
+            check_company_membership(current_user.id, body.company_id, session)
         person = Personnel(
             name=body.name,
             slug=body.slug,
@@ -101,27 +121,25 @@ def create_personnel(body: PersonnelCreate):
             manager_id=body.manager_id,
         )
         session.add(person)
-        log_action(session, "create", "personnel", entity_id=person.id, entity_name=person.name, company_id=person.company_id)
+        log_action(session, "create", "personnel", entity_id=person.id,
+                   entity_name=person.name, company_id=person.company_id)
         session.commit()
         session.refresh(person)
         return _personnel_to_dict(person, session)
 
 
 @router.get("/personnel/{person_id}")
-def get_personnel(person_id: str):
+def get_personnel(person_id: str, current_user: User = Depends(get_current_user)):
     with get_session() as session:
-        person = session.get(Personnel, person_id)
-        if not person:
-            raise HTTPException(status_code=404, detail="Personnel not found")
+        person = _get_person_and_check_membership(person_id, current_user.id, session)
         return _personnel_to_dict(person, session)
 
 
 @router.patch("/personnel/{person_id}")
-def update_personnel(person_id: str, body: PersonnelUpdate):
+def update_personnel(person_id: str, body: PersonnelUpdate,
+                     current_user: User = Depends(get_current_user)):
     with get_session() as session:
-        person = session.get(Personnel, person_id)
-        if not person:
-            raise HTTPException(status_code=404, detail="Personnel not found")
+        person = _get_person_and_check_membership(person_id, current_user.id, session)
         if body.name is not None:          person.name = body.name
         if body.slug is not None:          person.slug = body.slug
         if body.title is not None:         person.title = body.title
@@ -131,35 +149,21 @@ def update_personnel(person_id: str, body: PersonnelUpdate):
         if body.manager_id is not None:    person.manager_id = body.manager_id
         if body.email is not None:         person.email = body.email or None
         session.add(person)
-        log_action(session, "update", "personnel", entity_id=person.id, entity_name=person.name, company_id=person.company_id)
+        log_action(session, "update", "personnel", entity_id=person.id,
+                   entity_name=person.name, company_id=person.company_id)
         session.commit()
         session.refresh(person)
         return _personnel_to_dict(person, session)
 
 
 @router.post("/personnel/{person_id}/invite", status_code=201)
-def invite_personnel(person_id: str, body: dict, authorization: Optional[str] = Header(None)):
-    """Send a platform invite to a human personnel member."""
-    # Resolve caller from token (must be dept_head+ or same-company manager)
-    from api.auth import get_current_user
-    from fastapi import Request
-    import types
-    # minimal auth check via header
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Token gerekli")
-    from services.auth import decode_token
-    try:
-        caller_id = decode_token(authorization.split(" ", 1)[1])
-    except Exception:
-        raise HTTPException(status_code=401, detail="Geçersiz token")
-
+def invite_personnel(person_id: str, body: dict,
+                     current_user: User = Depends(get_current_user)):
     role: str = body.get("role", "user")
     scope_id: Optional[str] = body.get("scope_id")
 
     with get_session() as session:
-        person = session.get(Personnel, person_id)
-        if not person:
-            raise HTTPException(status_code=404, detail="Personel bulunamadı")
+        person = _get_person_and_check_membership(person_id, current_user.id, session)
         if not person.email:
             raise HTTPException(status_code=422, detail="Bu personelin e-posta adresi yok")
         if person.type != "human":
@@ -169,12 +173,9 @@ def invite_personnel(person_id: str, body: dict, authorization: Optional[str] = 
         if not company:
             raise HTTPException(status_code=404, detail="Şirket bulunamadı")
 
-        # Upsert user
         existing = session.exec(select(User).where(User.email == person.email)).first()
-        if existing:
-            user = existing
-        else:
-            user = User(email=person.email, name=person.name)
+        user = existing or User(email=person.email, name=person.name)
+        if not existing:
             session.add(user)
             session.flush()
 
@@ -187,7 +188,6 @@ def invite_personnel(person_id: str, body: dict, authorization: Optional[str] = 
         user.reset_expires_at = None
         session.add(user)
 
-        # Upsert membership
         existing_member = session.exec(
             select(CompanyMember).where(
                 CompanyMember.user_id == user.id,
@@ -206,22 +206,21 @@ def invite_personnel(person_id: str, body: dict, authorization: Optional[str] = 
                 scope_id=scope_id,
             ))
 
-        # Link user to personnel
         person.user_id = user.id
         session.add(person)
         session.commit()
+        user_id = user.id
 
     send_invite(to=person.email, name=person.name, company_name=company.name, temp_password=temp_pw)
-    return {"message": "Davet emaili gönderildi", "user_id": user.id}
+    return {"message": "Davet emaili gönderildi", "user_id": user_id}
 
 
 @router.delete("/personnel/{person_id}", status_code=204)
-def delete_personnel(person_id: str):
+def delete_personnel(person_id: str, current_user: User = Depends(get_current_user)):
     with get_session() as session:
-        person = session.get(Personnel, person_id)
-        if not person:
-            raise HTTPException(status_code=404, detail="Personnel not found")
-        log_action(session, "delete", "personnel", entity_id=person.id, entity_name=person.name, company_id=person.company_id)
+        person = _get_person_and_check_membership(person_id, current_user.id, session)
+        log_action(session, "delete", "personnel", entity_id=person.id,
+                   entity_name=person.name, company_id=person.company_id)
         session.delete(person)
         session.commit()
 
@@ -229,8 +228,9 @@ def delete_personnel(person_id: str):
 # ── Agent Config ───────────────────────────────────────────────────────────────
 
 @router.get("/personnel/{person_id}/agent-config")
-def get_agent_config(person_id: str):
+def get_agent_config(person_id: str, current_user: User = Depends(get_current_user)):
     with get_session() as session:
+        _get_person_and_check_membership(person_id, current_user.id, session)
         cfg = session.exec(select(AgentConfig).where(AgentConfig.personnel_id == person_id)).first()
         if not cfg:
             raise HTTPException(status_code=404, detail="Agent config not found")
@@ -252,11 +252,10 @@ def get_agent_config(person_id: str):
 
 
 @router.post("/personnel/{person_id}/agent-config", status_code=201)
-def create_agent_config(person_id: str, body: AgentConfigCreate):
+def create_agent_config(person_id: str, body: AgentConfigCreate,
+                        current_user: User = Depends(get_current_user)):
     with get_session() as session:
-        person = session.get(Personnel, person_id)
-        if not person:
-            raise HTTPException(status_code=404, detail="Personnel not found")
+        person = _get_person_and_check_membership(person_id, current_user.id, session)
         existing = session.exec(select(AgentConfig).where(AgentConfig.personnel_id == person_id)).first()
         if existing:
             raise HTTPException(status_code=409, detail="Agent config already exists")
@@ -270,7 +269,8 @@ def create_agent_config(person_id: str, body: AgentConfigCreate):
         session.add(cfg)
         person.type = "agent"
         session.add(person)
-        log_action(session, "create", "agent_config", entity_id=cfg.id, entity_name=person.name, company_id=person.company_id)
+        log_action(session, "create", "agent_config", entity_id=cfg.id,
+                   entity_name=person.name, company_id=person.company_id)
         session.commit()
         session.refresh(cfg)
         return {
@@ -285,8 +285,10 @@ def create_agent_config(person_id: str, body: AgentConfigCreate):
 
 
 @router.patch("/personnel/{person_id}/agent-config")
-def update_agent_config(person_id: str, body: AgentConfigUpdate):
+def update_agent_config(person_id: str, body: AgentConfigUpdate,
+                        current_user: User = Depends(get_current_user)):
     with get_session() as session:
+        _get_person_and_check_membership(person_id, current_user.id, session)
         cfg = session.exec(select(AgentConfig).where(AgentConfig.personnel_id == person_id)).first()
         if not cfg:
             raise HTTPException(status_code=404, detail="Agent config not found")
@@ -316,8 +318,9 @@ def update_agent_config(person_id: str, body: AgentConfigUpdate):
 # ── Skills ────────────────────────────────────────────────────────────────────
 
 @router.get("/personnel/{person_id}/skills")
-def list_skills(person_id: str):
+def list_skills(person_id: str, current_user: User = Depends(get_current_user)):
     with get_session() as session:
+        _get_person_and_check_membership(person_id, current_user.id, session)
         cfg = session.exec(select(AgentConfig).where(AgentConfig.personnel_id == person_id)).first()
         if not cfg:
             raise HTTPException(status_code=404, detail="Agent config not found")
@@ -326,8 +329,9 @@ def list_skills(person_id: str):
 
 
 @router.post("/personnel/{person_id}/skills", status_code=201)
-def add_skill(person_id: str, body: SkillCreate):
+def add_skill(person_id: str, body: SkillCreate, current_user: User = Depends(get_current_user)):
     with get_session() as session:
+        _get_person_and_check_membership(person_id, current_user.id, session)
         cfg = session.exec(select(AgentConfig).where(AgentConfig.personnel_id == person_id)).first()
         if not cfg:
             raise HTTPException(status_code=404, detail="Agent config not found")
@@ -348,8 +352,10 @@ def add_skill(person_id: str, body: SkillCreate):
 
 
 @router.patch("/personnel/{person_id}/skills/{skill_id}")
-def update_skill(person_id: str, skill_id: str, body: SkillUpdate):
+def update_skill(person_id: str, skill_id: str, body: SkillUpdate,
+                 current_user: User = Depends(get_current_user)):
     with get_session() as session:
+        _get_person_and_check_membership(person_id, current_user.id, session)
         skill = session.get(Skill, skill_id)
         if not skill:
             raise HTTPException(status_code=404, detail="Skill not found")
@@ -367,8 +373,9 @@ def update_skill(person_id: str, skill_id: str, body: SkillUpdate):
 
 
 @router.delete("/personnel/{person_id}/skills/{skill_id}", status_code=204)
-def delete_skill(person_id: str, skill_id: str):
+def delete_skill(person_id: str, skill_id: str, current_user: User = Depends(get_current_user)):
     with get_session() as session:
+        _get_person_and_check_membership(person_id, current_user.id, session)
         skill = session.get(Skill, skill_id)
         if not skill:
             raise HTTPException(status_code=404, detail="Skill not found")
@@ -380,11 +387,19 @@ def delete_skill(person_id: str, skill_id: str):
 # ── Org Tree ──────────────────────────────────────────────────────────────────
 
 @router.get("/org-tree")
-def get_org_tree(company_id: Optional[str] = None):
+def get_org_tree(company_id: Optional[str] = None,
+                 current_user: User = Depends(get_current_user)):
     with get_session() as session:
-        q = select(Personnel)
         if company_id:
-            q = q.where(Personnel.company_id == company_id)
+            check_company_membership(current_user.id, company_id, session)
+            q = select(Personnel).where(Personnel.company_id == company_id)
+        else:
+            memberships = session.exec(
+                select(CompanyMember).where(CompanyMember.user_id == current_user.id)
+            ).all()
+            user_company_ids = [m.company_id for m in memberships]
+            q = select(Personnel).where(Personnel.company_id.in_(user_company_ids))
+
         all_personnel = session.exec(q).all()
         all_configs   = session.exec(select(AgentConfig)).all()
         all_skills    = session.exec(select(Skill)).all()

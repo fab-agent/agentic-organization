@@ -127,13 +127,24 @@ async def send_message(session_id: str, body: MessageCreate,
             raise HTTPException(status_code=409, detail="Session is closed")
 
     async def event_stream():
+        stream_complete = False
         try:
             async for event in run_session(session_id, body.content):
                 yield f"data: {json.dumps(event)}\n\n"
+            stream_complete = True
+            yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
         finally:
-            yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
+            if not stream_complete:
+                # Client disconnected mid-stream — reset active session to idle
+                with get_session() as db:
+                    sess = db.get(AgentSession, session_id)
+                    if sess and sess.status == "active":
+                        sess.status = "idle"
+                        sess.updated_at = datetime.utcnow()
+                        db.add(sess)
+                        db.commit()
 
     return StreamingResponse(
         event_stream(),

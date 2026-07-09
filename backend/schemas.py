@@ -2,6 +2,61 @@ from pydantic import BaseModel, field_validator
 from typing import Optional
 
 
+# ── Auth ────────────────────────────────────────────────────────────────────────
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        return v.strip().lower()
+
+
+class SetupRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+    company_name: str
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        return v.strip().lower()
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Şifre en az 8 karakter olmalı")
+        return v
+
+
+class ChangePasswordRequest(BaseModel):
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("En az 8 karakterli şifre gerekli")
+        return v
+
+
+class InviteRequest(BaseModel):
+    email: str
+    name: str
+    company_id: str
+    role: str = "user"
+    scope_id: Optional[str] = None
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        return v.strip().lower()
+
+
 # ── Company ────────────────────────────────────────────────────────────────────
 
 class CompanyCreate(BaseModel):

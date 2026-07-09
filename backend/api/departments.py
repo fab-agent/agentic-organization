@@ -4,9 +4,9 @@ from sqlmodel import select
 import json
 
 from api.audit import log_action
-from api.auth import get_current_user
+from api.auth import check_company_membership, get_current_user
 from database import get_session
-from models import Department, User
+from models import CompanyMember, Department, User
 from schemas import DepartmentCreate, DepartmentUpdate
 
 router = APIRouter(prefix="/departments", tags=["departments"])
@@ -29,11 +29,18 @@ def dept_to_dict(d: Department, parent_name: Optional[str] = None) -> dict:
 
 
 @router.get("")
-def list_departments(company_id: Optional[str] = None, _: User = Depends(get_current_user)):
+def list_departments(company_id: Optional[str] = None,
+                     current_user: User = Depends(get_current_user)):
     with get_session() as session:
-        q = select(Department)
         if company_id:
-            q = q.where(Department.company_id == company_id)
+            check_company_membership(current_user.id, company_id, session)
+            q = select(Department).where(Department.company_id == company_id)
+        else:
+            memberships = session.exec(
+                select(CompanyMember).where(CompanyMember.user_id == current_user.id)
+            ).all()
+            user_company_ids = [m.company_id for m in memberships]
+            q = select(Department).where(Department.company_id.in_(user_company_ids))
         depts = session.exec(q).all()
         name_map = {d.id: d.name for d in depts}
         return [dept_to_dict(d, name_map.get(d.parent_id) if d.parent_id else None) for d in depts]
@@ -41,8 +48,10 @@ def list_departments(company_id: Optional[str] = None, _: User = Depends(get_cur
 
 @router.post("", status_code=201)
 def create_department(body: DepartmentCreate, company_id: Optional[str] = None,
-                      _: User = Depends(get_current_user)):
+                      current_user: User = Depends(get_current_user)):
     with get_session() as session:
+        if company_id:
+            check_company_membership(current_user.id, company_id, session)
         parent_name = None
         if body.parent_id:
             parent = session.get(Department, body.parent_id)
@@ -60,18 +69,21 @@ def create_department(body: DepartmentCreate, company_id: Optional[str] = None,
             status=body.status,
         )
         session.add(dept)
-        log_action(session, "create", "department", entity_id=dept.id, entity_name=dept.name, company_id=dept.company_id or company_id)
+        log_action(session, "create", "department", entity_id=dept.id, entity_name=dept.name,
+                   company_id=dept.company_id or company_id)
         session.commit()
         session.refresh(dept)
         return dept_to_dict(dept, parent_name)
 
 
 @router.get("/{dept_id}")
-def get_department(dept_id: str, _: User = Depends(get_current_user)):
+def get_department(dept_id: str, current_user: User = Depends(get_current_user)):
     with get_session() as session:
         dept = session.get(Department, dept_id)
         if not dept:
             raise HTTPException(status_code=404, detail="Department not found")
+        if dept.company_id:
+            check_company_membership(current_user.id, dept.company_id, session)
         parent_name = None
         if dept.parent_id:
             parent = session.get(Department, dept.parent_id)
@@ -80,11 +92,14 @@ def get_department(dept_id: str, _: User = Depends(get_current_user)):
 
 
 @router.patch("/{dept_id}")
-def update_department(dept_id: str, body: DepartmentUpdate, _: User = Depends(get_current_user)):
+def update_department(dept_id: str, body: DepartmentUpdate,
+                      current_user: User = Depends(get_current_user)):
     with get_session() as session:
         dept = session.get(Department, dept_id)
         if not dept:
             raise HTTPException(status_code=404, detail="Department not found")
+        if dept.company_id:
+            check_company_membership(current_user.id, dept.company_id, session)
         if body.name is not None:        dept.name = body.name
         if body.slug is not None:        dept.slug = body.slug
         if body.description is not None: dept.description = body.description
@@ -96,7 +111,8 @@ def update_department(dept_id: str, body: DepartmentUpdate, _: User = Depends(ge
                 raise HTTPException(status_code=400, detail="Department cannot be its own parent")
             dept.parent_id = body.parent_id
         session.add(dept)
-        log_action(session, "update", "department", entity_id=dept.id, entity_name=dept.name, company_id=dept.company_id)
+        log_action(session, "update", "department", entity_id=dept.id, entity_name=dept.name,
+                   company_id=dept.company_id)
         session.commit()
         session.refresh(dept)
         parent_name = None
@@ -107,27 +123,36 @@ def update_department(dept_id: str, body: DepartmentUpdate, _: User = Depends(ge
 
 
 @router.delete("/{dept_id}", status_code=204)
-def delete_department(dept_id: str, _: User = Depends(get_current_user)):
+def delete_department(dept_id: str, current_user: User = Depends(get_current_user)):
     with get_session() as session:
         dept = session.get(Department, dept_id)
         if not dept:
             raise HTTPException(status_code=404, detail="Department not found")
+        if dept.company_id:
+            check_company_membership(current_user.id, dept.company_id, session)
         children = session.exec(select(Department).where(Department.parent_id == dept_id)).all()
         for child in children:
             child.parent_id = None
             session.add(child)
-        log_action(session, "delete", "department", entity_id=dept.id, entity_name=dept.name, company_id=dept.company_id)
+        log_action(session, "delete", "department", entity_id=dept.id, entity_name=dept.name,
+                   company_id=dept.company_id)
         session.delete(dept)
         session.commit()
 
 
 @router.get("/tree/root")
-def get_department_tree(company_id: Optional[str] = None, _: User = Depends(get_current_user)):
-    """Returns departments as a nested tree structure."""
+def get_department_tree(company_id: Optional[str] = None,
+                        current_user: User = Depends(get_current_user)):
     with get_session() as session:
-        q = select(Department)
         if company_id:
-            q = q.where(Department.company_id == company_id)
+            check_company_membership(current_user.id, company_id, session)
+            q = select(Department).where(Department.company_id == company_id)
+        else:
+            memberships = session.exec(
+                select(CompanyMember).where(CompanyMember.user_id == current_user.id)
+            ).all()
+            user_company_ids = [m.company_id for m in memberships]
+            q = select(Department).where(Department.company_id.in_(user_company_ids))
         depts = session.exec(q).all()
         dept_map = {d.id: dept_to_dict(d) for d in depts}
         for d in dept_map.values():

@@ -7,6 +7,7 @@ from sqlmodel import select
 
 from database import get_session
 from models import Company, CompanyMember, User
+from schemas import ChangePasswordRequest, InviteRequest, LoginRequest, SetupRequest
 from services.auth import (
     create_access_token,
     decode_token,
@@ -66,12 +67,25 @@ def require_founder(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+def check_company_membership(user_id: str, company_id: str, session) -> CompanyMember:
+    """Return the membership record or raise 403 if user is not a member."""
+    member = session.exec(
+        select(CompanyMember).where(
+            CompanyMember.user_id == user_id,
+            CompanyMember.company_id == company_id,
+        )
+    ).first()
+    if not member:
+        raise HTTPException(status_code=403, detail="Bu şirkete erişim yetkiniz yok")
+    return member
+
+
 # ── Login ─────────────────────────────────────────────────────────────────────
 
 @router.post("/token")
-def login(body: dict):
-    email: str = body.get("email", "").strip().lower()
-    password: str = body.get("password", "")
+def login(body: LoginRequest):
+    email: str = body.email
+    password: str = body.password
     with get_session() as session:
         user = session.exec(select(User).where(User.email == email)).first()
 
@@ -155,15 +169,15 @@ def me(user: User = Depends(get_current_user)):
 # ── Invite (temp-password flow) ───────────────────────────────────────────────
 
 @router.post("/invite", status_code=201)
-def invite_user(body: dict, caller: User = Depends(require_manager)):
-    email: str = body.get("email", "").strip().lower()
-    name: str = body.get("name", "").strip()
-    company_id: str = body.get("company_id", "")
-    role: str = body.get("role", "user")
-    scope_id: Optional[str] = body.get("scope_id")
+def invite_user(body: InviteRequest, caller: User = Depends(require_manager)):
+    email: str = body.email
+    name: str = body.name.strip()
+    company_id: str = body.company_id
+    role: str = body.role
+    scope_id: Optional[str] = body.scope_id
 
-    if not email or not name or not company_id:
-        raise HTTPException(status_code=422, detail="email, name, company_id zorunlu")
+    if not name:
+        raise HTTPException(status_code=422, detail="name boş olamaz")
 
     with get_session() as session:
         company = session.get(Company, company_id)
@@ -215,10 +229,8 @@ def invite_user(body: dict, caller: User = Depends(require_manager)):
 # ── Change password (authenticated — first-login or profile) ─────────────────
 
 @router.post("/change-password")
-def change_password(body: dict, user: User = Depends(get_current_user)):
-    password: str = body.get("password", "")
-    if len(password) < 8:
-        raise HTTPException(status_code=422, detail="En az 8 karakterli şifre gerekli")
+def change_password(body: ChangePasswordRequest, user: User = Depends(get_current_user)):
+    password: str = body.password
 
     with get_session() as session:
         u = session.get(User, user.id)
@@ -245,22 +257,20 @@ def setup_status():
 
 
 @router.post("/setup", status_code=201)
-def setup(body: dict):
+def setup(body: SetupRequest):
     """Create the first admin user. Only works when no users exist."""
     with get_session() as session:
         existing = session.exec(select(User)).first()
         if existing:
             raise HTTPException(status_code=403, detail="Sistem zaten kurulmuş")
 
-    name: str = body.get("name", "").strip()
-    email: str = body.get("email", "").strip().lower()
-    password: str = body.get("password", "")
-    company_name: str = body.get("company_name", "").strip()
+    name: str = body.name.strip()
+    email: str = body.email
+    password: str = body.password
+    company_name: str = body.company_name.strip()
 
-    if not name or not email or not password or not company_name:
-        raise HTTPException(status_code=422, detail="name, email, password, company_name zorunlu")
-    if len(password) < 8:
-        raise HTTPException(status_code=422, detail="Şifre en az 8 karakter olmalı")
+    if not name or not company_name:
+        raise HTTPException(status_code=422, detail="name ve company_name boş olamaz")
 
     with get_session() as session:
         user = User(email=email, name=name, password_hash=hash_password(password), is_active=True)
