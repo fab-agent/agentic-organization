@@ -82,6 +82,12 @@ async def execute_builtin(function_name: str, args: dict, session_id: str | None
     if function_name == "delegate_to_agent":
         return await _delegate_to_agent(args, session_id, agent_id)
 
+    if function_name == "instagram_post":
+        return await _instagram_post(args)
+
+    if function_name == "whatsapp_send":
+        return await _whatsapp_send(args)
+
     return f"[Built-in '{function_name}' not implemented]"
 
 
@@ -137,3 +143,74 @@ async def _delegate_to_agent(args: dict, session_id: str | None, from_agent_id: 
         f"**Talep ID**: `{req.id}`\n\n"
         f"Talep onaylandıktan sonra {target.name} görevi yürütecek ve sonuç geri gelecektir."
     )
+
+
+async def _instagram_post(args: dict) -> str:
+    """Builtin: publish a photo post to the platform's configured Instagram account."""
+    from database import get_session as _gs
+    from models import AppConfig
+    from core.security import decrypt
+    from services.social_media import instagram_post_photo
+
+    image_url = args.get("image_url", "")
+    caption = args.get("caption", "")
+    if not image_url:
+        return "[instagram_post] image_url gerekli"
+    if not caption:
+        return "[instagram_post] caption gerekli"
+
+    with _gs() as db:
+        ig_id_row = db.get(AppConfig, "sm_ig_user_id")
+        ig_tok_row = db.get(AppConfig, "sm_ig_access_token_enc")
+
+    if not ig_id_row or not ig_tok_row:
+        return "[instagram_post] Instagram yapılandırılmamış — Ayarlar > Sosyal Medya'yı doldurun."
+
+    try:
+        result = await instagram_post_photo(
+            ig_user_id=ig_id_row.value,
+            access_token=decrypt(ig_tok_row.value),
+            image_url=image_url,
+            caption=caption,
+        )
+        media_id = result.get("id", "?")
+        return f"✅ Instagram'a yayınlandı — medya ID: `{media_id}`\nCaption: {caption}"
+    except Exception as e:
+        return f"[instagram_post] Hata: {e}"
+
+
+async def _whatsapp_send(args: dict) -> str:
+    """Builtin: send a WhatsApp text message via the platform's configured account."""
+    from database import get_session as _gs
+    from models import AppConfig
+    from core.security import decrypt
+    from services.social_media import whatsapp_send_message
+
+    message = args.get("message", "")
+    to = args.get("to", "")
+    if not message:
+        return "[whatsapp_send] message gerekli"
+
+    with _gs() as db:
+        phone_row   = db.get(AppConfig, "sm_wa_phone_number_id")
+        token_row   = db.get(AppConfig, "sm_wa_access_token_enc")
+        default_row = db.get(AppConfig, "sm_wa_default_to")
+
+    if not phone_row or not token_row:
+        return "[whatsapp_send] WhatsApp yapılandırılmamış — Ayarlar > Sosyal Medya'yı doldurun."
+
+    recipient = to or (default_row.value if default_row else "")
+    if not recipient:
+        return "[whatsapp_send] Alıcı numarası belirtilmemiş (to parametresi veya varsayılan numara gerekli)."
+
+    try:
+        result = await whatsapp_send_message(
+            phone_number_id=phone_row.value,
+            access_token=decrypt(token_row.value),
+            to=recipient,
+            message=message,
+        )
+        msg_id = result.get("messages", [{}])[0].get("id", "?")
+        return f"✅ WhatsApp mesajı gönderildi → `{recipient}`\nMesaj ID: `{msg_id}`\nİçerik: {message}"
+    except Exception as e:
+        return f"[whatsapp_send] Hata: {e}"

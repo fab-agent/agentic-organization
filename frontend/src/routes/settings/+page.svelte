@@ -27,12 +27,14 @@
 		Database,
 		CloudUpload,
 		History,
-		ShieldCheck
+		ShieldCheck,
+		Share2,
+		MessageSquare
 	} from '@lucide/svelte';
 	import { t } from '$lib/i18n/index.svelte';
 
 	// ── Tabs ─────────────────────────────────────────────────────────────────
-	let tab = $state<'providers' | 'git' | 'audit' | 'backup'>('providers');
+	let tab = $state<'providers' | 'git' | 'audit' | 'backup' | 'social'>('providers');
 
 	// ── Provider state ────────────────────────────────────────────────────────
 	type ProviderCard = ProviderStatus & {
@@ -310,10 +312,78 @@
 		}
 	}
 
-	function switchTab(newTab: 'providers' | 'git' | 'audit' | 'backup') {
+	// ── Social Media state ───────────────────────────────────────────────────
+	type SocialConfig = {
+		instagram_configured: boolean;
+		ig_user_id: string | null;
+		whatsapp_configured: boolean;
+		wa_phone_number_id: string | null;
+		wa_default_to: string | null;
+	};
+
+	let socialConfig = $state<SocialConfig | null>(null);
+	let socialLoading = $state(false);
+	let socialSaving = $state(false);
+	let socialError = $state('');
+	let socialSuccess = $state('');
+	let showIgToken = $state(false);
+	let showWaToken = $state(false);
+
+	let socialForm = $state({
+		ig_user_id: '',
+		ig_access_token: '',
+		wa_phone_number_id: '',
+		wa_access_token: '',
+		wa_default_to: '',
+	});
+
+	async function loadSocial() {
+		socialLoading = true;
+		try {
+			const cfg = await api.get<SocialConfig>('/social-media/config');
+			socialConfig = cfg;
+			socialForm.ig_user_id = cfg.ig_user_id ?? '';
+			socialForm.wa_phone_number_id = cfg.wa_phone_number_id ?? '';
+			socialForm.wa_default_to = cfg.wa_default_to ?? '';
+		} finally {
+			socialLoading = false;
+		}
+	}
+
+	async function saveSocial() {
+		socialSaving = true;
+		socialError = '';
+		socialSuccess = '';
+		try {
+			await api.put('/social-media/config', { ...socialForm });
+			await loadSocial();
+			socialSuccess = 'Sosyal medya ayarları kaydedildi.';
+		} catch (e: any) {
+			socialError = e?.message ?? 'Kaydetme başarısız';
+		} finally {
+			socialSaving = false;
+		}
+	}
+
+	async function deleteSocial() {
+		socialError = '';
+		try {
+			await api.delete('/social-media/config');
+			socialConfig = {
+				instagram_configured: false, ig_user_id: null,
+				whatsapp_configured: false, wa_phone_number_id: null, wa_default_to: null
+			};
+			socialForm = { ig_user_id: '', ig_access_token: '', wa_phone_number_id: '', wa_access_token: '', wa_default_to: '' };
+		} catch (e: any) {
+			socialError = e?.message ?? 'Silme başarısız';
+		}
+	}
+
+	function switchTab(newTab: 'providers' | 'git' | 'audit' | 'backup' | 'social') {
 		tab = newTab;
 		if (newTab === 'audit') loadAuditLogs();
 		if (newTab === 'backup') loadBackup();
+		if (newTab === 'social') loadSocial();
 	}
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
@@ -401,6 +471,18 @@
 		>
 			<Database class="w-4 h-4" />
 			Yedekleme
+		</button>
+		<button
+			class={[
+				'px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-x-2',
+				tab === 'social'
+					? 'border-primary text-foreground'
+					: 'border-transparent text-muted-foreground hover:text-foreground'
+			].join(' ')}
+			onclick={() => switchTab('social')}
+		>
+			<Share2 class="w-4 h-4" />
+			Sosyal Medya
 		</button>
 	</div>
 
@@ -1059,6 +1141,198 @@
 						</div>
 					</div>
 				{/if}
+			{/if}
+		</div>
+	{/if}
+
+	<!-- ── SOCIAL MEDIA TAB ─────────────────────────────────────────────── -->
+	{#if tab === 'social'}
+		<div class="space-y-6">
+			<p class="text-sm text-muted-foreground">
+				Instagram Business ve WhatsApp Business Cloud API entegrasyonu. Ajanlara
+				<code class="text-xs bg-muted px-1 py-0.5 rounded">instagram_post</code> ve
+				<code class="text-xs bg-muted px-1 py-0.5 rounded">whatsapp_send</code> builtin skill'leri
+				ekleyerek sosyal medya paylaşımı yapabilirler.
+			</p>
+
+			{#if socialError}
+				<div class="flex items-center gap-x-2 text-sm text-destructive bg-destructive/10 px-4 py-3 rounded-xl">
+					<XCircle class="w-4 h-4 flex-shrink-0" />
+					{socialError}
+				</div>
+			{/if}
+			{#if socialSuccess}
+				<div class="flex items-center gap-x-2 text-sm text-emerald-700 bg-emerald-50 px-4 py-3 rounded-xl">
+					<CheckCircle2 class="w-4 h-4 flex-shrink-0" />
+					{socialSuccess}
+				</div>
+			{/if}
+
+			{#if socialLoading}
+				<div class="flex justify-center py-12">
+					<Loader2 class="w-5 h-5 animate-spin text-muted-foreground" />
+				</div>
+			{:else}
+				<!-- Instagram -->
+				<div class="rounded-2xl border bg-card overflow-hidden">
+					<div class="flex items-center gap-x-3 px-5 py-4 border-b border-border/50">
+						<div class="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 flex items-center justify-center flex-shrink-0">
+							<Share2 class="w-4 h-4 text-white" />
+						</div>
+						<div class="flex-1 min-w-0">
+							<div class="font-semibold text-sm flex items-center gap-x-2">
+								Instagram Business
+								{#if socialConfig?.instagram_configured}
+									<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700">Aktif</span>
+								{:else}
+									<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">Yapılandırılmamış</span>
+								{/if}
+							</div>
+							<div class="text-xs text-muted-foreground mt-0.5">
+								{#if socialConfig?.ig_user_id}
+									IG User ID: {socialConfig.ig_user_id}
+								{:else}
+									Meta Graph API v21.0 · Graph API Explorer'dan token alın
+								{/if}
+							</div>
+						</div>
+					</div>
+					<div class="px-5 py-4 space-y-3">
+						<div class="grid grid-cols-2 gap-3">
+							<div>
+								<label class="block text-xs font-medium text-muted-foreground mb-1.5" for="ig-user-id">
+									IG Business User ID <span class="text-destructive">*</span>
+								</label>
+								<input id="ig-user-id" type="text" bind:value={socialForm.ig_user_id}
+									placeholder="17841400000000000"
+									class="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-ring" />
+							</div>
+							<div>
+								<label class="block text-xs font-medium text-muted-foreground mb-1.5" for="ig-token">
+									Access Token <span class="text-destructive">*</span>
+									{#if socialConfig?.instagram_configured && !socialForm.ig_access_token}
+										<span class="font-normal text-muted-foreground/70">(kayıtlı — değiştirmek için girin)</span>
+									{/if}
+								</label>
+								<div class="relative">
+									<input id="ig-token" type={showIgToken ? 'text' : 'password'}
+										bind:value={socialForm.ig_access_token}
+										placeholder={socialConfig?.instagram_configured ? '••••••••' : 'EAAxxxxxx...'}
+										class="w-full h-9 px-3 pr-10 text-sm rounded-lg border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-ring" />
+									<button type="button"
+										class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+										onclick={() => (showIgToken = !showIgToken)}>
+										{#if showIgToken}<EyeOff class="w-4 h-4" />{:else}<Eye class="w-4 h-4" />{/if}
+									</button>
+								</div>
+							</div>
+						</div>
+						<p class="text-xs text-muted-foreground">
+							Gereken izinler: <code class="bg-muted px-1 rounded">instagram_basic</code>
+							<code class="bg-muted px-1 rounded">instagram_content_publish</code>.
+							Token süresiz olması için <strong>Page Access Token</strong> kullanın.
+						</p>
+					</div>
+				</div>
+
+				<!-- WhatsApp -->
+				<div class="rounded-2xl border bg-card overflow-hidden">
+					<div class="flex items-center gap-x-3 px-5 py-4 border-b border-border/50">
+						<div class="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center flex-shrink-0">
+							<MessageSquare class="w-4 h-4 text-white" />
+						</div>
+						<div class="flex-1 min-w-0">
+							<div class="font-semibold text-sm flex items-center gap-x-2">
+								WhatsApp Business
+								{#if socialConfig?.whatsapp_configured}
+									<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-700">Aktif</span>
+								{:else}
+									<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">Yapılandırılmamış</span>
+								{/if}
+							</div>
+							<div class="text-xs text-muted-foreground mt-0.5">
+								{#if socialConfig?.wa_phone_number_id}
+									Phone Number ID: {socialConfig.wa_phone_number_id}
+								{:else}
+									Meta Cloud API · İş mesajlaşması
+								{/if}
+							</div>
+						</div>
+					</div>
+					<div class="px-5 py-4 space-y-3">
+						<div class="grid grid-cols-2 gap-3">
+							<div>
+								<label class="block text-xs font-medium text-muted-foreground mb-1.5" for="wa-phone-id">
+									Phone Number ID <span class="text-destructive">*</span>
+								</label>
+								<input id="wa-phone-id" type="text" bind:value={socialForm.wa_phone_number_id}
+									placeholder="102290000000000"
+									class="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-ring" />
+							</div>
+							<div>
+								<label class="block text-xs font-medium text-muted-foreground mb-1.5" for="wa-default-to">
+									Varsayılan Alıcı
+								</label>
+								<input id="wa-default-to" type="tel" bind:value={socialForm.wa_default_to}
+									placeholder="+905551234567"
+									class="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-ring" />
+							</div>
+						</div>
+						<div>
+							<label class="block text-xs font-medium text-muted-foreground mb-1.5" for="wa-token">
+								System User Access Token <span class="text-destructive">*</span>
+								{#if socialConfig?.whatsapp_configured && !socialForm.wa_access_token}
+									<span class="font-normal text-muted-foreground/70">(kayıtlı — değiştirmek için girin)</span>
+								{/if}
+							</label>
+							<div class="relative">
+								<input id="wa-token" type={showWaToken ? 'text' : 'password'}
+									bind:value={socialForm.wa_access_token}
+									placeholder={socialConfig?.whatsapp_configured ? '••••••••' : 'EAAxxxxxx...'}
+									class="w-full h-9 px-3 pr-10 text-sm rounded-lg border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-ring" />
+								<button type="button"
+									class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+									onclick={() => (showWaToken = !showWaToken)}>
+									{#if showWaToken}<EyeOff class="w-4 h-4" />{:else}<Eye class="w-4 h-4" />{/if}
+								</button>
+							</div>
+						</div>
+						<p class="text-xs text-muted-foreground">
+							Not: WhatsApp Status (Durum) hikâyeleri resmi Cloud API'de mevcut değil.
+							Bu entegrasyon belirtilen numaraya <strong>metin mesajı</strong> gönderir.
+						</p>
+					</div>
+				</div>
+
+				<!-- Actions -->
+				<div class="flex items-center justify-between">
+					<Button variant="ghost" size="sm" class="h-8 px-3 text-xs text-destructive hover:text-destructive"
+						onclick={deleteSocial}>
+						<Trash2 class="w-3.5 h-3.5 mr-1.5" />
+						Tüm Kimlik Bilgilerini Sil
+					</Button>
+					<Button variant="default" size="sm" class="h-8 px-5 text-xs"
+						disabled={socialSaving}
+						onclick={saveSocial}>
+						{#if socialSaving}
+							<Loader2 class="w-3.5 h-3.5 animate-spin mr-1.5" />
+						{/if}
+						Kaydet
+					</Button>
+				</div>
+
+				<!-- Skill guide -->
+				<div class="rounded-xl border border-dashed bg-muted/30 p-4 space-y-2">
+					<p class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Ajan Skill Kurulumu</p>
+					<p class="text-xs text-muted-foreground">
+						Bir ajana Instagram/WhatsApp yetenekleri eklemek için Personel → Ajan Yapılandırması →
+						Skill Ekle bölümünden:
+					</p>
+					<ul class="text-xs text-muted-foreground space-y-1 list-disc pl-4">
+						<li><code class="bg-background border rounded px-1">instagram_post</code> — Skill türü: <strong>builtin</strong>, parametreler: image_url, caption</li>
+						<li><code class="bg-background border rounded px-1">whatsapp_send</code> — Skill türü: <strong>builtin</strong>, parametreler: message, to (opsiyonel)</li>
+					</ul>
+				</div>
 			{/if}
 		</div>
 	{/if}

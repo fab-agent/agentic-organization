@@ -39,6 +39,7 @@ from api.inbox import router as inbox_router
 from api.task_requests import router as task_router
 from api.audit import router as audit_router
 from api.backup import router as backup_router
+from api.social_media import router as social_media_router
 
 app = FastAPI(
     title="3rdParty Agent Organization API",
@@ -85,6 +86,7 @@ app.include_router(inbox_router)
 app.include_router(task_router)
 app.include_router(audit_router)
 app.include_router(backup_router)
+app.include_router(social_media_router)
 
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
