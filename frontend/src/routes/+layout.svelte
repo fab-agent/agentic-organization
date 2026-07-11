@@ -24,7 +24,6 @@
 		LogOut,
 		GitPullRequest,
 		Zap,
-		Inbox,
 		ChevronLeft,
 		ChevronRight,
 		Settings2,
@@ -441,17 +440,7 @@
 					</a>
 				{/if}
 
-				<a href="/inbox">
-					<Button variant={$page.url.pathname.startsWith('/inbox') ? 'secondary' : 'ghost'}
-						class="w-full justify-start gap-x-3 h-10 rounded-xl text-sm font-medium {sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''}">
-						<Inbox class="w-4 h-4 flex-shrink-0" />
-						{#if !sidebarCollapsed}
-							<span class="flex-1 truncate">{t('nav_inbox')}</span>
-						{/if}
-					</Button>
-				</a>
-
-				{#if can('agent_owner')}
+{#if can('agent_owner')}
 					<a href="/flows">
 						<Button variant={$page.url.pathname.startsWith('/flows') ? 'secondary' : 'ghost'}
 							class="w-full justify-start gap-x-3 h-10 rounded-xl text-sm font-medium {sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''}">
