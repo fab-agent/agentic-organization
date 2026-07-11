@@ -2,11 +2,29 @@
 sidebar_position: 1
 ---
 
-# fab.engineering
+# fab.engineering — Kurumsal Yapay Zeka Katmanı
 
-**Self-hosted, açık kaynak** — şirketlerin yapay zeka ajanlarını organize biçimde yönetmesini sağlayan platform.
+**Versiyon 1.0** · Self-hosted, açık kaynak (MIT) · [GitHub](https://github.com/fab-agent/agentic-organization)
 
-Her personele AI ajan tanımlanır, politika ve yetenekler YAML dosyaları üzerinden yönetilir, organizasyon şeması görselleştirilir. Platform, davet tabanlı kullanıcı sistemi ve rol hiyerarşisiyle ekip bazlı erişim kontrolü sunar.
+> **Kurumsal hafıza ve kurumsal yapay zeka ile işleriniz artık çok daha verimli ve hızlı.**
+
+Veritabanı, uygulama (API, MCP) bağlantılarını içeren ekibinizle birlikte çalışacak bir kurumsal yapay zeka katmanı. Süslü değil — çalışan bir arayüz, açık kaynak, model bağımsız.
+
+---
+
+## Temel İlkeler
+
+### Tam Şeffaflık
+Sizden gizli çalışan hiçbir katman yok. Kaynak koda bakabilir, yapay zekanıza sorabilir ya da doğrudan terminalden inceleyebilirsiniz. MIT lisansı, şeffaf mimari.
+
+### Model Bağımsızlığı
+Claude, GPT-4o, Gemini, Qwen ya da son çıkan herhangi bir model — illa bir modele ya da her zaman son sürüme bağlı değilsiniz. İhtiyacınıza göre değiştirirsiniz.
+
+### Gerçek Bağlantılar
+Ajanlarınız sadece sohbet etmez. Mevcut veritabanlarınıza, dahili API'lerinize ve MCP sunucularınıza bağlanır. Gerçek iş süreçlerinin içinde çalışır.
+
+### Kurumsal Hafıza
+Şirketinizin bilgisi, deneyimi ve süreçleri yapay zeka eşliğinde korunur ve büyür. Yeni çalışanlar geçmişe anında erişir; ajanlar bağlamı hiç unutmaz.
 
 ---
 
@@ -19,6 +37,7 @@ Her personele AI ajan tanımlanır, politika ve yetenekler YAML dosyaları üzer
 | **Personel** | İnsan çalışan veya ajan. Her ikisi de aynı hiyerarşide yer alır. |
 | **Ajan** | Bir personele atanmış AI yapılandırması (model + skill + durum). |
 | **Skill** | Ajanın sahip olduğu yetenek tanımı (ad, versiyon, açıklama). |
+| **Politika** | Şirket, departman veya ajan kapsamında geçerli kural/direktif. |
 | **Platform Kullanıcısı** | E-posta + şifreyle giriş yapan insan personel. Davet ile eklenir. |
 
 ---
@@ -28,13 +47,11 @@ Her personele AI ajan tanımlanır, politika ve yetenekler YAML dosyaları üzer
 - Birden fazla şirketi tek platformdan yönet
 - `parent_id` ile iç içe departman hiyerarşisi kur; org chart'ta departman görünümünü kullan
 - Her personele özgü AI ajan yapılandır
-- Anthropic, OpenAI, Google veya Mistral modellerinden birini seç
+- Anthropic, OpenAI, Google, Mistral veya Qwen modellerinden birini seç — model bağımsız
 - Ajan yapılandırma değişikliklerini iki aşamalı onay akışından geçir (Değişiklik Talepleri)
-- Onaylanan değişiklikleri GitHub'a otomatik commit et (GitHub Entegrasyonu)
-- Cron zamanlayıcısıyla ajanları otomatik çalıştır (Otonom Akışlar)
 - Departman ve skill filtreyle uygun ajana görev gönder (Görev Talepleri)
-- Akış sonuçları ve görev bildirimlerini Gelen Kutusu'ndan takip et (30s polling)
-- Ekip üyelerini e-posta ile platforma davet et; rol bazlı erişim kontrolü uygula
+- Ajana resim ürettir — Qwen Image, DALL-E ve uyumlu modeller desteklenir
+- Ekip üyelerini platforma davet et; rol bazlı erişim kontrolü uygula (5 kademe)
 - Arayüzü Türkçe veya İngilizce kullan
 
 ---
@@ -42,10 +59,10 @@ Her personele AI ajan tanımlanır, politika ve yetenekler YAML dosyaları üzer
 ## Hızlı Başlangıç
 
 ```bash
-git clone https://github.com/fab-agent/3rdparty-agent-org.git
-cd 3rdparty-agent-org
+git clone https://github.com/fab-agent/agentic-organization.git
+cd agentic-organization
 cp .env.example .env
-# .env içine JWT_SECRET ve RESEND_API_KEY değerlerini girin
+# .env içine JWT_SECRET değerini girin
 docker compose up --build
 ```
 
@@ -62,5 +79,12 @@ Platform, davet tabanlı bir kullanıcı sistemi kullanır. Kullanıcılar siste
 Detaylı bilgi için → [Kimlik Doğrulama ve Roller](./platform/auth-and-roles.md)
 
 ---
+
+## İletişim
+
+Soru, öneri ya da geri bildirim için:
+- **LinkedIn**: [Kuntay Kunt](https://www.linkedin.com/in/kuntaykunt/)
+- **X**: [x.com/kuntaykunt](https://x.com/kuntaykunt)
+- **E-posta**: bilgi@kuntaykunt.com
 
 Site dili: Türkçe. Yayın adresi: [docs.fab.engineering](https://docs.fab.engineering)
