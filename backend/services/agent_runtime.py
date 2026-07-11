@@ -571,37 +571,110 @@ async def _stream_anthropic(
     }
 
 
-# ── Image generation (Qwen wanx/flux/stable-diffusion, OpenAI dall-e) ────────
+# ── Image generation (Qwen wanx/qwen-image via DashScope task API, OpenAI dall-e) ────────
 
-async def _generate_image(
-    provider: str,
-    model_name: str,
+def _qwen_task_base(stored_base_url: str | None) -> str:
+    """Derive the DashScope root from the stored compatible-mode base_url."""
+    if stored_base_url:
+        # e.g. https://dashscope-intl.aliyuncs.com/compatible-mode/v1 → https://dashscope-intl.aliyuncs.com
+        return stored_base_url.split("/compatible-mode")[0]
+    return "https://dashscope-intl.aliyuncs.com"
+
+
+async def _generate_image_qwen(
     api_key: str,
+    model_name: str,
+    prompt: str,
+    stored_base_url: str | None = None,
+) -> AsyncGenerator[dict, None]:
+    """DashScope async task API for qwen-image-* and wanx-* models."""
+    import httpx
+    import time
+
+    task_root = _qwen_task_base(stored_base_url)
+    submit_url = f"{task_root}/api/v1/services/aigc/text2image/image-synthesis"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json",
+               "X-DashScope-Async": "enable"}
+    body = {"model": model_name, "input": {"prompt": prompt}, "parameters": {"size": "1024*1024", "n": 1}}
+
+    def _submit():
+        with httpx.Client(timeout=20) as c:
+            r = c.post(submit_url, json=body, headers=headers)
+            r.raise_for_status()
+            return r.json()
+
+    def _poll(task_id: str):
+        poll_url = f"{task_root}/api/v1/tasks/{task_id}"
+        poll_headers = {"Authorization": f"Bearer {api_key}"}
+        for _ in range(30):  # max ~90 seconds
+            time.sleep(3)
+            with httpx.Client(timeout=15) as c:
+                r = c.get(poll_url, headers=poll_headers)
+                r.raise_for_status()
+                data = r.json()
+            status = data.get("output", {}).get("task_status", "")
+            if status == "SUCCEEDED":
+                return data.get("output", {}).get("results", [])
+            if status == "FAILED":
+                raise RuntimeError(data.get("output", {}).get("message", "Görev başarısız oldu"))
+        raise RuntimeError("Resim üretme zaman aşımına uğradı (90s)")
+
+    try:
+        submit_data = await asyncio.to_thread(_submit)
+    except Exception as e:
+        yield {"type": "error", "message": f"Resim görevi başlatılamadı: {e}"}
+        yield {"type": "_meta", "tool_calls": [], "tool_results": []}
+        return
+
+    task_id = submit_data.get("output", {}).get("task_id")
+    if not task_id:
+        yield {"type": "error", "message": "DashScope task_id alınamadı"}
+        yield {"type": "_meta", "tool_calls": [], "tool_results": []}
+        return
+
+    yield {"type": "text", "content": "_Resim üretiliyor…_"}
+
+    try:
+        results = await asyncio.to_thread(_poll, task_id)
+    except Exception as e:
+        yield {"type": "error", "message": f"Resim üretilemedi: {e}"}
+        yield {"type": "_meta", "tool_calls": [], "tool_results": []}
+        return
+
+    parts = []
+    for img in results:
+        img_url = img.get("url")
+        if img_url:
+            parts.append(f"![Üretilen resim]({img_url})")
+        revised = img.get("actual_prompt", "")
+        if revised and revised != prompt:
+            parts.append(f"\n<details><summary>Genişletilmiş prompt</summary>{revised}</details>")
+
+    if not parts:
+        yield {"type": "error", "message": "Resim üretilemedi: sonuç boş döndü"}
+    else:
+        yield {"type": "text", "content": "\n".join(parts)}
+    yield {"type": "_meta", "tool_calls": [], "tool_results": []}
+
+
+async def _generate_image_openai(
+    api_key: str,
+    model_name: str,
     prompt: str,
     size: str = "1024x1024",
 ) -> AsyncGenerator[dict, None]:
-    """Call /images/generations and yield the result as a markdown image."""
+    """OpenAI /images/generations for dall-e-* models."""
     import httpx
 
-    base_url = _OPENAI_BASE_URLS.get(provider, "https://api.openai.com/v1")
-    if provider == "qwen":
-        from database import get_session as _gs
-        from models import ProviderKey as _PK
-        from sqlmodel import select as _sel
-        with _gs() as _db:
-            _row = _db.exec(_sel(_PK).where(_PK.provider == "qwen")).first()
-            if _row and _row.base_url:
-                base_url = _row.base_url
-
-    url = f"{base_url}/images/generations"
+    url = "https://api.openai.com/v1/images/generations"
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     body = {"model": model_name, "prompt": prompt, "n": 1, "size": size}
 
     def _sync_call():
-        with httpx.Client(timeout=120) as client:
-            resp = client.post(url, json=body, headers=headers)
-            resp.raise_for_status()
-            return resp.json()
+        with httpx.Client(timeout=120) as c:
+            r = c.post(url, json=body, headers=headers)
+            r.raise_for_status()
+            return r.json()
 
     try:
         data = await asyncio.to_thread(_sync_call)
@@ -610,26 +683,42 @@ async def _generate_image(
         yield {"type": "_meta", "tool_calls": [], "tool_results": []}
         return
 
-    images = data.get("data", [])
-    if not images:
-        yield {"type": "error", "message": "Resim üretilemedi: API boş yanıt döndü."}
-        yield {"type": "_meta", "tool_calls": [], "tool_results": []}
-        return
-
     parts = []
-    for img in images:
+    for img in data.get("data", []):
         img_url = img.get("url")
         b64 = img.get("b64_json")
-        revised = img.get("revised_prompt", "")
         if img_url:
             parts.append(f"![Üretilen resim]({img_url})")
         elif b64:
             parts.append(f"![Üretilen resim](data:image/png;base64,{b64})")
+        revised = img.get("revised_prompt", "")
         if revised and revised != prompt:
             parts.append(f"\n*Revize prompt: {revised}*")
 
-    yield {"type": "text", "content": "\n".join(parts)}
+    yield {"type": "text", "content": "\n".join(parts) or "Resim üretilemedi"}
     yield {"type": "_meta", "tool_calls": [], "tool_results": []}
+
+
+async def _generate_image(
+    provider: str,
+    model_name: str,
+    api_key: str,
+    prompt: str,
+) -> AsyncGenerator[dict, None]:
+    if provider == "qwen":
+        stored_base_url = None
+        from database import get_session as _gs
+        from models import ProviderKey as _PK
+        from sqlmodel import select as _sel
+        with _gs() as _db:
+            _row = _db.exec(_sel(_PK).where(_PK.provider == "qwen")).first()
+            if _row:
+                stored_base_url = _row.base_url
+        async for ev in _generate_image_qwen(api_key, model_name, prompt, stored_base_url):
+            yield ev
+    else:
+        async for ev in _generate_image_openai(api_key, model_name, prompt):
+            yield ev
 
 
 # ── OpenAI-compatible streaming (OpenAI + Qwen) ───────────────────────────────
