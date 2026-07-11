@@ -12,6 +12,7 @@ class Company(SQLModel, table=True):
     sector: Optional[str] = None
     website: Optional[str] = None
     ai_onboarded: bool = Field(default=False)
+    metadata_json: Optional[str] = None  # JSON: {vision, mission, values, goals}
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -357,6 +358,18 @@ class AgentSkillLink(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     agent_config_id: str = Field(foreign_key="agentconfig.id", index=True)
     company_skill_id: str = Field(foreign_key="companyskill.id", index=True)
+
+
+class DepartmentPolicyLink(SQLModel, table=True):
+    """Many-to-many: which Policy records apply to a Department."""
+    department_id: str = Field(foreign_key="department.id", primary_key=True)
+    policy_id: str = Field(foreign_key="policy.id", primary_key=True)
+
+
+class AgentPolicyLink(SQLModel, table=True):
+    """Many-to-many: agent-specific Policy records (beyond dept inheritance)."""
+    agent_config_id: str = Field(foreign_key="agentconfig.id", primary_key=True)
+    policy_id: str = Field(foreign_key="policy.id", primary_key=True)
 
 
 class Policy(SQLModel, table=True):

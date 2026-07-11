@@ -16,12 +16,14 @@
 		ChevronRight,
 	} from '@lucide/svelte';
 	import { departments as deptApi, type Department } from '$lib/api/departments';
+	import { policiesApi, type Policy } from '$lib/api/policies';
 	import { companyStore } from '$lib/stores/company.svelte';
 	import { t } from '$lib/i18n/index.svelte';
 	import YapiTabs from '$lib/components/ui/yapi-tabs.svelte';
 
 	// ── State ─────────────────────────────────────────────────────────────────
 	let departments: Department[] = $state([]);
+	let companyPolicies: Policy[] = $state([]);
 	let loading = $state(true);
 	let error: string | null = $state(null);
 
@@ -29,7 +31,12 @@
 		try {
 			loading = true;
 			error = null;
-			departments = await deptApi.list(companyStore.active?.id);
+			[departments, companyPolicies] = await Promise.all([
+				deptApi.list(companyStore.active?.id),
+				companyStore.active?.id
+					? policiesApi.list({ company_id: companyStore.active.id })
+					: Promise.resolve([]),
+			]);
 		} catch (e) {
 			error = (e as Error).message;
 		} finally {
@@ -59,7 +66,7 @@
 		parent_id: string | null;
 		description: string;
 		goals: string;
-		policies: string[];
+		policyIds: string[];   // selected Policy IDs (replaces free-text policies)
 		status: 'Active' | 'Inactive';
 	};
 
@@ -69,11 +76,9 @@
 		parent_id: null,
 		description: '',
 		goals: '',
-		policies: [],
+		policyIds: [],
 		status: 'Active'
 	});
-
-	let newPolicyInput = $state('');
 
 	// Slug auto-gen
 	$effect(() => {
@@ -93,10 +98,17 @@
 			.replace(/-+/g, '-');
 	}
 
+	function togglePolicy(policyId: string) {
+		if (form.policyIds.includes(policyId)) {
+			form.policyIds = form.policyIds.filter((id) => id !== policyId);
+		} else {
+			form.policyIds = [...form.policyIds, policyId];
+		}
+	}
+
 	function openCreate() {
 		editingDept = null;
-		form = { name: '', slug: '', parent_id: null, description: '', goals: '', policies: [], status: 'Active' };
-		newPolicyInput = '';
+		form = { name: '', slug: '', parent_id: null, description: '', goals: '', policyIds: [], status: 'Active' };
 		panelOpen = true;
 	}
 
@@ -108,10 +120,9 @@
 			parent_id: dept.parent_id,
 			description: dept.description ?? '',
 			goals: dept.goals ?? '',
-			policies: [...dept.policies],
-			status: dept.status
+			policyIds: [...(dept.policy_ids ?? [])],
+			status: dept.status,
 		};
-		newPolicyInput = '';
 		panelOpen = true;
 	}
 
@@ -124,26 +135,30 @@
 		if (!form.name || !form.slug) return;
 		saving = true;
 		try {
+			let saved: Department;
 			if (editingDept) {
-				const updated = await deptApi.update(editingDept.id, {
+				saved = await deptApi.update(editingDept.id, {
 					name: form.name, slug: form.slug,
 					parent_id: form.parent_id,
 					description: form.description || null,
 					goals: form.goals || null,
-					policies: form.policies,
 					status: form.status,
 				});
-				departments = departments.map((d) => d.id === updated.id ? updated : d);
+				// Set policy links separately
+				saved = await deptApi.setPolicies(editingDept.id, form.policyIds);
+				departments = departments.map((d) => d.id === saved.id ? saved : d);
 			} else {
-				const created = await deptApi.create({
+				saved = await deptApi.create({
 					name: form.name, slug: form.slug,
 					parent_id: form.parent_id,
 					description: form.description || null,
 					goals: form.goals || null,
-					policies: form.policies,
 					status: form.status,
 				}, companyStore.active?.id);
-				departments = [...departments, created];
+				if (form.policyIds.length) {
+					saved = await deptApi.setPolicies(saved.id, form.policyIds);
+				}
+				departments = [...departments, saved];
 			}
 			closePanel();
 		} catch (e) {
@@ -153,16 +168,6 @@
 		}
 	}
 
-	function addPolicy() {
-		const trimmed = newPolicyInput.trim();
-		if (!trimmed || form.policies.includes(trimmed)) return;
-		form.policies = [...form.policies, trimmed];
-		newPolicyInput = '';
-	}
-
-	function removePolicy(policy: string) {
-		form.policies = form.policies.filter((p) => p !== policy);
-	}
 
 	// ── Delete ─────────────────────────────────────────────────────────────────
 	let deleteTarget: Department | null = $state(null);
@@ -478,48 +483,48 @@
 		</section>
 
 		<!-- ③ Politikalar -->
-		<section class="space-y-4">
+		<section class="space-y-3">
 			<div class="flex items-center gap-2 text-xs font-semibold text-muted-foreground tracking-widest uppercase">
 				<span class="flex-shrink-0 w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px]">3</span>
 				{t('dept_policies_section')}
 			</div>
 
-			<!-- Existing policies -->
-			{#if form.policies.length > 0}
-				<div class="space-y-1.5">
-					{#each form.policies as policy (policy)}
-						<div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/60 border border-border/50 group/policy">
-							<ShieldCheck class="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
-							<span class="text-sm flex-1 truncate">{policy}</span>
-							<button
-								type="button"
-								onclick={() => removePolicy(policy)}
-								class="text-muted-foreground hover:text-destructive transition-colors flex-shrink-0 opacity-0 group-hover/policy:opacity-100"
-								aria-label={t('remove')}
-							>
-								<X class="w-3.5 h-3.5" />
-							</button>
-						</div>
+			{#if companyPolicies.length === 0}
+				<p class="text-xs text-muted-foreground italic">
+					Henüz politika oluşturulmamış.
+					<a href="/policies" class="underline text-primary">Politikalar</a> sayfasından ekleyin.
+				</p>
+			{:else}
+				<p class="text-xs text-muted-foreground mb-1">Bu bölüme uygulanacak politikaları seçin:</p>
+				<div class="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+					{#each companyPolicies as policy (policy.id)}
+						{@const selected = form.policyIds.includes(policy.id)}
+						<button
+							type="button"
+							onclick={() => togglePolicy(policy.id)}
+							class="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border transition-colors text-left
+								{selected
+									? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+									: 'bg-background border-border hover:bg-muted/50 text-foreground'}"
+						>
+							<div class="flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors
+								{selected ? 'bg-emerald-500 border-emerald-500' : 'border-muted-foreground/40'}">
+								{#if selected}
+									<ShieldCheck class="w-3 h-3 text-white" />
+								{/if}
+							</div>
+							<div class="min-w-0 flex-1">
+								<div class="text-sm font-medium truncate">{policy.name}</div>
+								{#if policy.scope !== 'company'}
+									<div class="text-xs text-muted-foreground capitalize">{policy.scope}</div>
+								{/if}
+							</div>
+						</button>
 					{/each}
 				</div>
-			{/if}
-
-			<!-- Add policy -->
-			<div class="flex gap-2">
-				<Input
-					bind:value={newPolicyInput}
-					placeholder={t('dept_policy_input')}
-					onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addPolicy(); } }}
-					class="flex-1"
-				/>
-				<Button variant="outline" onclick={addPolicy} disabled={!newPolicyInput.trim()}>
-					<Plus class="w-3.5 h-3.5" />
-					{t('add')}
-				</Button>
-			</div>
-
-			{#if form.policies.length === 0}
-				<p class="text-xs text-muted-foreground">{t('dept_no_policies')}</p>
+				{#if form.policyIds.length > 0}
+					<p class="text-xs text-muted-foreground">{form.policyIds.length} politika seçili</p>
+				{/if}
 			{/if}
 		</section>
 

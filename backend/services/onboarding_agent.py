@@ -16,7 +16,7 @@ from sqlmodel import select
 
 from database import get_session
 from models import (
-    Company, Department, Personnel, AgentConfig, CompanySkill,
+    Company, Department, DepartmentPolicyLink, Personnel, AgentConfig, CompanySkill,
     Policy, AgentSkillLink, ProviderKey, OnboardingSession,
 )
 from core.security import decrypt
@@ -485,14 +485,36 @@ def create_org_from_structure(company_id: str, structure: dict, fallback_model: 
             if dept_id:
                 dept_policy_names.setdefault(dept_id, []).append(pol["name"])
 
-        # Sync policies_json on each department so agents/org-tree can see them
+        # Create DepartmentPolicyLink records (many-to-many, replaces policies_json)
         for dept_id, names in dept_policy_names.items():
             dept_obj = session.get(Department, dept_id)
-            if dept_obj:
-                existing = json.loads(dept_obj.policies_json) if dept_obj.policies_json else []
-                merged = list({n: None for n in existing + names})  # preserve order, deduplicate
-                dept_obj.policies_json = json.dumps(merged, ensure_ascii=False)
-                session.add(dept_obj)
+            if not dept_obj:
+                continue
+            # Also keep policies_json in sync for legacy readers
+            dept_obj.policies_json = json.dumps(names, ensure_ascii=False)
+            session.add(dept_obj)
+
+        # policy name → id map for creating links
+        policy_name_to_id: dict[str, str] = {}
+        for pol in structure.get("policies", []):
+            dept_id = dept_map.get(pol.get("department_slug", "")) or None
+            if dept_id:
+                # find the Policy we just created by slug
+                pass  # will be resolved below after flush
+
+        # Build name→id map from DB records (flushed above)
+        all_policies = session.exec(
+            select(Policy).where(Policy.company_id == company_id)
+        ).all()
+        for p in all_policies:
+            policy_name_to_id[p.name] = p.id
+
+        # Create DepartmentPolicyLink rows
+        for dept_id, names in dept_policy_names.items():
+            for name in names:
+                pid = policy_name_to_id.get(name)
+                if pid:
+                    session.add(DepartmentPolicyLink(department_id=dept_id, policy_id=pid))
 
         # 6. Mark company as onboarded
         company = session.get(Company, company_id)

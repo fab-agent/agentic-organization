@@ -8,6 +8,7 @@
 	import { personnel as personnelApi, type PersonnelItem } from '$lib/api/personnel';
 	import { departments as deptApi, type Department } from '$lib/api/departments';
 	import { skillsApi, type CompanySkill } from '$lib/api/skills';
+	import { policiesApi, type Policy } from '$lib/api/policies';
 	import { companyStore } from '$lib/stores/company.svelte';
 	import { changeRequests as crApi } from '$lib/api/change_requests';
 	import { providers as providerApi, type ModelDef, type PriceTier } from '$lib/api/providers';
@@ -43,15 +44,8 @@
 		return sign;
 	}
 
-	const DEPT_POLICIES: Record<string, string[]> = {
-		'Yazılım Geliştirme': ['Yazılım Kalite Politikası', 'Güvenlik Politikası', 'Code Review SLA', 'Deployment Politikası'],
-		'Kalite Güvence':     ['QA Politikası', 'Test Coverage SLA', 'Bug Raporlama Prosedürü'],
-		'Pazarlama':          ['İçerik Politikası', 'Marka Politikası', 'KVKK Uyumluluk', 'Sosyal Medya Kuralları'],
-		'Finans':             ['Finans Politikası', 'Uyumluluk Politikası', 'Veri Güvenliği', 'Raporlama SLA'],
-		'İnsan Kaynakları':   ['İK Politikası', 'Gizlilik Politikası', 'İşe Alım Prosedürü'],
-		'Operasyon':          ['Operasyon Politikası', 'SLA Yönetimi', 'Süreç Dokümantasyon Kuralı'],
-		'Yönetim':            ['Şirket Politikası', 'Etik Kurallar', 'Karar Yetki Matrisi'],
-	};
+	// All company policies — loaded from DB (replaces hardcoded DEPT_POLICIES)
+	let companyPolicies = $state<Policy[]>([]);
 
 	type LocalSkill = { name: string; version: string; description: string; skill_type?: string; config_json?: string };
 
@@ -122,9 +116,20 @@
 		}
 	}
 
+	async function loadCompanyPolicies() {
+		try {
+			companyPolicies = companyStore.active?.id
+				? await policiesApi.list({ company_id: companyStore.active.id })
+				: [];
+		} catch {
+			companyPolicies = [];
+		}
+	}
+
 	onMount(async () => {
 		load();
 		loadCompanySkills();
+		loadCompanyPolicies();
 		try {
 			availableModels = await providerApi.models();
 		} catch {
@@ -140,7 +145,7 @@
 	});
 
 	$effect(() => {
-		if (companyStore.active) { load(); loadCompanySkills(); }
+		if (companyStore.active) { load(); loadCompanySkills(); loadCompanyPolicies(); }
 	});
 
 	// ── Form state ─────────────────────────────────────────────────────────────
@@ -156,25 +161,18 @@
 		jobDescription: '',
 		selectedSkills: [] as LocalSkill[],
 		selectedCompanySkillIds: [] as string[], // CompanySkill IDs linked via AgentSkillLink
-		selectedPolicies: [] as string[],
+		selectedAgentPolicyIds: [] as string[], // agent-specific Policy IDs
 	});
 
 	let form = $state(emptyForm());
 
-	const selectedDeptName = $derived(depts.find(d => d.id === form.department_id)?.name ?? '');
+	const selectedDept = $derived(depts.find(d => d.id === form.department_id) ?? null);
+	const selectedDeptName = $derived(selectedDept?.name ?? '');
+	// Policy IDs inherited from the selected department (locked, not editable per agent)
+	const inheritedPolicyIds = $derived(selectedDept?.policy_ids ?? []);
 
 	$effect(() => {
 		if (editingId === null) form.slug = slugify(form.name);
-	});
-
-	$effect(() => {
-		if (!selectedDeptName) return;
-		const suggested = DEPT_POLICIES[selectedDeptName] ?? [];
-		for (const p of suggested) {
-			if (!form.selectedPolicies.includes(p)) {
-				form.selectedPolicies = [...form.selectedPolicies, p];
-			}
-		}
 	});
 
 	function openCreate() {
@@ -187,8 +185,8 @@
 	function openEdit(agent: PersonnelItem) {
 		editingId = agent.id;
 		const cfg = agent.agent_config;
-		// Pre-select linked CompanySkills (from onboarding or manual assignment)
-		const linkedCsIds = ((cfg as any)?.company_skills ?? []).map((cs: { id: string }) => cs.id) as string[];
+		const linkedCsIds = (cfg?.company_skills ?? []).map((cs) => cs.id);
+		const agentPolicyIds = cfg?.agent_policy_ids ?? [];
 		form = {
 			name: agent.name,
 			slug: agent.slug,
@@ -204,7 +202,7 @@
 				description: s.description ?? '',
 			})),
 			selectedCompanySkillIds: linkedCsIds,
-			selectedPolicies: [],
+			selectedAgentPolicyIds: agentPolicyIds,
 		};
 		suggestedSkills = [];
 		showPanel = true;
@@ -273,6 +271,14 @@
 						try { await skillsApi.assign(id, newCfgId); } catch {}
 					}
 				}
+				// Set agent-specific policies for new agent
+				if (form.selectedAgentPolicyIds.length) {
+					try { await personnelApi.setAgentPolicies(created.id, form.selectedAgentPolicyIds); } catch {}
+				}
+			}
+			// Always sync agent-specific policies on update too
+			if (editingId) {
+				try { await personnelApi.setAgentPolicies(editingId, form.selectedAgentPolicyIds); } catch {}
 			}
 			await load();
 			closePanel();
@@ -414,20 +420,12 @@
 	}
 
 	// ── Policy helpers ────────────────────────────────────────────────────────
-	function togglePolicy(policy: string) {
-		if (form.selectedPolicies.includes(policy)) {
-			form.selectedPolicies = form.selectedPolicies.filter(p => p !== policy);
+	function toggleAgentPolicy(policyId: string) {
+		if (form.selectedAgentPolicyIds.includes(policyId)) {
+			form.selectedAgentPolicyIds = form.selectedAgentPolicyIds.filter(id => id !== policyId);
 		} else {
-			form.selectedPolicies = [...form.selectedPolicies, policy];
+			form.selectedAgentPolicyIds = [...form.selectedAgentPolicyIds, policyId];
 		}
-	}
-
-	let customPolicy = $state('');
-	function addCustomPolicy() {
-		const p = customPolicy.trim();
-		if (!p || form.selectedPolicies.includes(p)) return;
-		form.selectedPolicies = [...form.selectedPolicies, p];
-		customPolicy = '';
 	}
 
 	// ── Change Request dialog ─────────────────────────────────────────────────
@@ -919,66 +917,68 @@
 				{/if}
 			</section>
 
-			<!-- ⑤ Policy'ler -->
+			<!-- ⑤ Politikalar -->
 			<section class="form-section">
 				<div class="section-title">{t('agent_policies_section')}</div>
 
-				{#if selectedDeptName && (DEPT_POLICIES[selectedDeptName]?.length ?? 0) > 0}
-					<div class="mb-3">
-						<div class="text-xs text-muted-foreground mb-2">{selectedDeptName} policy'leri:</div>
-						<div class="space-y-1.5">
-							{#each DEPT_POLICIES[selectedDeptName] as policy}
-								{@const active = form.selectedPolicies.includes(policy)}
-								<button
-									type="button"
-									class="policy-toggle"
-									class:policy-toggle-on={active}
-									onclick={() => togglePolicy(policy)}
-								>
-									<div class="policy-check" class:policy-check-on={active}>
-										{#if active}<Check class="w-3 h-3 text-white" />{/if}
+				{#if companyPolicies.length === 0}
+					<p class="text-xs text-muted-foreground italic">
+						Henüz politika oluşturulmamış.
+						<a href="/policies" class="underline text-primary">Politikalar</a> sayfasından ekleyin.
+					</p>
+				{:else}
+					<!-- Inherited from department (locked) -->
+					{#if inheritedPolicyIds.length > 0}
+						<div class="mb-3">
+							<div class="text-xs font-medium text-muted-foreground mb-1.5 flex items-center gap-1">
+								<span>Bölüm Politikaları</span>
+								<span class="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{selectedDeptName}</span>
+							</div>
+							<div class="space-y-1">
+								{#each companyPolicies.filter(p => inheritedPolicyIds.includes(p.id)) as policy}
+									<div class="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/40 border border-border/50 opacity-75 cursor-not-allowed">
+										<div class="w-4 h-4 rounded border-2 border-emerald-400 bg-emerald-500 flex items-center justify-center flex-shrink-0">
+											<Check class="w-2.5 h-2.5 text-white" />
+										</div>
+										<span class="text-xs flex-1 truncate text-muted-foreground">{policy.name}</span>
+										<span class="text-[10px] text-muted-foreground/60 flex-shrink-0">bölümden</span>
 									</div>
-									<span class="text-sm">{policy}</span>
-								</button>
-							{/each}
-						</div>
-					</div>
-				{:else if !form.department_id}
-					<p class="text-xs text-muted-foreground mb-3 italic">{t('agent_dept_policies_hint2')}</p>
-				{/if}
-
-				<div class="flex gap-2">
-					<Input
-						bind:value={customPolicy}
-						placeholder={t('agent_policy_input_ph')}
-						class="text-xs h-8"
-						onkeydown={(e) => e.key === 'Enter' && addCustomPolicy()}
-					/>
-					<Button size="sm" variant="outline" onclick={addCustomPolicy} disabled={!customPolicy.trim()} class="h-8 px-3 text-xs">
-						{t('add')}
-					</Button>
-				</div>
-
-				{#each [form.selectedPolicies.filter(p => !(DEPT_POLICIES[selectedDeptName] ?? []).includes(p))] as extraPolicies}
-					{#if extraPolicies.length > 0}
-						<div class="mt-3 space-y-1.5">
-							<div class="text-xs text-muted-foreground">{t('agent_extra_policies')}</div>
-							{#each extraPolicies as policy}
-								<div class="selected-skill-row">
-									<span class="text-sm">{policy}</span>
-									<button
-										type="button"
-										onclick={() => { form.selectedPolicies = form.selectedPolicies.filter(p => p !== policy); }}
-										class="text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
-										aria-label={t('remove')}
-									>
-										<X class="w-3.5 h-3.5" />
-									</button>
-								</div>
-							{/each}
+								{/each}
+							</div>
 						</div>
 					{/if}
-				{/each}
+
+					<!-- Agent-specific policies (toggleable) -->
+					{@const ownPolicies = companyPolicies.filter(p => !inheritedPolicyIds.includes(p.id))}
+					{#if ownPolicies.length > 0}
+						<div>
+							<div class="text-xs font-medium text-muted-foreground mb-1.5">Ajana Özel</div>
+							<div class="space-y-1 max-h-56 overflow-y-auto pr-1">
+								{#each ownPolicies as policy}
+									{@const selected = form.selectedAgentPolicyIds.includes(policy.id)}
+									<button
+										type="button"
+										class="w-full flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors text-left
+											{selected
+												? 'bg-violet-50 border-violet-300'
+												: 'bg-background border-border hover:bg-muted/50'}"
+										onclick={() => toggleAgentPolicy(policy.id)}
+									>
+										<div class="w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors
+											{selected ? 'bg-violet-500 border-violet-500' : 'border-muted-foreground/40'}">
+											{#if selected}<Check class="w-2.5 h-2.5 text-white" />{/if}
+										</div>
+										<span class="text-xs flex-1 truncate {selected ? 'text-violet-900 font-medium' : 'text-foreground'}">{policy.name}</span>
+									</button>
+								{/each}
+							</div>
+						</div>
+					{/if}
+
+					{#if inheritedPolicyIds.length === 0 && ownPolicies.length > 0 && !form.department_id}
+						<p class="text-xs text-muted-foreground mt-2 italic">Bölüm seçince bölüm politikaları otomatik eklenir.</p>
+					{/if}
+				{/if}
 			</section>
 
 		</div>

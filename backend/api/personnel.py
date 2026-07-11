@@ -8,8 +8,8 @@ from sqlmodel import select
 from api.audit import log_action
 from api.auth import check_company_membership, get_current_user
 from database import get_session
-from models import AgentConfig, AgentSkillLink, Company, CompanyMember, CompanySkill, Department, Personnel, Skill, User
-from schemas import AgentConfigCreate, AgentConfigUpdate, PersonnelCreate, PersonnelUpdate, SkillCreate, SkillUpdate
+from models import AgentConfig, AgentPolicyLink, AgentSkillLink, Company, CompanyMember, CompanySkill, Department, DepartmentPolicyLink, Personnel, Policy, Skill, User
+from schemas import AgentConfigCreate, AgentConfigUpdate, PersonnelCreate, PersonnelUpdate, PolicyLinkSet, SkillCreate, SkillUpdate
 from services.auth import generate_temp_password, hash_password
 from services.email import send_invite
 
@@ -67,6 +67,14 @@ def _personnel_to_dict(p: Personnel, session) -> dict:
             {"id": cs.id, "name": cs.name, "slug": cs.slug, "description": cs.description}
             for _, cs in linked
         ]
+        # Agent-specific policy links
+        agent_policy_rows = session.exec(
+            select(AgentPolicyLink, Policy)
+            .join(Policy, AgentPolicyLink.policy_id == Policy.id)
+            .where(AgentPolicyLink.agent_config_id == cfg.id)
+            .where(Policy.is_active == True)
+        ).all()
+        agent_policy_ids = [p.id for _, p in agent_policy_rows]
         result["agent_config"] = {
             "id": cfg.id,
             "model": cfg.model,
@@ -76,6 +84,7 @@ def _personnel_to_dict(p: Personnel, session) -> dict:
             "responsible_name": responsible.name if responsible else None,
             "skills": [_skill_to_dict(s) for s in skills],
             "company_skills": company_skills,
+            "agent_policy_ids": agent_policy_ids,
         }
 
     return result
@@ -395,6 +404,29 @@ def delete_skill(person_id: str, skill_id: str, current_user: User = Depends(get
         session.commit()
 
 
+# ── Agent Policy Links ────────────────────────────────────────────────────────
+
+@router.put("/personnel/{person_id}/agent-policies")
+def set_agent_policies(person_id: str, body: PolicyLinkSet,
+                       current_user: User = Depends(get_current_user)):
+    """Replace the full set of agent-specific policy links for a personnel's agent config."""
+    with get_session() as session:
+        person = _get_person_and_check_membership(person_id, current_user.id, session)
+        cfg = session.exec(select(AgentConfig).where(AgentConfig.personnel_id == person_id)).first()
+        if not cfg:
+            raise HTTPException(status_code=404, detail="Agent config not found")
+        existing = session.exec(
+            select(AgentPolicyLink).where(AgentPolicyLink.agent_config_id == cfg.id)
+        ).all()
+        for link in existing:
+            session.delete(link)
+        for policy_id in body.policy_ids:
+            session.add(AgentPolicyLink(agent_config_id=cfg.id, policy_id=policy_id))
+        log_action(session, "update", "agent_config", entity_id=cfg.id, entity_name=person.name)
+        session.commit()
+        return {"ok": True, "policy_ids": body.policy_ids}
+
+
 # ── Org Tree ──────────────────────────────────────────────────────────────────
 
 @router.get("/org-tree")
@@ -420,6 +452,18 @@ def get_org_tree(company_id: Optional[str] = None,
             select(AgentSkillLink, CompanySkill)
             .join(CompanySkill, AgentSkillLink.company_skill_id == CompanySkill.id)
         ).all()
+        # Load department policy links
+        dept_policy_rows = session.exec(
+            select(DepartmentPolicyLink, Policy)
+            .join(Policy, DepartmentPolicyLink.policy_id == Policy.id)
+            .where(Policy.is_active == True)
+        ).all()
+        # Load agent-specific policy links
+        agent_policy_rows = session.exec(
+            select(AgentPolicyLink, Policy)
+            .join(Policy, AgentPolicyLink.policy_id == Policy.id)
+            .where(Policy.is_active == True)
+        ).all()
 
         dept_map = {d.id: d for d in all_depts}
         cfg_map  = {c.personnel_id: c for c in all_configs}
@@ -433,6 +477,18 @@ def get_org_tree(company_id: Optional[str] = None,
         for link, cs in linked_rows:
             company_skills_by_cfg.setdefault(link.agent_config_id, []).append(
                 {"id": cs.id, "name": cs.name, "slug": cs.slug, "description": cs.description}
+            )
+        # Index dept policies by dept_id → [{id, name}]
+        dept_policies_by_id: dict[str, list] = {}
+        for link, policy in dept_policy_rows:
+            dept_policies_by_id.setdefault(link.department_id, []).append(
+                {"id": policy.id, "name": policy.name}
+            )
+        # Index agent policies by cfg_id → [{id, name}]
+        agent_policies_by_cfg: dict[str, list] = {}
+        for link, policy in agent_policy_rows:
+            agent_policies_by_cfg.setdefault(link.agent_config_id, []).append(
+                {"id": policy.id, "name": policy.name}
             )
 
         def build_node(p: Personnel) -> dict:
@@ -460,7 +516,12 @@ def get_org_tree(company_id: Optional[str] = None,
                 cs_list = company_skills_by_cfg.get(cfg.id, [])
                 node["skills"]           = cs_list if cs_list else skills_by_agent.get(cfg.id, [])
                 node["company_skills"]   = cs_list
-                node["policies"]         = dept.policies() if dept else []
+                # Policies from join tables
+                dept_pols = dept_policies_by_id.get(dept.id, []) if dept else []
+                agent_pols = agent_policies_by_cfg.get(cfg.id, [])
+                node["dept_policies"]  = dept_pols    # [{id, name}] — inherited, not editable
+                node["agent_policies"] = agent_pols   # [{id, name}] — agent-specific
+                node["policies"]       = [p["name"] for p in dept_pols] + [p["name"] for p in agent_pols]
 
             return node
 

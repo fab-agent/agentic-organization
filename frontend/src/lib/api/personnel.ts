@@ -15,6 +15,8 @@ export type AgentConfig = {
 	responsible_id: string | null;
 	responsible_name: string | null;
 	skills: AgentSkill[];
+	company_skills?: Array<{ id: string; name: string; slug: string; description: string | null }>;
+	agent_policy_ids?: string[];
 };
 
 export type PersonnelItem = {
@@ -67,7 +69,8 @@ export const personnel = {
 	createAgentConfig: (id: string, body: Partial<AgentConfig>) => api.post<AgentConfig>(`/personnel/${id}/agent-config`, body),
 	updateAgentConfig: (id: string, body: Partial<AgentConfig>) => api.patch<AgentConfig>(`/personnel/${id}/agent-config`, body),
 
-	listSkills: (id: string)                        => api.get<AgentSkill[]>(`/personnel/${id}/skills`),
-	addSkill:   (id: string, body: Omit<AgentSkill, 'id'>) => api.post<AgentSkill>(`/personnel/${id}/skills`, body),
-	deleteSkill:(id: string, skillId: string)       => api.delete(`/personnel/${id}/skills/${skillId}`),
+	listSkills:      (id: string)                              => api.get<AgentSkill[]>(`/personnel/${id}/skills`),
+	addSkill:        (id: string, body: Omit<AgentSkill, 'id'>) => api.post<AgentSkill>(`/personnel/${id}/skills`, body),
+	deleteSkill:     (id: string, skillId: string)             => api.delete(`/personnel/${id}/skills/${skillId}`),
+	setAgentPolicies:(id: string, policy_ids: string[])        => api.put(`/personnel/${id}/agent-policies`, { policy_ids }),
 };

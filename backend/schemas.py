@@ -291,6 +291,12 @@ class MessageCreate(BaseModel):
     attachments: Optional[list[Attachment]] = None
 
 
+# ── Policy links ───────────────────────────────────────────────────────────────
+
+class PolicyLinkSet(BaseModel):
+    policy_ids: list[str]
+
+
 # ── Change Request ─────────────────────────────────────────────────────────────
 
 class ChangeRequestCreate(BaseModel):

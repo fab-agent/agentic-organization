@@ -13,7 +13,7 @@ from typing import AsyncGenerator, Any
 from sqlmodel import select
 
 from database import get_session
-from models import Personnel, Department, AgentConfig, Skill, ProviderKey, AgentSession, SessionMessage
+from models import AgentPolicyLink, DepartmentPolicyLink, Personnel, Department, AgentConfig, Policy, Skill, ProviderKey, AgentSession, SessionMessage
 from core.security import decrypt
 from services.mcp_client import call_mcp_sse_tool, call_http_tool, execute_builtin
 from services.memory_service import load_agent_memories
@@ -45,7 +45,12 @@ def _build_message_with_attachments(user_message: str, attachments: list[dict] |
 
 # ── System prompt builder ─────────────────────────────────────────────────────
 
-def build_system_prompt(person: Personnel, dept: Department | None, skills: list[Skill]) -> str:
+def build_system_prompt(
+    person: Personnel,
+    dept: Department | None,
+    skills: list[Skill],
+    policy_names: list[str] | None = None,
+) -> str:
     lines = [
         f"You are {person.name}.",
     ]
@@ -57,11 +62,10 @@ def build_system_prompt(person: Personnel, dept: Department | None, skills: list
         lines.append(f"Department: {dept.name}")
         if dept.goals:
             lines.append(f"\nDepartment Goals:\n{dept.goals}")
-        policies = dept.policies()
-        if policies:
-            lines.append("\nPolicies you must follow:")
-            for p in policies:
-                lines.append(f"  - {p}")
+    if policy_names:
+        lines.append("\nPolicies you must follow:")
+        for p in policy_names:
+            lines.append(f"  - {p}")
 
     if skills:
         active_skills = [s for s in skills if s.is_active]
@@ -693,7 +697,32 @@ async def run_session(
             .order_by(SessionMessage.created_at)
         ).all()
 
-        system_prompt = build_system_prompt(person, dept, list(skills))
+        # Gather policies: dept-inherited + agent-specific (join tables, deduplicated)
+        policy_names: list[str] = []
+        seen_ids: set[str] = set()
+        if dept:
+            dept_pol_rows = session.exec(
+                select(Policy)
+                .join(DepartmentPolicyLink, DepartmentPolicyLink.policy_id == Policy.id)
+                .where(DepartmentPolicyLink.department_id == dept.id)
+                .where(Policy.is_active == True)
+            ).all()
+            for p in dept_pol_rows:
+                if p.id not in seen_ids:
+                    policy_names.append(p.name)
+                    seen_ids.add(p.id)
+        agent_pol_rows = session.exec(
+            select(Policy)
+            .join(AgentPolicyLink, AgentPolicyLink.policy_id == Policy.id)
+            .where(AgentPolicyLink.agent_config_id == cfg.id)
+            .where(Policy.is_active == True)
+        ).all()
+        for p in agent_pol_rows:
+            if p.id not in seen_ids:
+                policy_names.append(p.name)
+                seen_ids.add(p.id)
+
+        system_prompt = build_system_prompt(person, dept, list(skills), policy_names or None)
         tool_defs = build_tool_definitions(list(skills))
 
         # Persist user message (display original text; full_message goes to LLM)
