@@ -60,7 +60,7 @@ def _provider_status_dict(row: ProviderKey | None, provider: str, plain_key: str
             "models": [],
             "last_tested": None,
         }
-    models = get_provider_models(provider, plain_key) if row.status == "active" else []
+    models = get_provider_models(provider, plain_key, base_url=row.base_url) if row.status == "active" else []
     return {
         "provider": provider,
         "display_name": cfg["display_name"],
@@ -90,7 +90,7 @@ def list_available_models(_: User = Depends(get_current_user)):
         models = []
         for row in active:
             plain_key = decrypt(row.encrypted_key)
-            models.extend(get_provider_models(row.provider, plain_key))
+            models.extend(get_provider_models(row.provider, plain_key, base_url=row.base_url))
         return models
 
 

@@ -103,7 +103,8 @@ PROVIDER_CONFIGS: dict[str, dict] = {
             {"id": "qwen-turbo", "name": "Qwen Turbo"},
             {"id": "qwen-long",  "name": "Qwen Long"},
         ],
-        "models_url": None,
+        # models_url is dynamic (dashscope-intl vs dashscope); resolved via base_url at runtime
+        "models_url": "__qwen_dynamic__",
     },
 }
 
@@ -150,20 +151,29 @@ def test_provider_key(provider: str, plain_key: str) -> bool:
         return False
 
 
-def fetch_live_models(provider: str, plain_key: str) -> list[dict] | None:
+def fetch_live_models(provider: str, plain_key: str, base_url: str | None = None) -> list[dict] | None:
     """
     Try to fetch the live model list from the provider API.
     Returns None if the provider has no models endpoint or the call fails.
     Each model dict has: id, name, tier, input_per_m, output_per_m.
     """
     cfg = PROVIDER_CONFIGS.get(provider, {})
+    headers = cfg["headers"](plain_key)
+
+    # Resolve models URL
     models_url = cfg.get("models_url")
-    if not models_url:
+    if models_url == "__qwen_dynamic__":
+        # Use stored base_url or detect it
+        resolved_base = base_url or detect_qwen_base_url(plain_key)
+        if not resolved_base:
+            return None
+        models_url = f"{resolved_base}/models"
+    elif not models_url:
         return None
 
     try:
         with httpx.Client(timeout=10) as client:
-            resp = client.get(models_url, headers=cfg["headers"](plain_key))
+            resp = client.get(models_url, headers=headers)
         if not resp.is_success:
             return None
         data = resp.json()
@@ -176,7 +186,6 @@ def fetch_live_models(provider: str, plain_key: str) -> list[dict] | None:
         for m in raw:
             mid = m.get("name", "").removeprefix("models/")
             mname = m.get("displayName", mid)
-            # only include chat-capable models
             if "generateContent" not in m.get("supportedGenerationMethods", []):
                 continue
             if not any(k in mid for k in ("gemini", "palm")):
@@ -193,14 +202,27 @@ def fetch_live_models(provider: str, plain_key: str) -> list[dict] | None:
             result.append(_with_pricing(mid, {"id": mid, "name": mname}))
         return result or None
 
+    if provider == "qwen":
+        # DashScope returns OpenAI-compatible /models format
+        raw = data.get("data", [])
+        result = []
+        for m in raw:
+            mid = m.get("id", "")
+            if not mid:
+                continue
+            mname = m.get("id", mid)  # DashScope doesn't always provide display names
+            result.append(_with_pricing(mid, {"id": mid, "name": mname}))
+        return result or None
+
     return None
 
 
-def get_provider_models(provider: str, plain_key: str | None = None) -> list[dict]:
+def get_provider_models(provider: str, plain_key: str | None = None, base_url: str | None = None) -> list[dict]:
     """
     Return models for a provider with pricing metadata.
     If plain_key is provided and the provider has a live endpoint, fetches dynamically.
     Falls back to the curated list when live fetch is unavailable or fails.
+    base_url is used for providers like qwen where the endpoint varies per key.
     """
     cfg = PROVIDER_CONFIGS.get(provider, {})
     curated = [
@@ -209,7 +231,7 @@ def get_provider_models(provider: str, plain_key: str | None = None) -> list[dic
     ]
 
     if plain_key:
-        live = fetch_live_models(provider, plain_key)
+        live = fetch_live_models(provider, plain_key, base_url=base_url)
         if live:
             return [{"provider": provider, **m} for m in live]
 
