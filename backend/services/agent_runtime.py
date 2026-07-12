@@ -515,16 +515,16 @@ async def _stream_anthropic(
 
     all_tool_calls: list[dict] = []
     all_tool_results: list[dict] = []
+    total_tokens_anthropic = 0
 
     max_loops = 8
     for _ in range(max_loops):
         response_text = ""
         loop_tool_calls: list[dict] = []
-
-        total_tokens_anthropic = 0
+        loop_tok = [0]
 
         def _sync_call():
-            nonlocal response_text, loop_tool_calls, total_tokens_anthropic
+            nonlocal response_text, loop_tool_calls
             resp = client.messages.create(
                 model=model_name,
                 max_tokens=4096,
@@ -533,7 +533,7 @@ async def _stream_anthropic(
                 tools=ant_tools if ant_tools else [],
             )
             if resp.usage:
-                total_tokens_anthropic += (resp.usage.input_tokens or 0) + (resp.usage.output_tokens or 0)
+                loop_tok[0] = (resp.usage.input_tokens or 0) + (resp.usage.output_tokens or 0)
             for block in resp.content:
                 if block.type == "text":
                     response_text = block.text
@@ -541,6 +541,7 @@ async def _stream_anthropic(
                     loop_tool_calls.append({"id": block.id, "name": block.name, "args": block.input})
 
         await asyncio.to_thread(_sync_call)
+        total_tokens_anthropic += loop_tok[0]
 
         if response_text:
             yield {"type": "text", "content": response_text}
@@ -777,24 +778,25 @@ async def _stream_openai_compatible(
 
     all_tool_calls: list[dict] = []
     all_tool_results: list[dict] = []
+    accumulated_tokens = 0
 
     max_loops = 8
     for _ in range(max_loops):
         response_text = ""
         loop_tool_calls: list[dict] = []
-
-        total_tokens_this_loop = 0
+        loop_tokens = [0]  # list so inner func can mutate
 
         def _sync_call():
-            nonlocal response_text, loop_tool_calls, total_tokens_this_loop
+            nonlocal response_text, loop_tool_calls
             kwargs: dict = {"model": model_name, "messages": messages, "max_tokens": 4096}
             if oai_tools:
                 kwargs["tools"] = oai_tools
             resp = client.chat.completions.create(**kwargs)
             if resp.usage:
-                total_tokens_this_loop += resp.usage.total_tokens or (
-                    (resp.usage.prompt_tokens or 0) + (resp.usage.completion_tokens or 0)
-                )
+                t = getattr(resp.usage, "total_tokens", None)
+                if not t:
+                    t = (getattr(resp.usage, "prompt_tokens", 0) or 0) + (getattr(resp.usage, "completion_tokens", 0) or 0)
+                loop_tokens[0] = t or 0
             choice = resp.choices[0]
             if choice.message.content:
                 response_text = choice.message.content
@@ -807,6 +809,7 @@ async def _stream_openai_compatible(
                     })
 
         await asyncio.to_thread(_sync_call)
+        accumulated_tokens += loop_tokens[0]
 
         if response_text:
             yield {"type": "text", "content": response_text}
@@ -827,7 +830,7 @@ async def _stream_openai_compatible(
             all_tool_results.append({"name": tc["name"], "result": result})
             messages.append({"role": "tool", "tool_call_id": tc["id"], "content": result})
 
-    yield {"type": "_meta", "tool_calls": all_tool_calls, "tool_results": all_tool_results, "tokens_used": total_tokens_this_loop}
+    yield {"type": "_meta", "tool_calls": all_tool_calls, "tool_results": all_tool_results, "tokens_used": accumulated_tokens}
 
 
 # ── Main entry point ──────────────────────────────────────────────────────────

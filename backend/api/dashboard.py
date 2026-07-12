@@ -125,12 +125,30 @@ def my_dashboard(company_id: Optional[str] = None, user: User = Depends(get_curr
 
         today = _today_start()
 
-        # Sessions
-        sessions_q = session.exec(
-            select(AgentSession)
-            .where(AgentSession.personnel_id == person.id)
-            .order_by(AgentSession.updated_at.desc())
+        # Find agents this user is responsible for
+        responsible_agent_cfgs = session.exec(
+            select(AgentConfig).where(AgentConfig.responsible_id == person.id)
         ).all()
+        agent_personnel_ids = [a.personnel_id for a in responsible_agent_cfgs]
+
+        # If user has no responsible agents, fall back to all company agents
+        if not agent_personnel_ids and company_id:
+            all_company_people = session.exec(
+                select(Personnel)
+                .where(Personnel.company_id == company_id)
+                .where(Personnel.type == "agent")
+            ).all()
+            agent_personnel_ids = [p.id for p in all_company_people]
+
+        # Sessions for those agents
+        if agent_personnel_ids:
+            sessions_q = session.exec(
+                select(AgentSession)
+                .where(AgentSession.personnel_id.in_(agent_personnel_ids))
+                .order_by(AgentSession.updated_at.desc())
+            ).all()
+        else:
+            sessions_q = []
 
         total_tokens = 0
         today_tokens = 0
@@ -145,10 +163,10 @@ def my_dashboard(company_id: Optional[str] = None, user: User = Depends(get_curr
                 if m.created_at.replace(tzinfo=timezone.utc) >= today:
                     today_tokens += t
 
-        # Memories
+        # Memories for those agents
         memories = session.exec(
             select(AgentMemory)
-            .where(AgentMemory.personnel_id == person.id)
+            .where(AgentMemory.personnel_id.in_(agent_personnel_ids) if agent_personnel_ids else AgentMemory.personnel_id == "")
             .order_by(AgentMemory.created_at.desc())
         ).all()
 
