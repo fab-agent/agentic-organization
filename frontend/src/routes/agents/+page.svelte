@@ -895,22 +895,39 @@
 				</div>
 
 				{#if form.selectedSkills.length > 0}
-					<div class="mt-3 space-y-1.5">
+					<div class="mt-3 space-y-2">
 						<div class="text-xs text-muted-foreground">{t('agent_selected_skills')} ({form.selectedSkills.length}):</div>
 						{#each form.selectedSkills as skill}
-							<div class="selected-skill-row">
-								<div class="flex items-center gap-2 min-w-0">
-									<span class="text-sm font-medium truncate">{skill.name}</span>
-									<span class="version-badge">v{skill.version}</span>
+							{@const cfg = (() => { try { return skill.config_json ? JSON.parse(skill.config_json) : {}; } catch { return {}; } })()}
+							{@const typeLabel = skill.skill_type === 'builtin' ? 'Dahili' : skill.skill_type === 'mcp' ? 'MCP' : skill.skill_type === 'http' ? 'HTTP' : skill.skill_type === 'function' ? 'Fonksiyon' : skill.skill_type === 'database' ? 'Veritabanı' : skill.skill_type ?? ''}
+							<div class="selected-skill-row flex-col !items-start gap-1 py-2.5">
+								<div class="flex items-center justify-between w-full">
+									<div class="flex items-center gap-2 min-w-0 flex-wrap">
+										<span class="text-sm font-medium truncate">{skill.name}</span>
+										<span class="version-badge">v{skill.version}</span>
+										{#if typeLabel}<span class="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">{typeLabel}</span>{/if}
+									</div>
+									<button
+										type="button"
+										onclick={() => { form.selectedSkills = form.selectedSkills.filter(s => s.name !== skill.name); }}
+										class="text-muted-foreground hover:text-destructive transition-colors flex-shrink-0 ml-2"
+										aria-label={t('remove')}
+									>
+										<X class="w-3.5 h-3.5" />
+									</button>
 								</div>
-								<button
-									type="button"
-									onclick={() => { form.selectedSkills = form.selectedSkills.filter(s => s.name !== skill.name); }}
-									class="text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
-									aria-label={t('remove')}
-								>
-									<X class="w-3.5 h-3.5" />
-								</button>
+								{#if skill.description}
+									<p class="text-xs text-muted-foreground leading-relaxed">{skill.description}</p>
+								{/if}
+								{#if skill.skill_type === 'builtin' && cfg.function_name}
+									<span class="text-[10px] font-mono text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">fn: {cfg.function_name}</span>
+								{/if}
+								{#if skill.skill_type === 'mcp' && cfg.url}
+									<span class="text-[10px] font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded truncate max-w-full">{cfg.url}</span>
+								{/if}
+								{#if skill.skill_type === 'http' && cfg.url}
+									<span class="text-[10px] font-mono text-green-600 bg-green-50 px-1.5 py-0.5 rounded truncate max-w-full">{cfg.method ?? 'GET'} {cfg.url}</span>
+								{/if}
 							</div>
 						{/each}
 					</div>
