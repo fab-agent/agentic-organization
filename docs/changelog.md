@@ -8,6 +8,83 @@ Platform güncellemelerinin kronolojik kaydı.
 
 ---
 
+## v0.9 — 12 Temmuz 2026
+
+### Token Telemetrisi ve Hafıza Düzeltmeleri
+
+#### Token Takibi Düzeltmesi
+- `_stream_openai_compatible` ve `_stream_anthropic` fonksiyonlarında token sayısı her araç-kullanım döngüsünde sıfırlanıyordu; artık tüm iterasyonlar boyunca biriktirilip tek `_meta` event'inde iletiliyor.
+- `SessionMessage.tokens_used` artık qwen dahil tüm sağlayıcılarda doğru kaydediliyor.
+- Qwen `resp.usage` yapısındaki `total_tokens` yokluğuna karşı `prompt_tokens + completion_tokens` yedek hesaplama eklendi.
+
+#### Dashboard/Me Düzeltmesi
+- `/dashboard/me` endpoint'i kullanıcının kendi personnel_id'siyle session arıyordu (her zaman 0 sonuç döndürüyordu). Artık kullanıcının sorumlu olduğu ajanların sessionları sorgulanıyor; sorumlu ajan yoksa tüm şirket ajanlarına fallback yapılıyor.
+- `/dashboard/stats` şirket genelinde token ve hafıza verilerini doğru topluyor.
+
+#### Uzun Dönem Hafıza — Qwen Desteği
+- `memory_service.py`: `_prov_for_model()` yardımcısı ve qwen sağlayıcı fallback eklendi; qwen ajanlarının oturumları kapatıldığında artık `agentmemory` kaydı oluşturuluyor.
+- `_call_summary_llm()`: qwen / mistral için OpenAI uyumlu istemci dalı eklendi; `base_url` dinamik olarak `ProviderKey` tablosundan okunuyor.
+
+---
+
+### Akış Koşucusu (Flow Runner) Geliştirmeleri
+
+#### Qwen Görsel Üretimi Akışlarda
+- `flow_runner.py`: `is_image_gen_model()` tespiti eklendi; `qwen-image-*`, `wanx-*`, `flux-*` model adlarıyla tetiklenen akışlar otomatik olarak DashScope görev API'sine yönlendiriliyor.
+- `_generate_image_sync()`: DashScope asenkron görev API'si (gönder + yokla) senkron akış koşucusunda çalışacak şekilde httpx ile implement edildi; 80 saniyelik zaman aşımı ile sonuç Markdown görsel olarak inbox'a iletiliyor.
+- `_call_llm()`: qwen / mistral için OpenAI uyumlu dal eklendi.
+
+#### Görev Yönlendirme Düzeltmesi
+- `task_requests.py`: `_route_agent()` yalnızca eski `Skill` tablosunu kontrol ediyordu. Artık `AgentSkillLink/CompanySkill` tablosu da sorgulanıyor; her iki yapıda da skill eşleşmesi aranıyor.
+- `_model_to_provider()` yardımcısı eklendi; görev koşucusu artık ajan modelinden sağlayıcıyı otomatik çıkarıyor (qwen dahil).
+
+---
+
+### Entegrasyon Testleri
+
+#### GitHub Entegrasyonu
+- `fab-agent/fabrika-yazilim-org` reposu mevcut token ile bağlandı ve doğrulandı.
+
+#### Telegram
+- Bot entegrasyonu doğrulandı; bildirimler aktif.
+
+#### PostgreSQL — Odoo Uyumlu Veritabanı
+- Odoo MRP 2 şemasıyla uyumlu PostgreSQL 18 veritabanı sisteme eklendi.
+- DSN: `postgresql://odoo_agent:***@127.0.0.1:5432/fabrika_odoo`
+- Tablolar: `mrp_production`, `mrp_bom`, `mrp_bom_line`, `mrp_workorder`, `product_template`, `product_product`
+- pg_hba.conf md5 kimlik doğrulaması yapılandırıldı.
+
+#### Otonom Akışlar
+- APScheduler tabanlı akışlar `*/15` ve `*/30` cron zamanlamasıyla test edildi ve doğrulandı.
+
+---
+
+## v0.8 — 9 Temmuz 2026
+
+### Özellikler
+
+#### AI Onboarding
+- Ayarlar → AI Sağlayıcılar altında **"AI ile Kur"** butonu eklendi (yalnızca henüz onboarding yapılmamış şirketlerde görünür).
+- Tıklandığında sidebar/topnav olmayan tam ekran `/onboarding` sayfası açılır.
+- **Aşama 1 — Araştırma:** DuckDuckGo üzerinden şirket web araştırması yapılır; sonuçlar onboarding AI bağlamına aktarılır.
+- **Aşama 2 — Konuşma:** AI Türkçe 3-5 soru sorar (ekip büyüklüğü, bölümler, öncelikli süreçler). Kullanıcı cevapladıkça yapı netleşir; AI hazır olduğunda `<READY_TO_GENERATE/>` sinyali gönderir.
+- **Aşama 3 — Önizleme:** Oluşturulacak departman, insan, ajan, yetenek ve politika sayıları kart + açılır bölümler (collapsible) ile gösterilir. "← Sohbete Dön" ile revizyon yapılabilir.
+- **Aşama 4 — Oluştur:** Tek tıkla tüm varlıklar veritabanına yazılır (FK sırası: departman → yetenek → insan → ajan+AgentConfig+skill bağlantısı → politika). `ai_onboarded` bayrağı `true`'ya set edilir; kullanıcı ana uygulamaya yönlendirilir.
+- Yeni backend servisi: `services/onboarding_agent.py` — DDG araması, çok turlu LLM sohbeti (SSE akışı), yapılandırılmış JSON üretimi, toplu varlık oluşturma.
+- Yeni API modülü: `api/onboarding.py` — 5 endpoint (`/onboarding/status/{id}`, `/search`, `/chat`, `/generate`, `/create`).
+- `Company` modeline `ai_onboarded: bool` alanı + Alembic migration eklendi.
+- `ddgs>=6.0` bağımlılığı `requirements.txt`'e eklendi.
+
+#### Yetenekler & Politikalar Sayfaları (v0.7)
+- `/skills` sayfası: YapiTabs + yetenek kart ızgarası, 3-mod side panel (görüntüle/düzenle/oluştur), Markdown editörü (Yaz/Önizle sekmeleri), CR onay akışı.
+- `/policies` sayfası: kapsam filtre hapları (Tümü/Şirket/Bölüm/Ajan), aynı Markdown editörü ve CR akışı.
+
+#### Sidebar Yeniden Yapısı (v0.7)
+- Bölümler/İnsanlar/Ajanlar/Yetenekler/Politikalar nav öğeleri kaldırıldı; bunların yerine **Göstergeler** (dashboard) ve **Yapı** (tüm yapı sayfaları) olmak üzere iki üst düzey öğe eklendi.
+- `YapiTabs` bileşeni her yapı sayfasında sekme navigasyonu sağlar.
+
+---
+
 ## v0.6 — 9 Temmuz 2026
 
 ### Özellikler
