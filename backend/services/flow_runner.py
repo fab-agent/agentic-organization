@@ -15,6 +15,54 @@ from database import get_session
 from models import AgentConfig, Flow, InboxMessage, Personnel, ProviderKey, User, CompanyMember, Skill
 
 
+def _generate_image_sync(model: str, prompt: str, api_key: str, base_url: str | None = None) -> str:
+    """Synchronous image generation via DashScope task API or OpenAI images endpoint."""
+    import httpx, time, json as _json
+
+    # DashScope task-based (qwen-image-*, wanx-*, flux-*)
+    m = model.lower()
+    if any(m.startswith(p) for p in ("qwen-image", "wanx", "flux")):
+        root = base_url or "https://dashscope-intl.aliyuncs.com"
+        # Strip compatible-mode suffix if present
+        for sfx in ("/compatible-mode/v1", "/v1", "/compatible-mode"):
+            if root.endswith(sfx):
+                root = root[: -len(sfx)]
+                break
+        headers = {"Authorization": f"Bearer {api_key}", "X-DashScope-Async": "enable", "Content-Type": "application/json"}
+        payload = {"model": model, "input": {"prompt": prompt}, "parameters": {"size": "1024*1024", "n": 1}}
+        with httpx.Client(timeout=30) as client:
+            r = client.post(f"{root}/api/v1/services/aigc/text2image/image-synthesis", headers=headers, json=payload)
+            r.raise_for_status()
+            task_id = r.json().get("output", {}).get("task_id")
+        if not task_id:
+            return "Görsel üretim görevi başlatılamadı."
+        poll_headers = {"Authorization": f"Bearer {api_key}"}
+        for _ in range(20):
+            time.sleep(4)
+            with httpx.Client(timeout=15) as client:
+                pr = client.get(f"{root}/api/v1/tasks/{task_id}", headers=poll_headers)
+            pr.raise_for_status()
+            out = pr.json().get("output", {})
+            status = out.get("task_status", "")
+            if status == "SUCCEEDED":
+                results = out.get("results", [])
+                urls = [r2.get("url", "") for r2 in results if r2.get("url")]
+                if urls:
+                    return "\n".join(f"![Üretilen görsel]({u})" for u in urls)
+                return "Görsel üretildi ama URL alınamadı."
+            if status in ("FAILED", "CANCELED"):
+                return f"Görsel üretim başarısız: {status}"
+        return "Zaman aşımı: görsel üretim 80 saniyede tamamlanamadı."
+
+    # OpenAI images endpoint (dall-e-*)
+    import openai
+    img_base = base_url or "https://api.openai.com/v1"
+    client = openai.OpenAI(api_key=api_key, base_url=img_base)
+    resp = client.images.generate(model=model, prompt=prompt, n=1, size="1024x1024")
+    urls = [d.url for d in resp.data if d.url]
+    return "\n".join(f"![Üretilen görsel]({u})" for u in urls) if urls else "Görsel URL alınamadı."
+
+
 def _call_llm(provider: str, model: str, system_prompt: str, user_prompt: str, api_key: str) -> str:
     """Single-turn LLM call. Returns response text."""
     if provider == "anthropic":
@@ -47,6 +95,31 @@ def _call_llm(provider: str, model: str, system_prompt: str, user_prompt: str, a
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
         resp = client.models.generate_content(model=model, contents=full_prompt)
         return resp.text or ""
+
+    elif provider in ("qwen", "mistral"):
+        import openai
+        from sqlmodel import select as _select
+        from database import get_session as _get_session
+        from models import ProviderKey as _PK
+        base_url = None
+        with _get_session() as _sess:
+            pk = _sess.exec(_select(_PK).where(_PK.provider == provider).where(_PK.status == "active")).first()
+            if pk and pk.base_url:
+                base_url = f"{pk.base_url}/v1" if not pk.base_url.endswith("/v1") else pk.base_url
+        if provider == "qwen":
+            base_url = base_url or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+        elif provider == "mistral":
+            base_url = "https://api.mistral.ai/v1"
+        client = openai.OpenAI(api_key=api_key, base_url=base_url)
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=2048,
+        )
+        return resp.choices[0].message.content or ""
 
     raise ValueError(f"Unsupported provider: {provider}")
 
@@ -218,19 +291,26 @@ def run_flow(flow_id: str) -> None:
             if not agent_cfg:
                 raise ValueError(f"AgentConfig not found for {agent.name}")
 
-            # Get provider key
-            provider_key = session.exec(
-                select(ProviderKey).where(ProviderKey.provider == agent_cfg.model.split("/")[0].lower())
-            ).first()
-            # Try to infer provider from model name
-            if not provider_key:
-                for prov in ("anthropic", "openai", "google", "mistral"):
-                    pk = session.exec(
-                        select(ProviderKey).where(ProviderKey.provider == prov).where(ProviderKey.status == "active")
-                    ).first()
-                    if pk:
-                        provider_key = pk
-                        break
+            # Get provider key — prefer agent's model provider
+            def _infer_prov(model: str) -> str:
+                m = (model or "").lower()
+                if m.startswith("claude"): return "anthropic"
+                if m.startswith(("gpt-", "o1", "o3", "dall-e")): return "openai"
+                if m.startswith("gemini"): return "google"
+                if m.startswith(("mistral", "codestral")): return "mistral"
+                if m.startswith(("qwen", "wanx", "flux")): return "qwen"
+                return ""
+            agent_prov = _infer_prov(agent_cfg.model or "")
+            provider_key = None
+            for prov in ([agent_prov] if agent_prov else []) + ["anthropic", "openai", "google", "mistral", "qwen"]:
+                if not prov:
+                    continue
+                pk = session.exec(
+                    select(ProviderKey).where(ProviderKey.provider == prov).where(ProviderKey.status == "active")
+                ).first()
+                if pk:
+                    provider_key = pk
+                    break
 
             if not provider_key:
                 raise ValueError("No active provider key found")
@@ -244,15 +324,24 @@ def run_flow(flow_id: str) -> None:
                 sql_select(Skill).where(Skill.agent_id == agent_cfg.id).where(Skill.is_active == True)
             ).all()
 
-            tools = _get_anthropic_tool_definitions(list(skills)) if provider_key.provider == "anthropic" else []
-            output = _call_llm_with_tools(
-                provider=provider_key.provider,
-                model=agent_cfg.model,
-                system_prompt=system_prompt,
-                user_prompt=flow.prompt,
-                api_key=api_key,
-                tools=tools,
-            )
+            from services.agent_runtime import is_image_gen_model as _is_img
+            if _is_img(agent_cfg.model or ""):
+                output = _generate_image_sync(
+                    model=agent_cfg.model,
+                    prompt=flow.prompt,
+                    api_key=api_key,
+                    base_url=provider_key.base_url,
+                )
+            else:
+                tools = _get_anthropic_tool_definitions(list(skills)) if provider_key.provider == "anthropic" else []
+                output = _call_llm_with_tools(
+                    provider=provider_key.provider,
+                    model=agent_cfg.model,
+                    system_prompt=system_prompt,
+                    user_prompt=flow.prompt,
+                    api_key=api_key,
+                    tools=tools,
+                )
 
             # Deliver to inbox
             recipient_user_id = _find_responsible_user_id(session, agent_cfg)

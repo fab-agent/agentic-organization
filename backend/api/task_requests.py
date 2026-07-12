@@ -16,14 +16,29 @@ from sqlmodel import select
 from api.auth import get_current_user
 from database import get_session
 from models import (
-    AgentConfig, CompanyMember, Department, InboxMessage,
-    Personnel, Skill, TaskRequest, User,
+    AgentConfig, AgentSkillLink, CompanyMember, CompanySkill,
+    Department, InboxMessage, Personnel, Skill, TaskRequest, User,
 )
 from services.flow_runner import _call_llm, _build_system_prompt
 from core.security import decrypt
 from models import ProviderKey
 
 router = APIRouter(prefix="/task-requests", tags=["task-requests"])
+
+
+def _model_to_provider(model: str) -> str:
+    m = model.lower()
+    if m.startswith("claude"):
+        return "anthropic"
+    if m.startswith(("gpt-", "o1", "o3", "dall-e")):
+        return "openai"
+    if m.startswith("gemini"):
+        return "google"
+    if m.startswith(("mistral", "codestral")):
+        return "mistral"
+    if m.startswith(("qwen", "wanx", "flux")):
+        return "qwen"
+    return ""
 
 
 class TaskRequestCreate(BaseModel):
@@ -85,13 +100,21 @@ def _route_agent(session, company_id: str, department_id: Optional[str], skill_f
         candidates = session.exec(q).all()
 
         if skill_filter:
-            # Filter to agents that have the skill
             matched = []
             for cfg in candidates:
+                # Check legacy Skill table
                 skills = session.exec(
                     select(Skill).where(Skill.agent_id == cfg.id).where(Skill.is_active == True)
                 ).all()
-                if any(skill_filter.lower() in s.name.lower() for s in skills):
+                # Also check CompanySkill assignments via AgentSkillLink
+                company_skills = session.exec(
+                    select(CompanySkill)
+                    .join(AgentSkillLink, AgentSkillLink.company_skill_id == CompanySkill.id)
+                    .where(AgentSkillLink.agent_config_id == cfg.id)
+                    .where(CompanySkill.is_active == True)
+                ).all()
+                all_skill_names = [s.name for s in skills] + [s.name for s in company_skills]
+                if any(skill_filter.lower() in n.lower() for n in all_skill_names):
                     matched.append(cfg)
             candidates = matched
 
@@ -197,9 +220,12 @@ def run_task(task_id: str, body: TaskRequestAction, current_user: User = Depends
             if not agent or not agent_cfg:
                 raise ValueError("Agent or config not found")
 
-            # Find active provider key
+            # Find active provider key — prefer agent's own provider, then fallback list
             provider_key = None
-            for prov in ("anthropic", "openai", "google", "mistral"):
+            agent_provider = _model_to_provider(agent_cfg.model or "")
+            for prov in ([agent_provider] if agent_provider else []) + ["anthropic", "openai", "google", "mistral", "qwen"]:
+                if not prov:
+                    continue
                 pk = session.exec(
                     select(ProviderKey).where(ProviderKey.provider == prov).where(ProviderKey.status == "active")
                 ).first()
