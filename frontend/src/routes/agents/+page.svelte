@@ -477,6 +477,33 @@
 		} catch (e) { alert((e as Error).message); }
 		finally { crSaving = false; }
 	}
+
+	async function submitAgentCr() {
+		if (!editingId || !form.name || !form.title) return;
+		crSaving = true;
+		try {
+			await crApi.create({
+				personnel_id: editingId,
+				change_type: 'agent_config',
+				title: `${form.name} - Yapılandırma Güncellemesi`,
+				proposed: {
+					name: form.name,
+					slug: form.slug,
+					title: form.title,
+					role: form.jobDescription,
+					department_id: form.department_id || null,
+					model: form.model,
+					status: form.status,
+					responsible_id: form.responsible_id || null,
+					skills: form.selectedSkills,
+					company_skill_ids: form.selectedCompanySkillIds,
+					policy_ids: form.selectedAgentPolicyIds,
+				},
+			}, companyStore.active?.id ?? '');
+			closePanel();
+		} catch (e) { alert((e as Error).message); }
+		finally { crSaving = false; }
+	}
 </script>
 
 <svelte:head>
@@ -1039,9 +1066,19 @@
 		<!-- Panel Footer -->
 		<div class="panel-footer">
 			<Button variant="outline" onclick={closePanel} class="flex-1 sm:flex-none">{t('cancel')}</Button>
-			<Button onclick={saveAgent} disabled={!form.name || !form.title || saving} class="flex-1 sm:flex-none">
-				{#if saving}{t('saving')}{:else}{editingId ? t('update') : t('create')}{/if}
-			</Button>
+			{#if editingId}
+				<Button
+					onclick={submitAgentCr}
+					disabled={!form.name || !form.title || crSaving}
+					class="flex-1 sm:flex-none bg-amber-600 hover:bg-amber-700 text-white"
+				>
+					{crSaving ? t('agent_cr_submitting') : t('agent_cr_submit')}
+				</Button>
+			{:else}
+				<Button onclick={saveAgent} disabled={!form.name || !form.title || saving} class="flex-1 sm:flex-none">
+					{saving ? t('saving') : t('create')}
+				</Button>
+			{/if}
 		</div>
 	</aside>
 {/if}

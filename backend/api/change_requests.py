@@ -186,10 +186,14 @@ def admin_approve(
         cr.admin_note = body.note
         cr.updated_at = datetime.utcnow()
 
-        # Look up git config for this company
+        # Look up git config — company-specific first, fall back to global (company_id=None)
         git_cfg = session.exec(
             select(GitConfig).where(GitConfig.company_id == company_id)
         ).first()
+        if not git_cfg:
+            git_cfg = session.exec(
+                select(GitConfig).where(GitConfig.company_id == None)
+            ).first()
 
         if git_cfg:
             try:
