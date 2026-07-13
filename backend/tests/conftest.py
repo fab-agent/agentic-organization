@@ -2,10 +2,13 @@
 Shared test fixtures.
 
 Strategy:
-- Each test gets a fresh in-memory SQLite DB (function scope).
+- Each test gets a fresh file-based SQLite DB in a tmp directory (function scope).
+- File-based SQLite is used instead of in-memory+StaticPool because the FastAPI
+  TestClient and the direct db_session fixture open separate connections; file-
+  based SQLite handles concurrent readers/writers correctly without connection
+  sharing hacks.
 - database.engine is monkeypatched so all app code hits the test DB.
-- create_all() is called explicitly in patch_engine so tables always exist.
-- run_seed / _sync_env_provider_keys are mocked out (no demo data noise).
+- init_db / run_seed / env-key sync are mocked (no alembic, no demo noise).
 - A logged-in `auth_client` fixture provides an authenticated TestClient.
 """
 import pytest
@@ -13,8 +16,6 @@ from unittest.mock import patch
 from sqlalchemy import create_engine
 from sqlmodel import SQLModel, Session
 from fastapi.testclient import TestClient
-
-from sqlalchemy.pool import StaticPool
 
 import database
 import models
@@ -24,12 +25,11 @@ from services.auth import hash_password, create_access_token
 # ── DB fixture ────────────────────────────────────────────────────────────────
 
 @pytest.fixture()
-def test_engine():
-    # StaticPool: all connections share a single in-memory SQLite DB
+def test_engine(tmp_path):
+    db_file = tmp_path / "test.db"
     engine = create_engine(
-        "sqlite:///:memory:",
+        f"sqlite:///{db_file}",
         connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
     )
     SQLModel.metadata.create_all(engine)
     yield engine
@@ -39,21 +39,25 @@ def test_engine():
 
 @pytest.fixture(autouse=True)
 def patch_engine(test_engine, monkeypatch):
-    """Redirect all DB access to the in-memory test engine."""
+    """Redirect all DB access to the per-test file-based engine."""
     monkeypatch.setattr(database, "engine", test_engine)
-    # Belt-and-suspenders: ensure tables exist even if ordering varies
-    SQLModel.metadata.create_all(test_engine)
 
 
 # ── App / TestClient ──────────────────────────────────────────────────────────
 
 @pytest.fixture()
-def client():
-    """TestClient with seed and env-key sync suppressed."""
+def client(patch_engine):
+    """TestClient with seed, env-key sync, and init_db suppressed.
+
+    patch_engine dependency ensures database.engine is already pointing at the
+    test DB before FastAPI's startup event fires. Tables are created by
+    test_engine's create_all() above.
+    """
     from main import app
     with patch("main.run_seed"), \
          patch("main._sync_env_config"), \
-         patch("main._sync_env_provider_keys"):
+         patch("main._sync_env_provider_keys"), \
+         patch("main.init_db"):
         with TestClient(app, raise_server_exceptions=True) as c:
             yield c
 
@@ -62,7 +66,7 @@ def client():
 
 @pytest.fixture()
 def db_session(test_engine):
-    with Session(test_engine) as s:
+    with Session(test_engine, expire_on_commit=False) as s:
         yield s
 
 

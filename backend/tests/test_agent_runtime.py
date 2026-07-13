@@ -149,6 +149,9 @@ def test_run_session_with_mock_openai(db_session, test_engine):
     mock_choice.message.tool_calls = None
     mock_resp = MagicMock()
     mock_resp.choices = [mock_choice]
+    mock_resp.usage.prompt_tokens = 10
+    mock_resp.usage.completion_tokens = 5
+    mock_resp.usage.total_tokens = 15
 
     with patch("openai.OpenAI") as MockOpenAI:
         mock_client = MagicMock()
@@ -184,6 +187,8 @@ def test_run_session_with_mock_anthropic(db_session, test_engine):
     mock_block.text = "Merhaba! Ben ClaudeBot."
     mock_resp = MagicMock()
     mock_resp.content = [mock_block]
+    mock_resp.usage.input_tokens = 10
+    mock_resp.usage.output_tokens = 5
 
     with patch("anthropic.Anthropic") as MockAnthropic:
         mock_client = MagicMock()
