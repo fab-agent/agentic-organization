@@ -12,6 +12,67 @@ from models import AgentConfig, AgentSkillLink, ChangeRequest, CompanySkill, Per
 
 router = APIRouter(tags=["skills"])
 
+# ── Platform builtin tool registry ───────────────────────────────────────────
+# Single source of truth for all tools the platform can execute natively.
+# Frontend fetches this list instead of hardcoding it.
+PLATFORM_BUILTIN_TOOLS = [
+    {
+        "value": "web_search",
+        "label_tr": "Web Arama",
+        "label_en": "Web Search",
+        "description_tr": "DuckDuckGo ile internet araması yapar",
+        "description_en": "Search the web using DuckDuckGo",
+        "icon": "🔍",
+    },
+    {
+        "value": "text_to_chart",
+        "label_tr": "Grafik Üretimi",
+        "label_en": "Chart Generation",
+        "description_tr": "JSON/CSV verisinden grafik üretir",
+        "description_en": "Generate a chart from JSON or CSV data",
+        "icon": "📊",
+    },
+    {
+        "value": "journal_write",
+        "label_tr": "Günlük Yaz",
+        "label_en": "Write Journal",
+        "description_tr": "Oturum gününlüğüne markdown girişi ekler",
+        "description_en": "Append a markdown entry to the session journal",
+        "icon": "📝",
+    },
+    {
+        "value": "delegate_to_agent",
+        "label_tr": "Ajan Delegasyonu",
+        "label_en": "Delegate to Agent",
+        "description_tr": "Görevi başka bir ajana iletir (A2A)",
+        "description_en": "Route a task to another agent (A2A)",
+        "icon": "🤝",
+    },
+    {
+        "value": "instagram_post",
+        "label_tr": "Instagram Gönderi",
+        "label_en": "Instagram Post",
+        "description_tr": "Instagram Business hesabına gönderi paylaşır",
+        "description_en": "Publish a post to an Instagram Business account",
+        "icon": "📸",
+    },
+    {
+        "value": "whatsapp_send",
+        "label_tr": "WhatsApp Mesaj",
+        "label_en": "WhatsApp Message",
+        "description_tr": "WhatsApp Business API ile mesaj gönderir",
+        "description_en": "Send a message via WhatsApp Business API",
+        "icon": "💬",
+    },
+]
+
+
+@router.get("/builtin-tools")
+def list_builtin_tools(_: User = Depends(get_current_user)):
+    """Return all platform-implemented builtin tools. Model-agnostic — any provider
+    that supports function calling can use these tools."""
+    return PLATFORM_BUILTIN_TOOLS
+
 
 class SkillCreate(BaseModel):
     company_id: str

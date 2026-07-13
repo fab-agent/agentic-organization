@@ -35,6 +35,15 @@ export interface SkillUpdate {
 	is_active?: boolean;
 }
 
+export interface BuiltinTool {
+	value: string;
+	label_tr: string;
+	label_en: string;
+	description_tr: string;
+	description_en: string;
+	icon: string;
+}
+
 export const skillsApi = {
 	list: (company_id?: string) => {
 		const qs = company_id ? `?company_id=${company_id}` : '';
@@ -56,4 +65,5 @@ export const skillsApi = {
 		api.post(`/company-skills/${skill_id}/assign/${agent_config_id}`, {}),
 	unassign: (skill_id: string, agent_config_id: string) =>
 		api.delete(`/company-skills/${skill_id}/assign/${agent_config_id}`),
+	listBuiltinTools: () => api.get<BuiltinTool[]>('/builtin-tools'),
 };

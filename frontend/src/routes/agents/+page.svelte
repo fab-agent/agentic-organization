@@ -7,13 +7,13 @@
 	import { Plus, Pencil, Trash2, Bot, Sparkles, X, Check, Loader, GitPullRequest } from '@lucide/svelte';
 	import { personnel as personnelApi, type PersonnelItem } from '$lib/api/personnel';
 	import { departments as deptApi, type Department } from '$lib/api/departments';
-	import { skillsApi, type CompanySkill } from '$lib/api/skills';
+	import { skillsApi, type CompanySkill, type BuiltinTool } from '$lib/api/skills';
 	import { policiesApi, type Policy } from '$lib/api/policies';
 	import { companyStore } from '$lib/stores/company.svelte';
 	import { changeRequests as crApi } from '$lib/api/change_requests';
 	import { providers as providerApi, type ModelDef, type PriceTier } from '$lib/api/providers';
 	import { api } from '$lib/api/client.js';
-	import { t } from '$lib/i18n/index.svelte';
+	import { t, i18n } from '$lib/i18n/index.svelte';
 	import YapiTabs from '$lib/components/ui/yapi-tabs.svelte';
 
 	// ── Dynamic models ────────────────────────────────────────────────────────
@@ -63,14 +63,9 @@
 		{ value: 'database', label: 'Veritabanı',  hint: 'SQL sorgu — semantik şema ile' },
 	];
 
-	const BUILTIN_FUNCTIONS = [
-		{ value: 'web_search',      label: 'Web Arama' },
-		{ value: 'journal_write',   label: 'Günlük Yaz' },
-		{ value: 'instagram_post',  label: 'Instagram Gönderi' },
-		{ value: 'whatsapp_send',   label: 'WhatsApp Mesaj' },
-		{ value: 'delegate_to_agent', label: 'Ajan Delegasyonu' },
-		{ value: 'text_to_chart',   label: 'Grafik Üretimi' },
-	];
+	// Loaded dynamically from backend — single source of truth
+	let builtinTools = $state<BuiltinTool[]>([]);
+	let builtinToolsLoading = $state(true);
 
 	// ── Database list (for database skill type) ───────────────────────────────
 	type DBItem = { id: string; name: string; db_type: string; status: string };
@@ -141,6 +136,13 @@
 			databases = await api.get<DBItem[]>('/databases/');
 		} catch {
 			databases = [];
+		}
+		try {
+			builtinTools = await skillsApi.listBuiltinTools();
+		} catch {
+			builtinTools = [];
+		} finally {
+			builtinToolsLoading = false;
 		}
 	});
 
@@ -340,7 +342,7 @@
 	}
 
 	let customSkill = $state({
-		name: '', version: '', description: '',
+		name: '', description: '',
 		skill_type: 'builtin' as string,
 		mcp_url: '', mcp_transport: 'sse', mcp_auth_type: 'none', mcp_auth_value: '',
 		http_url: '', http_method: 'POST',
@@ -350,7 +352,7 @@
 	});
 
 	function addCustomSkill() {
-		const { name, version, description, skill_type } = customSkill;
+		const { name, description, skill_type } = customSkill;
 		if (!name.trim()) return;
 		if (isSkillSelected(name)) return;
 
@@ -374,12 +376,12 @@
 
 		form.selectedSkills = [...form.selectedSkills, {
 			name: name.trim(),
-			version: version.trim() || '1.0',
+			version: '1.0',
 			description: description.trim(),
 			skill_type,
 			config_json,
 		}];
-		customSkill = { ...customSkill, name: '', version: '', description: '', mcp_url: '', http_url: '', fn_code: '', db_id: '' };
+		customSkill = { ...customSkill, name: '', description: '', mcp_url: '', http_url: '', fn_code: '', db_id: '' };
 	}
 
 	// ── AI skill suggestion ───────────────────────────────────────────────────
@@ -452,7 +454,7 @@
 		if (t === 'agent_config') {
 			crForm.proposed_json = JSON.stringify({ model: cfg?.model, status: cfg?.status, responsible_id: cfg?.responsible_id }, null, 2);
 		} else if (t === 'skill') {
-			crForm.proposed_json = JSON.stringify({ name: '', version: '1.0', description: '' }, null, 2);
+			crForm.proposed_json = JSON.stringify({ name: '', description: '' }, null, 2);
 		} else {
 			crForm.proposed_json = JSON.stringify({ policy_name: '', content: '' }, null, 2);
 		}
@@ -813,19 +815,25 @@
 						{/each}
 					</div>
 
-					<div class="grid grid-cols-2 gap-2 mb-2">
-						<Input bind:value={customSkill.name}    placeholder={t('agent_skill_name_ph')}    class="text-xs h-8" />
-						<Input bind:value={customSkill.version} placeholder={t('agent_skill_version_ph')} class="text-xs h-8 font-mono" />
+					<div class="mb-2">
+						<Input bind:value={customSkill.name} placeholder={t('agent_skill_name_ph')} class="text-xs h-8" />
 					</div>
 					<div class="mb-2">
 						<Input bind:value={customSkill.description} placeholder={t('agent_skill_desc_ph')} class="text-xs h-8" />
 					</div>
 
 					{#if customSkill.skill_type === 'builtin'}
-						<select class="select-input text-xs h-8 mb-2" bind:value={customSkill.builtin_fn}>
-							{#each BUILTIN_FUNCTIONS as f}
-								<option value={f.value}>{f.label}</option>
-							{/each}
+						<select class="select-input text-xs h-8 mb-2" bind:value={customSkill.builtin_fn}
+								disabled={builtinToolsLoading}>
+							{#if builtinToolsLoading}
+								<option value="">Yükleniyor…</option>
+							{:else}
+								{#each builtinTools as f}
+									<option value={f.value}>
+										{f.icon} {i18n.locale === 'en' ? f.label_en : f.label_tr}
+									</option>
+								{/each}
+							{/if}
 						</select>
 					{/if}
 

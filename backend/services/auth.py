@@ -8,6 +8,12 @@ import bcrypt
 from jose import JWTError, jwt
 
 SECRET_KEY = os.getenv("JWT_SECRET", "change-me-in-production-please")
+if SECRET_KEY == "change-me-in-production-please":
+    import logging as _logging
+    _logging.getLogger(__name__).critical(
+        "JWT_SECRET is using the default insecure value. "
+        "Set a strong random secret in .env before deploying to production."
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 72
 
