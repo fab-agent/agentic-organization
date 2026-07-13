@@ -24,6 +24,7 @@ const sidebars: SidebarsConfig = {
         'product/task-requests',
         'product/inbox',
         'product/a2a-architecture',
+        'product/a2a-delegation',
         'product/audit-log',
         'product/agent-memory',
         'product/flow-tool-use',
@@ -38,6 +39,8 @@ const sidebars: SidebarsConfig = {
         'platform/chat-ui',
         'platform/a2a-delegation',
         'platform/message-rendering',
+        'platform/backup',
+        'platform/social-media-agent',
       ],
     },
     {
