@@ -10,7 +10,17 @@ Platform güncellemelerinin kronolojik kaydı.
 
 ## v1.1.1 — 14 Temmuz 2026
 
+### İyileştirmeler
+
+**AI Sağlayıcı Ayarları Yeniden Tasarımı:**
+- Sağlayıcılar artık iki ayrı bölümde gösteriliyor: **Lokal Modeller** (Ollama, LM Studio) ve **Bulut API Servisleri** (Anthropic, OpenAI, Google, Mistral, Qwen).
+- `Server` ve `Globe` ikon başlıkları ile bölüm açıklamaları eklendi.
+
 ### Hata Düzeltmeleri
+
+**AI Provider Anahtarı Eklenemiyor:**
+- `invalid` durumundaki sağlayıcı kartlarında "Sil" butonu artık gösteriliyor. Önceden yalnızca `active` durumdaki kartlarda görünüyordu; bu nedenle hatalı kaydedilen bir key silinemiyor ve yeniden denenemiyor durumdaydı.
+- Silme işlemi artık soft-delete yapıyor: DB satırı korunduğundan backend yeniden başladığında `.env`'den key tekrar eklenmez.
 
 **Dashboard i18n:**
 - Dashboard sayfasındaki tüm Türkçe hardcoded string'ler `t()` çağrılarıyla değiştirildi.
