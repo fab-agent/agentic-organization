@@ -8,6 +8,22 @@ Platform güncellemelerinin kronolojik kaydı.
 
 ---
 
+## v1.1.1 — 14 Temmuz 2026
+
+### Hata Düzeltmeleri
+
+**Dashboard i18n:**
+- Dashboard sayfasındaki tüm Türkçe hardcoded string'ler `t()` çağrılarıyla değiştirildi.
+- 45 yeni i18n anahtarı eklendi: telemetri bölümü, SLA tablosu, hızlı erişim, oturum durumu, hafıza kartları ve güncelleme banner'ı.
+
+**Organizasyon Şeması:**
+- İngilizce nav ve sayfa başlığı `'Organization'` / `'Org Chart'` → `'Organization Chart'` olarak düzeltildi.
+
+**AI Provider Ayarları:**
+- `invalid` durumundaki sağlayıcı kartlarında "Sil" butonu artık görünüyor (önceden yalnızca `active` durumda gösteriliyordu).
+
+---
+
 ## v1.1 — 14 Temmuz 2026
 
 ### Prodüksiyon Hazırlığı
