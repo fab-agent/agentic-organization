@@ -240,7 +240,7 @@
     <!-- Badge -->
     <div class="badge mb-8">
       <span style="width:7px;height:7px;background:#10b981;border-radius:50%;display:inline-block;animation:pulse 2s infinite"></span>
-      <span class="text-emerald-400 font-medium text-xs tracking-wide">Open Source · Self-Hosted · v1.0</span>
+      <span class="text-emerald-400 font-medium text-xs tracking-wide">Open Source · Self-Hosted · MIT</span>
     </div>
 
     <!-- Headline -->
@@ -277,7 +277,7 @@
     <div class="flex flex-wrap items-center justify-center gap-2 mt-10">
       <span class="pill">MIT License</span>
       <span class="pill">FastAPI + SvelteKit</span>
-      <span class="pill">Docker 1-command</span>
+      <span class="pill">install.sh · SSL otomatik</span>
       <span class="pill">Model Agnostic</span>
       <span class="pill">API · MCP · DB</span>
       <span class="pill">SQLite</span>
@@ -502,8 +502,8 @@
         <div class="feat-icon" style="background:rgba(20,184,166,0.1)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
         </div>
-        <h3 class="font-semibold text-base mb-2" data-i18n="f6.title">Self-Hosted & Açık Kaynak</h3>
-        <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="f6.desc">Tüm veriler kendi sunucunda. MIT lisansı, şeffaf mimari. Docker ile tek komutta kur, istediğin gibi özelleştir.</p>
+        <h3 class="font-semibold text-base mb-2" data-i18n="f6.title">Tek Komut Prodüksiyon Kurulumu</h3>
+        <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="f6.desc"><code class="mono" style="font-size:11px;background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px">bash install.sh</code> — Let's Encrypt SSL, Nginx, Docker Compose. Sihirbaz JWT/şifreleme anahtarlarını otomatik üretir. MIT lisansı, tüm veriler kendi sunucunda.</p>
       </div>
 
       <!-- 7 -->
@@ -529,8 +529,8 @@
         <div class="feat-icon" style="background:rgba(16,185,129,0.1)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><polyline points="7 8 10 11 15 6"/></svg>
         </div>
-        <h3 class="font-semibold text-base mb-2" data-i18n="f9.title">AI Telemetri Dashboard</h3>
-        <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="f9.desc">Şirket geneli ve kullanıcıya özel AI kullanım metrikleri: oturum sayıları, token harcaması, aktif ajan durumu. Her kullanıcı kendi aktivitesini görür.</p>
+        <h3 class="font-semibold text-base mb-2" data-i18n="f9.title">SLA & AI Telemetri Dashboard</h3>
+        <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="f9.desc">Oturum sayıları, token harcaması, aktif ajan durumu. Yöneticilere ajan başarı oranı (SLA): flow ve görev tamamlanma metrikleri renk kodlu tablo ile sunulur. Her kullanıcı kendi aktivitesini görür.</p>
       </div>
 
       <!-- 10 -->
@@ -549,6 +549,15 @@
         </div>
         <h3 class="font-semibold text-base mb-2" data-i18n="f11.title">Telegram Bildirimleri</h3>
         <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="f11.desc">Davet ve şifre sıfırlama bildirimleri Telegram Bot API üzerinden anında iletilir. E-posta altyapısına gerek yok; bot token AES-256 ile şifreli saklanır.</p>
+      </div>
+
+      <!-- 13 -->
+      <div class="card p-6">
+        <div class="feat-icon" style="background:rgba(245,158,11,0.1)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
+        <h3 class="font-semibold text-base mb-2" data-i18n="f13.title">Otomatik Güncelleme Bildirimi</h3>
+        <p class="text-zinc-400 text-sm" style="line-height:1.7" data-i18n="f13.desc">Platform yeni sürüm kontrolünü arka planda yapar (GitHub Releases API). Güncelleme varsa dashboard'da sarı bir banner gösterilir, GitHub release sayfasına doğrudan link içerir.</p>
       </div>
 
       <!-- 12 -->
@@ -626,35 +635,31 @@
     <div class="code-block">
       <div class="code-bar">
         <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
-        <span class="mono text-xs text-zinc-500 ml-2">terminal</span>
+        <span class="mono text-xs text-zinc-500 ml-2">terminal — <span data-i18n="qs.prod_label">prodüksiyon</span></span>
       </div>
-      <pre class="mono"><span class="c-dim"># 1. Clone</span>
+      <pre class="mono"><span class="c-dim"># Tek komut — SSL dahil</span>
+<span class="c-green">curl</span> <span class="c-white">-fsSL https://raw.githubusercontent.com/fab-agent/agentic-organization/main/install.sh | bash</span>
+
+<span class="c-dim"># veya repoyu klonlayıp çalıştırın</span>
 <span class="c-green">git</span> <span class="c-white">clone https://github.com/fab-agent/agentic-organization</span>
-<span class="c-green">cd</span> <span class="c-white">agentic-organization</span>
+<span class="c-green">bash</span> <span class="c-white">agentic-organization/install.sh</span>
 
-<span class="c-dim"># 2. Configure</span>
-<span class="c-green">cp</span> <span class="c-white">.env.example .env</span>
-<span class="c-dim"># Add: JWT_SECRET, RESEND_API_KEY, FOUNDER_EMAIL...</span>
-
-<span class="c-dim"># 3. Launch</span>
-<span class="c-blue">docker</span> <span class="c-white">compose up --build</span>
-
-<span class="c-dim"># → Backend:  http://localhost:8000</span>
-<span class="c-dim"># → Frontend: http://localhost:5173</span></pre>
+<span class="c-dim"># Sihirbaz: domain, şirket bilgileri, SSL sertifikası</span>
+<span class="c-dim"># → https://agents.sirketiniz.com</span></pre>
     </div>
 
     <div class="flex flex-wrap justify-center gap-4 mt-8 text-sm text-zinc-500">
       <span class="flex items-center gap-2">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-        <span data-i18n="qs.p1">FastAPI backend, SvelteKit frontend</span>
+        <span data-i18n="qs.p1">Let's Encrypt SSL otomatik yapılandırılır</span>
       </span>
       <span class="flex items-center gap-2">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-        <span data-i18n="qs.p2">SQLite — zero-config veritabanı</span>
+        <span data-i18n="qs.p2">JWT / şifreleme anahtarları otomatik üretilir</span>
       </span>
       <span class="flex items-center gap-2">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-        <span data-i18n="qs.p3">Seed data ile anında demo</span>
+        <span data-i18n="qs.p3">Docker kurulu olan her sunucuda çalışır</span>
       </span>
     </div>
   </div>
@@ -777,20 +782,23 @@ const LANGS = {
     'f4.desc': 'Politikalar ve yetenekler Markdown dosyaları ile tanımlanır. Git ile versiyon kontrolü; değişiklik talepleri onay akışıyla.',
     'f5.title': 'Rol Tabanlı Erişim',
     'f5.desc': '5 kademeli yetki sistemi: Kurucu → Yönetici → Bölüm Müdürü → Ajan Sorumlusu → Kullanıcı. Her kademe kendi kapsamında çalışır.',
-    'f6.title': 'Self-Hosted & Açık Kaynak',
-    'f6.desc': 'Tüm veriler kendi sunucunda. MIT lisansı, şeffaf mimari. Docker ile tek komutta kur, istediğin gibi özelleştir.',
+    'f6.title': 'Tek Komut Prodüksiyon Kurulumu',
+    'f6.desc': '<code class="mono" style="font-size:11px;background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px">bash install.sh</code> — Let\'s Encrypt SSL, Nginx, Docker Compose. Sihirbaz JWT/şifreleme anahtarlarını otomatik üretir. MIT lisansı, tüm veriler kendi sunucunda.',
     'f7.title': 'S3/R2 Yedekleme',
     'f7.desc': 'Tek tıkla veritabanı yedeği — AWS S3, Cloudflare R2 veya MinIO\'ya. Kimlik bilgileri AES-256 ile şifreli saklanır.',
     'f8.title': 'Sosyal Medya Skill\'leri',
     'f8.desc': 'Ajanlara Instagram Business ve WhatsApp Business skill\'i ekle. Gönderi oluştur, mesaj gönder — doğrudan sohbet arayüzünden.',
-    'f9.title': 'AI Telemetri Dashboard',
-    'f9.desc': 'Şirket geneli ve kullanıcıya özel AI kullanım metrikleri: oturum sayıları, token harcaması, aktif ajan durumu. Her kullanıcı kendi aktivitesini görür.',
+    'f9.title': 'SLA & AI Telemetri Dashboard',
+    'f9.desc': 'Oturum sayıları, token harcaması, aktif ajan durumu. Yöneticilere ajan başarı oranı (SLA): flow ve görev tamamlanma metrikleri renk kodlu tablo ile sunulur. Her kullanıcı kendi aktivitesini görür.',
     'f10.title': 'Uzun Dönem Ajan Hafızası',
     'f10.desc': 'Kapanan oturumlar AI tarafından özetlenerek hafıza kaydına dönüşür. Personel panelinden ve dashboard\'dan izlenebilir; ajanın geçmiş bağlamı korunur.',
     'f11.title': 'Telegram Bildirimleri',
     'f11.desc': 'Davet ve şifre sıfırlama bildirimleri Telegram Bot API üzerinden anında iletilir. E-posta altyapısına gerek yok; bot token AES-256 ile şifreli saklanır.',
     'f12.title': 'AI Onboarding',
     'f12.desc': 'İlk kurulumda şirket adını yaz — AI web araştırması yapar, sorularla yönlendirir ve departmanlar, ajanlar, yetenekler ile politikaları otomatik oluşturur.',
+    'f13.title': 'Otomatik Güncelleme Bildirimi',
+    'f13.desc': 'Platform yeni sürüm kontrolünü arka planda yapar (GitHub Releases API). Güncelleme varsa dashboard\'da sarı bir banner gösterilir, GitHub release sayfasına doğrudan link içerir.',
+    'qs.prod_label': 'prodüksiyon',
     'how.label': 'Nasıl Çalışır',
     'how.title': 'Üç adımda kurulum',
     'step1.title': 'Organizasyonunu Tanımla',
@@ -801,9 +809,10 @@ const LANGS = {
     'step3.desc': 'Ajanlar iş alır, delegasyon oluşturur, onay bekler. İnsanlar sadece kritik kararları verir. Operasyon hızı artar, karar yükü düşer.',
     'quickstart.title': 'Dakikalar içinde çalışır',
     'quickstart.sub': 'Docker kurulu olan her sunucuda çalışır.',
-    'qs.p1': 'FastAPI backend, SvelteKit frontend',
-    'qs.p2': 'SQLite — zero-config veritabanı',
-    'qs.p3': 'Seed data ile anında demo',
+    'qs.prod_label': 'prodüksiyon',
+    'qs.p1': 'Let\'s Encrypt SSL otomatik yapılandırılır',
+    'qs.p2': 'JWT / şifreleme anahtarları otomatik üretilir',
+    'qs.p3': 'Docker kurulu olan her sunucuda çalışır',
     'oss.title': 'Açık Kaynak, Hep Öyle Kalacak',
     'oss.desc': 'MIT lisansı altında yayınlandı. Forklayabilir, özelleştirebilir ve kendi organizasyonuna uyarlayabilirsin. Veriler her zaman senin sunucunda, senin kontrolünde.',
     'oss.cta1': 'GitHub\'da Yıldızla ⭐',
@@ -858,20 +867,23 @@ const LANGS = {
     'f4.desc': 'Policies and capabilities are defined via Markdown files. Version controlled with Git; change requests go through an approval workflow.',
     'f5.title': 'Role-Based Access',
     'f5.desc': '5-level permission system: Founder → Executive → Dept. Head → Agent Owner → User. Each level operates within its own scope.',
-    'f6.title': 'Self-Hosted & Open Source',
-    'f6.desc': 'All data stays on your servers. MIT license, transparent architecture. Deploy in one command with Docker, customize freely.',
+    'f6.title': 'One-Command Production Deploy',
+    'f6.desc': '<code class="mono" style="font-size:11px;background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px">bash install.sh</code> — Let\'s Encrypt SSL, Nginx, Docker Compose. The wizard auto-generates JWT and encryption keys. MIT license, all data on your servers.',
     'f7.title': 'S3/R2 Backup',
     'f7.desc': 'One-click database backup to AWS S3, Cloudflare R2, or MinIO. Credentials stored encrypted with AES-256. History tracked in the dashboard.',
     'f8.title': 'Social Media Skills',
     'f8.desc': 'Give agents Instagram Business and WhatsApp Business skills. Create posts, send messages — directly from the chat interface via Meta Graph API.',
-    'f9.title': 'AI Telemetry Dashboard',
-    'f9.desc': 'Company-wide and per-user AI usage metrics: session counts, token spend, active agent status. Every user sees their own activity at a glance.',
+    'f9.title': 'SLA & AI Telemetry Dashboard',
+    'f9.desc': 'Session counts, token spend, active agent status. Managers see per-agent SLA: flow and task completion metrics in a color-coded table (green ≥90%, amber 70–89%, red below). Every user sees their own activity.',
     'f10.title': 'Long-Term Agent Memory',
     'f10.desc': 'Closed sessions are automatically summarized by AI into memory records. Visible from the personnel panel and dashboard; agent context is preserved across conversations.',
     'f11.title': 'Telegram Notifications',
     'f11.desc': 'Invitations and password-reset notifications delivered instantly via Telegram Bot API. No email infrastructure needed; bot token stored encrypted with AES-256.',
     'f12.title': 'AI Onboarding',
     'f12.desc': 'Type your company name at first setup — AI searches the web, asks guiding questions, and auto-creates departments, agents, skills and policies.',
+    'f13.title': 'Automatic Update Notifications',
+    'f13.desc': 'The platform checks for new versions in the background (GitHub Releases API). When an update is available, an amber banner appears in the dashboard with a direct link to the release page.',
+    'qs.prod_label': 'production',
     'how.label': 'How It Works',
     'how.title': 'Set up in three steps',
     'step1.title': 'Define Your Organization',
@@ -882,9 +894,10 @@ const LANGS = {
     'step3.desc': 'Agents take on work, create delegations, wait for approval. Humans only make critical decisions. Operation speed increases, decision burden decreases.',
     'quickstart.title': 'Running in minutes',
     'quickstart.sub': 'Works on any server with Docker installed.',
-    'qs.p1': 'FastAPI backend, SvelteKit frontend',
-    'qs.p2': 'SQLite — zero-config database',
-    'qs.p3': 'Instant demo with seed data',
+    'qs.prod_label': 'production',
+    'qs.p1': 'Let\'s Encrypt SSL configured automatically',
+    'qs.p2': 'JWT & encryption keys auto-generated',
+    'qs.p3': 'Works on any server with Docker installed',
     'oss.title': 'Open Source, Always Will Be',
     'oss.desc': 'Released under the MIT license. Fork it, customize it, adapt it to your organization. Your data always lives on your servers, under your control.',
     'oss.cta1': 'Star on GitHub ⭐',
@@ -939,20 +952,23 @@ const LANGS = {
     'f4.desc': 'Richtlinien und Fähigkeiten werden über Markdown-Dateien definiert. Versionskontrolle mit Git.',
     'f5.title': 'Rollenbasierter Zugriff',
     'f5.desc': '5-stufiges Berechtigungssystem: Gründer → Führungskraft → Abteilungsleiter → Agentenverantwortlicher → Nutzer.',
-    'f6.title': 'Self-Hosted & Open Source',
-    'f6.desc': 'Alle Daten bleiben auf Ihren Servern. MIT-Lizenz. Mit einem Docker-Befehl bereitstellen.',
+    'f6.title': 'Ein-Befehl-Produktions-Deploy',
+    'f6.desc': '<code class="mono" style="font-size:11px;background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px">bash install.sh</code> — Let\'s Encrypt SSL, Nginx, Docker Compose. JWT/Verschlüsselungsschlüssel werden automatisch generiert. MIT-Lizenz, alle Daten auf Ihren Servern.',
     'f7.title': 'S3/R2-Backup',
     'f7.desc': 'Ein-Klick-Datenbank-Backup zu AWS S3, Cloudflare R2 oder MinIO. AES-256-Verschlüsselung.',
     'f8.title': 'Social-Media-Skills',
     'f8.desc': 'Agenten mit Instagram Business und WhatsApp Business Skills ausstatten. Posts und Nachrichten direkt aus dem Chat.',
-    'f9.title': 'KI-Telemetrie-Dashboard',
-    'f9.desc': 'Unternehmensweite und benutzerspezifische KI-Nutzungsmetriken: Sitzungsanzahl, Token-Verbrauch, aktiver Agentenstatus.',
+    'f9.title': 'SLA & KI-Telemetrie-Dashboard',
+    'f9.desc': 'Sitzungsanzahl, Token-Verbrauch, aktiver Agentenstatus. SLA pro Agent: Flow- und Aufgabenabschlussrate in einer farbcodierten Tabelle (grün ≥90%, gelb 70–89%, rot darunter).',
     'f10.title': 'Langzeitgedächtnis für Agenten',
     'f10.desc': 'Abgeschlossene Sitzungen werden automatisch zusammengefasst. Im Personalpanel und Dashboard sichtbar; Agentenkontext bleibt erhalten.',
     'f11.title': 'Telegram-Benachrichtigungen',
     'f11.desc': 'Einladungen und Passwortrücksetzungen über Telegram Bot API zugestellt. Kein E-Mail-Dienst nötig; Bot-Token AES-256-verschlüsselt.',
     'f12.title': 'KI-Onboarding',
     'f12.desc': 'Firmenname eingeben — KI recherchiert im Web, stellt Fragen und erstellt automatisch Abteilungen, Agenten, Fähigkeiten und Richtlinien.',
+    'f13.title': 'Automatische Update-Benachrichtigungen',
+    'f13.desc': 'Die Plattform prüft im Hintergrund auf neue Versionen (GitHub Releases API). Bei einem Update erscheint ein gelbes Banner im Dashboard mit direktem Link zur Release-Seite.',
+    'qs.prod_label': 'Produktion',
     'how.label': 'Wie es funktioniert',
     'how.title': 'In drei Schritten einrichten',
     'step1.title': 'Ihre Organisation definieren',
@@ -963,9 +979,10 @@ const LANGS = {
     'step3.desc': 'Agenten übernehmen Arbeit, erstellen Delegationen, warten auf Genehmigung.',
     'quickstart.title': 'In Minuten einsatzbereit',
     'quickstart.sub': 'Funktioniert auf jedem Server mit Docker.',
-    'qs.p1': 'FastAPI Backend, SvelteKit Frontend',
-    'qs.p2': 'SQLite — Zero-Config-Datenbank',
-    'qs.p3': 'Sofortige Demo mit Seed-Daten',
+    'qs.prod_label': 'Produktion',
+    'qs.p1': 'Let\'s Encrypt SSL wird automatisch konfiguriert',
+    'qs.p2': 'JWT & Verschlüsselungsschlüssel automatisch generiert',
+    'qs.p3': 'Funktioniert auf jedem Server mit Docker',
     'oss.title': 'Open Source, bleibt es auch',
     'oss.desc': 'Unter der MIT-Lizenz veröffentlicht. Forken, anpassen und an Ihre Organisation anpassen.',
     'oss.cta1': 'Auf GitHub markieren ⭐',
@@ -1020,20 +1037,23 @@ const LANGS = {
     'f4.desc': 'Políticas y capacidades definidas mediante archivos Markdown. Control de versiones con Git.',
     'f5.title': 'Acceso Basado en Roles',
     'f5.desc': 'Sistema de permisos de 5 niveles: Fundador → Ejecutivo → Jefe de Depto. → Responsable de Agente → Usuario.',
-    'f6.title': 'Self-Hosted y Open Source',
-    'f6.desc': 'Todos los datos en tus servidores. Licencia MIT. Despliega con un comando Docker.',
+    'f6.title': 'Deploy de Producción en Un Comando',
+    'f6.desc': '<code class="mono" style="font-size:11px;background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:4px">bash install.sh</code> — SSL Let\'s Encrypt, Nginx, Docker Compose. El asistente genera automáticamente claves JWT y de cifrado. Licencia MIT, todos los datos en tus servidores.',
     'f7.title': 'Copias de Seguridad S3/R2',
     'f7.desc': 'Copia de seguridad con un clic a AWS S3, Cloudflare R2 o MinIO. Credenciales cifradas con AES-256.',
     'f8.title': 'Skills de Redes Sociales',
     'f8.desc': 'Dota a los agentes con skills de Instagram Business y WhatsApp Business. Publica posts y envía mensajes desde el chat.',
-    'f9.title': 'Dashboard de Telemetría IA',
-    'f9.desc': 'Métricas de uso de IA para toda la empresa y por usuario: sesiones, gasto en tokens, estado de agentes activos.',
+    'f9.title': 'SLA & Dashboard de Telemetría IA',
+    'f9.desc': 'Sesiones, gasto en tokens, estado de agentes activos. SLA por agente: métricas de completitud de flows y tareas en tabla con código de colores (verde ≥90%, ámbar 70–89%, rojo debajo).',
     'f10.title': 'Memoria a Largo Plazo',
     'f10.desc': 'Las sesiones cerradas se resumen automáticamente en registros de memoria. Visible en el panel de personal y el dashboard.',
     'f11.title': 'Notificaciones por Telegram',
     'f11.desc': 'Invitaciones y restablecimientos de contraseña entregados instantáneamente por Telegram Bot API. Sin infraestructura de correo necesaria.',
     'f12.title': 'Onboarding con IA',
     'f12.desc': 'Escribe el nombre de tu empresa — la IA busca en la web, hace preguntas y crea automáticamente departamentos, agentes, habilidades y políticas.',
+    'f13.title': 'Notificaciones de Actualización Automáticas',
+    'f13.desc': 'La plataforma verifica nuevas versiones en segundo plano (GitHub Releases API). Cuando hay una actualización, aparece un banner ámbar en el dashboard con enlace directo a la página de release.',
+    'qs.prod_label': 'producción',
     'how.label': 'Cómo Funciona',
     'how.title': 'Configuración en tres pasos',
     'step1.title': 'Define Tu Organización',
@@ -1044,9 +1064,10 @@ const LANGS = {
     'step3.desc': 'Los agentes reciben trabajo, crean delegaciones, esperan aprobación.',
     'quickstart.title': 'Funcionando en minutos',
     'quickstart.sub': 'Funciona en cualquier servidor con Docker.',
-    'qs.p1': 'Backend FastAPI, Frontend SvelteKit',
-    'qs.p2': 'SQLite — base de datos zero-config',
-    'qs.p3': 'Demo instantánea con datos seed',
+    'qs.prod_label': 'producción',
+    'qs.p1': 'SSL Let\'s Encrypt configurado automáticamente',
+    'qs.p2': 'Claves JWT y de cifrado generadas automáticamente',
+    'qs.p3': 'Funciona en cualquier servidor con Docker',
     'oss.title': 'Open Source, Siempre lo Será',
     'oss.desc': 'Publicado bajo la licencia MIT. Haz fork, personalízalo y adáptalo a tu organización.',
     'oss.cta1': 'Dar Estrella en GitHub ⭐',
