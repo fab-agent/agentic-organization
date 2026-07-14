@@ -7,7 +7,7 @@ const sidebars: SidebarsConfig = {
     {
       type: 'category',
       label: 'Başlarken',
-      items: ['getting-started/installation', 'getting-started/user-roles', 'getting-started/agent-usage'],
+      items: ['getting-started/requirements', 'getting-started/installation', 'getting-started/user-roles', 'getting-started/agent-usage'],
     },
     {
       type: 'category',

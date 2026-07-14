@@ -8,6 +8,35 @@ Platform güncellemelerinin kronolojik kaydı.
 
 ---
 
+## v1.1 — 14 Temmuz 2026
+
+### Prodüksiyon Hazırlığı
+
+**Tek Komut Kurulum:**
+- `install.sh` — `curl | bash` ile sunucuya tam prodüksiyon kurulumu yapar; Docker kontrolü, `.env` sihirbazı, SSL sertifikası alma ve servis başlatma adımlarını otomatikleştirir.
+- `setup-env.sh` — interaktif `.env` sihirbazı; `JWT_SECRET` ve `ENCRYPTION_KEY` `openssl rand` ile otomatik üretilir.
+- İsteğe bağlı güncelleme bildirimi kaydı (e-posta + domain) sihirbaz sonunda sunulur; MIT lisanslı, herhangi bir kısıtlama yoktur.
+
+**Prodüksiyon Docker Yapılandırması:**
+- `backend/Dockerfile.prod` — `--reload` kaldırıldı, 2 worker ile çalışır.
+- `frontend/Dockerfile.prod` — Multi-stage build; `npm run build` + `node build` ile prodüksiyon sunumu.
+- `docker-compose.prod.yml` — Bağımsız (override değil) tam prodüksiyon konfigürasyonu.
+- `nginx.prod.conf.template` — HTTPS + HTTP→HTTPS redirect + Let's Encrypt sertifika desteği; `install.sh` domain ile somut `nginx.conf` üretir.
+
+**Güncelleme Bildirimi (UI):**
+- Backend `GET /system/version` endpoint'i GitHub Releases API'yi sorgulayarak güncel sürümü kontrol eder (1 saatlik önbellek).
+- Dashboard'da yeni sürüm varken sarı banner gösterilir; GitHub release sayfasına link içerir.
+
+**Ajan SLA & Başarı Oranı:**
+- `GET /dashboard/agent-sla` — her ajan için oturum sayısı, token kullanımı, flow başarı oranı ve görev tamamlama oranını döndürür.
+- Dashboard'da yöneticilere tablo olarak gösterilir; %90+ yeşil, %70–89 sarı, altı kırmızı.
+
+**Dokümantasyon:**
+- Yeni **Sistem Gereksinimleri** sayfası: sunucu özellikleri, açık portlar, domain gereksinimleri, AI sağlayıcıları.
+- **Kurulum** sayfası genişletildi: prodüksiyon kurulum adımları, SSL yapılandırması, certbot cron job, Nginx template açıklaması eklendi.
+
+---
+
 ## v1.0 — 14 Temmuz 2026
 
 ### Lokal Model Desteği (Ollama & LM Studio)
