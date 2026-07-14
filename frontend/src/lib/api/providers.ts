@@ -23,8 +23,8 @@ export interface ModelDef {
 export const providers = {
   status:    ()                          => api.get<ProviderStatus[]>('/providers/status'),
   models:    ()                          => api.get<ModelDef[]>('/providers/models'),
-  setKey:    (provider: string, key: string) =>
-    api.post<ProviderStatus>(`/providers/${provider}/key`, { key }),
+  setKey:    (provider: string, key: string, base_url?: string) =>
+    api.post<ProviderStatus>(`/providers/${provider}/key`, { key, base_url }),
   deleteKey: (provider: string)          => api.delete(`/providers/${provider}/key`),
   test:      (provider: string)          =>
     api.post<ProviderStatus>(`/providers/${provider}/test`, {}),

@@ -730,8 +730,10 @@ async def _generate_image(
 # ── OpenAI-compatible streaming (OpenAI + Qwen) ───────────────────────────────
 
 _OPENAI_BASE_URLS = {
-    "openai": "https://api.openai.com/v1",
-    "qwen":   "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",  # intl default; overridden by stored base_url
+    "openai":    "https://api.openai.com/v1",
+    "qwen":      "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "ollama":    "http://localhost:11434/v1",
+    "lmstudio":  "http://localhost:1234/v1",
 }
 
 async def _stream_openai_compatible(
@@ -939,10 +941,10 @@ async def run_session(
         gen = _stream_gemini(model_name, api_key, system_prompt, gemini_history, full_message, tool_defs, list(skills), session_id=session_id, agent_id=person.id)
     elif provider == "anthropic":
         gen = _stream_anthropic(model_name, api_key, system_prompt, list(history_rows), full_message, tool_defs, list(skills), session_id=session_id, agent_id=person.id)
-    elif provider in ("openai", "qwen"):
+    elif provider in _OPENAI_BASE_URLS:
         gen = _stream_openai_compatible(provider, model_name, api_key, system_prompt, list(history_rows), full_message, tool_defs, list(skills), session_id=session_id, agent_id=person.id)
     else:
-        yield {"type": "error", "message": f"Provider '{provider}' not yet supported in runtime"}
+        yield {"type": "error", "message": f"Provider '{provider}' desteklenmiyor"}
         return
 
     tokens_used = 0

@@ -237,6 +237,7 @@ class SkillUpdate(BaseModel):
 
 class SetProviderKey(BaseModel):
     key: str
+    base_url: Optional[str] = None
 
 
 class ConfigPatch(BaseModel):

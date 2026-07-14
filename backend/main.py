@@ -197,7 +197,7 @@ def _sync_env_provider_keys():
     with get_session() as session:
         changed = False
         for provider in SUPPORTED_PROVIDERS:
-            plain_key = os.getenv(env_map[provider], "").strip()
+            plain_key = os.getenv(env_map.get(provider, ""), "").strip()
             if not plain_key:
                 continue
             exists = session.exec(

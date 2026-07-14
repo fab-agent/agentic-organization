@@ -10,6 +10,7 @@ from database import get_session
 from models import AppConfig, ProviderKey, User
 from schemas import ConfigPatch, SetProviderKey
 from services.provider_service import (
+    LOCAL_PROVIDERS,
     PROVIDER_CONFIGS,
     SUPPORTED_PROVIDERS,
     detect_qwen_base_url,
@@ -106,12 +107,22 @@ def set_provider_key(provider: str, body: SetProviderKey,
     if provider not in SUPPORTED_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unknown provider: {provider}")
 
-    plain_key = body.key.strip()
-    if not plain_key:
-        raise HTTPException(status_code=422, detail="Key cannot be empty")
+    if provider in LOCAL_PROVIDERS:
+        # Local providers: key is ignored, base_url is what matters
+        plain_key = "local"
+        base_url = (body.base_url or "").strip() or PROVIDER_CONFIGS[provider].get("default_base_url", "")
+        valid = test_provider_key(provider, plain_key, base_url=base_url)
+    else:
+        plain_key = body.key.strip()
+        if not plain_key:
+            raise HTTPException(status_code=422, detail="Key cannot be empty")
+        if provider == "qwen":
+            base_url = detect_qwen_base_url(plain_key)
+            valid = base_url is not None
+        else:
+            base_url = None
+            valid = test_provider_key(provider, plain_key)
 
-    base_url = detect_qwen_base_url(plain_key) if provider == "qwen" else None
-    valid = (base_url is not None) if provider == "qwen" else test_provider_key(provider, plain_key)
     encrypted = encrypt(plain_key)
     now = datetime.utcnow()
 
@@ -161,7 +172,9 @@ def test_existing_key(provider: str, _: User = Depends(require_manager)):
             raise HTTPException(status_code=404, detail="No key configured for this provider")
 
         plain_key = decrypt(row.encrypted_key)
-        if provider == "qwen":
+        if provider in LOCAL_PROVIDERS:
+            valid = test_provider_key(provider, plain_key, base_url=row.base_url)
+        elif provider == "qwen":
             base_url = detect_qwen_base_url(plain_key)
             valid = base_url is not None
             row.base_url = base_url

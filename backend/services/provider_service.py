@@ -88,7 +88,29 @@ def _with_pricing(model_id: str, base: dict) -> dict:
     return {**base, **p, "type": model_type}
 
 
+LOCAL_PROVIDERS: set[str] = {"ollama", "lmstudio"}
+
 PROVIDER_CONFIGS: dict[str, dict] = {
+    "ollama": {
+        "display_name": "Ollama (Lokal)",
+        "url":          "__local__",
+        "method":       "get",
+        "headers":      lambda k: {"Authorization": f"Bearer {k}"},
+        "body":         None,
+        "models":       [],                 # fetched live from /v1/models
+        "models_url":   "__local_dynamic__",
+        "default_base_url": "http://localhost:11434/v1",
+    },
+    "lmstudio": {
+        "display_name": "LM Studio (Lokal)",
+        "url":          "__local__",
+        "method":       "get",
+        "headers":      lambda k: {"Authorization": f"Bearer {k}"},
+        "body":         None,
+        "models":       [],
+        "models_url":   "__local_dynamic__",
+        "default_base_url": "http://localhost:1234/v1",
+    },
     "anthropic": {
         "display_name": "Anthropic (Claude)",
         "url":     "https://api.anthropic.com/v1/messages",
@@ -183,10 +205,25 @@ def detect_qwen_base_url(plain_key: str) -> str | None:
     return None
 
 
-def test_provider_key(provider: str, plain_key: str) -> bool:
-    """Returns True if the key is valid for the given provider."""
+def test_local_provider(base_url: str) -> bool:
+    """Returns True if a local OpenAI-compatible server is reachable."""
+    url = base_url.rstrip("/") + "/models"
+    try:
+        with httpx.Client(timeout=5) as client:
+            resp = client.get(url, headers={"Authorization": "Bearer local"})
+        return resp.status_code in (200, 201)
+    except Exception:
+        return False
+
+
+def test_provider_key(provider: str, plain_key: str, base_url: str | None = None) -> bool:
+    """Returns True if the key/endpoint is valid for the given provider."""
     if provider == "qwen":
         return detect_qwen_base_url(plain_key) is not None
+
+    if provider in LOCAL_PROVIDERS:
+        resolved = base_url or PROVIDER_CONFIGS[provider].get("default_base_url", "")
+        return test_local_provider(resolved)
 
     cfg = PROVIDER_CONFIGS.get(provider)
     if not cfg:
@@ -215,11 +252,15 @@ def fetch_live_models(provider: str, plain_key: str, base_url: str | None = None
     # Resolve models URL
     models_url = cfg.get("models_url")
     if models_url == "__qwen_dynamic__":
-        # Use stored base_url or detect it
         resolved_base = base_url or detect_qwen_base_url(plain_key)
         if not resolved_base:
             return None
         models_url = f"{resolved_base}/models"
+    elif models_url == "__local_dynamic__":
+        resolved_base = base_url or cfg.get("default_base_url", "")
+        if not resolved_base:
+            return None
+        models_url = resolved_base.rstrip("/") + "/models"
     elif not models_url:
         return None
 
@@ -255,15 +296,24 @@ def fetch_live_models(provider: str, plain_key: str, base_url: str | None = None
         return result or None
 
     if provider == "qwen":
-        # DashScope returns OpenAI-compatible /models format
         raw = data.get("data", [])
         result = []
         for m in raw:
             mid = m.get("id", "")
             if not mid:
                 continue
-            mname = m.get("id", mid)  # DashScope doesn't always provide display names
-            result.append(_with_pricing(mid, {"id": mid, "name": mname}))
+            result.append(_with_pricing(mid, {"id": mid, "name": mid}))
+        return result or None
+
+    if provider in LOCAL_PROVIDERS:
+        raw = data.get("data", [])
+        result = []
+        for m in raw:
+            mid = m.get("id", m.get("name", ""))
+            if not mid:
+                continue
+            mname = mid.split("/")[-1] if "/" in mid else mid
+            result.append({"id": mid, "name": mname, "tier": "low", "input_per_m": 0.0, "output_per_m": 0.0, "type": "chat"})
         return result or None
 
     return None

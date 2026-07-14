@@ -66,9 +66,17 @@
 	let showAddProvider = $state(false);
 	let addProviderSlug = $state('');
 	let addProviderKey = $state('');
+	let addProviderUrl = $state('');
 	let addProviderShowKey = $state(false);
 	let addProviderSaving = $state(false);
 	let addProviderError = $state('');
+
+	const LOCAL_PROVIDER_SLUGS = new Set(['ollama', 'lmstudio']);
+	const LOCAL_PROVIDER_DEFAULTS: Record<string, string> = {
+		ollama: 'http://localhost:11434/v1',
+		lmstudio: 'http://localhost:1234/v1',
+	};
+	const isLocalProvider = $derived(LOCAL_PROVIDER_SLUGS.has(addProviderSlug));
 
 	const configuredProviders = $derived(providerCards.filter((c) => c.has_key));
 	const unconfiguredProviders = $derived(providerCards.filter((c) => !c.has_key));
@@ -93,19 +101,26 @@
 	}
 
 	async function addProvider() {
-		if (!addProviderSlug || !addProviderKey.trim()) return;
+		const isLocal = LOCAL_PROVIDER_SLUGS.has(addProviderSlug);
+		if (!addProviderSlug) return;
+		if (!isLocal && !addProviderKey.trim()) return;
 		addProviderSaving = true;
 		addProviderError = '';
 		try {
-			const updated = await providerApi.setKey(addProviderSlug, addProviderKey.trim());
+			const key = isLocal ? 'local' : addProviderKey.trim();
+			const base_url = isLocal ? (addProviderUrl.trim() || LOCAL_PROVIDER_DEFAULTS[addProviderSlug]) : undefined;
+			const updated = await providerApi.setKey(addProviderSlug, key, base_url);
 			const card = providerCards.find((c) => c.provider === addProviderSlug);
 			if (card) Object.assign(card, updated, { keyInput: '', showKey: false, editMode: false, saving: false, error: updated.status === 'invalid' ? t('settings_provider_invalid_err') : '' });
 			if (updated.status === 'active') {
 				showAddProvider = false;
 				addProviderSlug = '';
 				addProviderKey = '';
+				addProviderUrl = '';
 			} else {
-				addProviderError = t('settings_provider_invalid_err');
+				addProviderError = isLocal
+					? t('settings_provider_local_unreachable')
+					: t('settings_provider_invalid_err');
 			}
 		} catch {
 			addProviderError = t('settings_provider_save_err');
@@ -789,30 +804,44 @@
 									<X class="w-4 h-4" />
 								</button>
 							</div>
-							<div class="grid grid-cols-2 gap-3">
+							<div class="space-y-3">
 								<div>
 									<label class="block text-xs font-medium text-muted-foreground mb-1.5">{t('settings_provider_label')}</label>
 									<select bind:value={addProviderSlug}
+										onchange={() => { addProviderUrl = LOCAL_PROVIDER_DEFAULTS[addProviderSlug] ?? ''; addProviderError = ''; }}
 										class="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring">
 										{#each unconfiguredProviders as p}
 											<option value={p.provider}>{p.display_name}</option>
 										{/each}
 									</select>
 								</div>
-								<div>
-									<label class="block text-xs font-medium text-muted-foreground mb-1.5">{t('settings_api_key_label')}</label>
-									<div class="relative">
-										<input type={addProviderShowKey ? 'text' : 'password'}
-											bind:value={addProviderKey}
-											placeholder="sk-..."
-											class="w-full h-9 px-3 pr-9 text-sm rounded-lg border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+
+								{#if isLocalProvider}
+									<div>
+										<label class="block text-xs font-medium text-muted-foreground mb-1.5">{t('settings_provider_base_url')}</label>
+										<input type="text"
+											bind:value={addProviderUrl}
+											placeholder={LOCAL_PROVIDER_DEFAULTS[addProviderSlug] ?? 'http://localhost:11434/v1'}
+											class="w-full h-9 px-3 text-sm rounded-lg border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-ring"
 											onkeydown={(e) => e.key === 'Enter' && addProvider()} />
-										<button class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-											onclick={() => (addProviderShowKey = !addProviderShowKey)} type="button" tabindex="-1">
-											{#if addProviderShowKey}<EyeOff class="w-4 h-4" />{:else}<Eye class="w-4 h-4" />{/if}
-										</button>
+										<p class="text-xs text-muted-foreground mt-1">{t('settings_provider_local_hint')}</p>
 									</div>
-								</div>
+								{:else}
+									<div>
+										<label class="block text-xs font-medium text-muted-foreground mb-1.5">{t('settings_api_key_label')}</label>
+										<div class="relative">
+											<input type={addProviderShowKey ? 'text' : 'password'}
+												bind:value={addProviderKey}
+												placeholder="sk-..."
+												class="w-full h-9 px-3 pr-9 text-sm rounded-lg border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-ring"
+												onkeydown={(e) => e.key === 'Enter' && addProvider()} />
+											<button class="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+												onclick={() => (addProviderShowKey = !addProviderShowKey)} type="button" tabindex="-1">
+												{#if addProviderShowKey}<EyeOff class="w-4 h-4" />{:else}<Eye class="w-4 h-4" />{/if}
+											</button>
+										</div>
+									</div>
+								{/if}
 							</div>
 							{#if addProviderError}
 								<div class="text-xs text-destructive flex items-center gap-x-1.5">
@@ -821,11 +850,11 @@
 							{/if}
 							<div class="flex justify-end gap-x-2">
 								<Button variant="ghost" size="sm" class="h-8 px-3 text-xs"
-									onclick={() => { showAddProvider = false; addProviderError = ''; addProviderKey = ''; }}>
+									onclick={() => { showAddProvider = false; addProviderError = ''; addProviderKey = ''; addProviderUrl = ''; }}>
 									{t('cancel')}
 								</Button>
 								<Button variant="default" size="sm" class="h-8 px-4 text-xs"
-									disabled={addProviderSaving || !addProviderKey.trim()} onclick={addProvider}>
+									disabled={addProviderSaving || (!isLocalProvider && !addProviderKey.trim())} onclick={addProvider}>
 									{#if addProviderSaving}<Loader2 class="w-3.5 h-3.5 animate-spin mr-1.5" />{t('settings_provider_testing')}{:else}{t('settings_connect_btn')}{/if}
 								</Button>
 							</div>
