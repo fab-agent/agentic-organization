@@ -8,6 +8,40 @@ Platform güncellemelerinin kronolojik kaydı.
 
 ---
 
+## v1.0 — 14 Temmuz 2026
+
+### Lokal Model Desteği (Ollama & LM Studio)
+
+- **Ollama** ve **LM Studio** birinci sınıf provider olarak eklendi.
+- Ayarlar → AI Sağlayıcılar'da bu sağlayıcılar seçildiğinde API key yerine **Sunucu Adresi** alanı gösterilir; varsayılan adres otomatik doldurulur (`localhost:11434` / `localhost:1234`).
+- Bağlan'a basıldığında `/v1/models` endpoint'i ping'lenir; sunucuda yüklü modeller otomatik çekilir.
+- Ajan sayfasında lokal modeller artık seçilebilir; tam agentic loop (tool call → execute → feed back) desteğiyle çalışır.
+
+### Değişiklik Talebi (Change Request) Akışı
+
+- Ajan düzenleme panelindeki **"Güncelle"** butonu **"Talep Oluştur"** olarak değiştirildi; düzenlemeler artık doğrudan kayıt yerine onay akışına giriyor.
+- Onay akışı: `submitted → dept_head_approved → admin_approved → committed` (GitHub'a YAML commit).
+- GitConfig şirket bazlı bulunamazsa global kayda fallback yapılıyor; GitHub commit artık tüm senaryolarda tetikleniyor.
+- Liste satırındaki Git ikonu ve ham JSON change request popup'ı kaldırıldı — değişiklik talebi yalnızca düzenleme panelinden gönderilebilir.
+
+### Araç Yönetimi İyileştirmeleri
+
+- "Özel Yetenek Ekle" bölümü **"Araç Ekle"** olarak yeniden adlandırıldı (TR + EN).
+- Dahili araç listesi frontend'e hardcoded değil, backend `/builtin-tools` endpoint'inden dinamik olarak çekiliyor.
+- Araç formundaki **Versiyon** alanı kaldırıldı; araçlar `1.0` ile oluşturulur, GitHub entegrasyonu versiyonlama sağlar.
+
+### Arşivleme (Soft-Delete)
+
+- Ajan silme işlemi **arşivleme** ile değiştirildi: `status = inactive` olarak işaretlenir, veri silinmez.
+- Liste varsayılan olarak arşivlenenları gizler; istatistik kartındaki **Arşivlenmiş** sayısına tıklayarak gösterilebilir.
+- Yeni backend endpoint: `POST /personnel/{id}/archive`.
+
+### Güvenlik
+
+- JWT_SECRET varsayılan değerde bırakıldığında başlangıçta `CRITICAL` log uyarısı eklendi.
+
+---
+
 ## v0.9 — 12 Temmuz 2026
 
 ### Token Telemetrisi ve Hafıza Düzeltmeleri
