@@ -1,16 +1,43 @@
+MIT License + Commons Clause
+
+Copyright (c) 2025 Fabrika Yazılım Ticaret Limited Şirketi (fab.limited)
+
+---
+
+"Commons Clause" License Condition v1.0
+
+The Software is provided to you by the Licensor under the License, as defined
+below, subject to the following condition.
+
+Without limiting other conditions in the License, the grant of rights under
+the License will not include, and the License does not grant to you, the right
+to Sell the Software.
+
+For purposes of the foregoing, "Sell" means practicing any or all of the
+rights granted to you under the License to provide to third parties, for a fee
+or other consideration (including without limitation fees for hosting,
+white-labeling, reselling, or consulting/support services related to the
+Software), a product or service whose value derives, entirely or substantially,
+from the functionality of the Software.
+
+To obtain a commercial license, contact: bilgi@kuntaykunt.com
+
+Software: Agentic Company
+License: MIT
+Licensor: Fabrika Yazılım Ticaret Limited Şirketi
+
+---
+
 MIT License
 
-Copyright (c) 2025 Fabrika Yazılım Ticaret Limited Şirketi
-
 Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+of this software and associated documentation files (the "Software"), to use,
+copy, modify, merge, publish, and distribute the Software for personal,
+internal, or non-commercial purposes, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+The above copyright notice, the Commons Clause condition above, and this
+permission notice shall be included in all copies or substantial portions of
+the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -19,3 +46,12 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+---
+
+Summary (non-binding):
+
+  ✓  Self-hosting for your own company's internal use         → Free, no restrictions
+  ✓  Forking, modifying, contributing                         → Free, no restrictions
+  ✓  Running for non-commercial or research purposes          → Free, no restrictions
+  ✗  Reselling, white-labeling, or offering as a paid service → Contact us first
