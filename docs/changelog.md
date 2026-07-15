@@ -8,6 +8,15 @@ Platform güncellemelerinin kronolojik kaydı.
 
 ---
 
+## v1.1.2 — 15 Temmuz 2026
+
+### Lisans
+
+- Lisans **MIT + Commons Clause** olarak güncellendi. Kendi kurumunuz için kullanmak, fork etmek ve katkıda bulunmak ücretsizdir. Yeniden satış, white-label veya ücretli servis için iletişim gereklidir.
+- `README.md` ve landing page lisans referansları güncellendi.
+
+---
+
 ## v1.1.1 — 14 Temmuz 2026
 
 ### İyileştirmeler
