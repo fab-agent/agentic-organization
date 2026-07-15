@@ -360,7 +360,10 @@ pytest tests/ -v
 
 ### Features
 - [x] Onboarding session resume after browser close — `save_onboarding_session` / `get_onboarding_session` implemented
-- [ ] Change request workflow for skills and policies
+- [x] Change request workflow for skills and policies — `propose=true` flag on skill/policy update endpoints; full dept-approve → admin-approve flow in `api/change_requests.py`
+- [ ] Push Notifications UI — WhatsApp/Telegram task alerts (backend infra in place, frontend pending)
+- [ ] Visual Flow Builder — drag-and-drop agent workflow designer with per-step model selection
+- [ ] Agent Marketplace — ready-made templates (Legal Assistant, HR Agent, Finance Analyst) deployable in one click
 - [ ] PostgreSQL support — swap SQLite for Postgres for concurrent workloads
 
 ---
