@@ -40,7 +40,9 @@ def _get_model():
     if _model is None:
         from sentence_transformers import SentenceTransformer
 
-        logger.info("Loading RAG embedding model", extra={"extra": {"model": MODEL_NAME}})
+        logger.info(
+            "Loading RAG embedding model", extra={"extra": {"model": MODEL_NAME}}
+        )
         _model = SentenceTransformer(MODEL_NAME)
         logger.info("RAG embedding model ready")
     return _model
@@ -102,7 +104,9 @@ def _last_indexed_at(c: sqlite3.Connection, source_type: str) -> str:
     return row["last_indexed_at"] if row else "1970-01-01T00:00:00"
 
 
-def _bump_state(c: sqlite3.Connection, source_type: str, count: int, last_at: str) -> None:
+def _bump_state(
+    c: sqlite3.Connection, source_type: str, count: int, last_at: str
+) -> None:
     c.execute(
         """INSERT INTO index_state (source_type, last_indexed_at, total_count) VALUES (?,?,?)
            ON CONFLICT(source_type) DO UPDATE SET
@@ -122,14 +126,23 @@ def _insert_one(
     created_at: str,
 ) -> bool:
     """Embed and insert one record. Returns False if source_id already exists."""
-    if c.execute("SELECT 1 FROM embedding_meta WHERE source_id = ?", (source_id,)).fetchone():
+    if c.execute(
+        "SELECT 1 FROM embedding_meta WHERE source_id = ?", (source_id,)
+    ).fetchone():
         return False
     vec = embed(chunk_text)
     cur = c.execute(
         """INSERT INTO embedding_meta
                (source_type, source_id, personnel_id, company_id, chunk_text, created_at)
            VALUES (?,?,?,?,?,?)""",
-        (source_type, source_id, personnel_id, company_id, chunk_text[:2000], created_at),
+        (
+            source_type,
+            source_id,
+            personnel_id,
+            company_id,
+            chunk_text[:2000],
+            created_at,
+        ),
     )
     c.execute(
         "INSERT INTO vec_embeddings (rowid, embedding) VALUES (?,?)",
@@ -146,17 +159,16 @@ def index_new_records() -> dict[str, int]:
     Index at most BATCH_SIZE new records per source type.
     Safe to call repeatedly — skips already-indexed records via source_id uniqueness.
     """
-    from database import get_session
-    from models import AgentMemory, AgentSession, SessionMessage, TaskRequest
-
     from sqlmodel import select
+
+    from database import get_session
+    from models import AgentMemory, AgentSession, Personnel, SessionMessage, TaskRequest
 
     stats: dict[str, int] = {"session_message": 0, "task_result": 0, "agent_memory": 0}
 
     try:
         with _conn() as rag:
             with get_session() as app:
-
                 # ── Session messages (assistant replies only) ──────────────
                 since = _last_indexed_at(rag, "session_message")
                 msgs = app.exec(
@@ -172,13 +184,21 @@ def index_new_records() -> dict[str, int]:
                     text = (msg.content or "").strip()
                     if len(text) < 20:
                         continue
-                    if _insert_one(rag, "session_message", msg.id,
-                                   sess.personnel_id, None, text,
-                                   msg.created_at.isoformat()):
+                    if _insert_one(
+                        rag,
+                        "session_message",
+                        msg.id,
+                        sess.personnel_id,
+                        None,
+                        text,
+                        msg.created_at.isoformat(),
+                    ):
                         stats["session_message"] += 1
                     last_msg_at = msg.created_at.isoformat()
                 if msgs:
-                    _bump_state(rag, "session_message", stats["session_message"], last_msg_at)
+                    _bump_state(
+                        rag, "session_message", stats["session_message"], last_msg_at
+                    )
 
                 # ── Task results ───────────────────────────────────────────
                 since = _last_indexed_at(rag, "task_result")
@@ -195,9 +215,15 @@ def index_new_records() -> dict[str, int]:
                     if len(result) < 20:
                         continue
                     chunk = f"{task.title}\n\n{result}"
-                    if _insert_one(rag, "task_result", task.id,
-                                   task.assigned_agent_id, task.company_id,
-                                   chunk, task.created_at.isoformat()):
+                    if _insert_one(
+                        rag,
+                        "task_result",
+                        task.id,
+                        task.assigned_agent_id,
+                        task.company_id,
+                        chunk,
+                        task.created_at.isoformat(),
+                    ):
                         stats["task_result"] += 1
                     last_task_at = task.created_at.isoformat()
                 if tasks:
@@ -217,9 +243,15 @@ def index_new_records() -> dict[str, int]:
                     text = (mem.summary or "").strip()
                     if len(text) < 20:
                         continue
-                    if _insert_one(rag, "agent_memory", mem.id,
-                                   mem.personnel_id, person.company_id,
-                                   text, mem.created_at.isoformat()):
+                    if _insert_one(
+                        rag,
+                        "agent_memory",
+                        mem.id,
+                        mem.personnel_id,
+                        person.company_id,
+                        text,
+                        mem.created_at.isoformat(),
+                    ):
                         stats["agent_memory"] += 1
                     last_mem_at = mem.created_at.isoformat()
                 if memories:
@@ -320,7 +352,9 @@ def get_stats() -> dict:
             by_type = c.execute(
                 "SELECT source_type, COUNT(*) as cnt FROM embedding_meta GROUP BY source_type"
             ).fetchall()
-            states = c.execute("SELECT source_type, last_indexed_at, total_count FROM index_state").fetchall()
+            states = c.execute(
+                "SELECT source_type, last_indexed_at, total_count FROM index_state"
+            ).fetchall()
             return {
                 "total": total,
                 "ready": total >= MIN_RECORDS_FOR_SEARCH,

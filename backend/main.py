@@ -172,7 +172,8 @@ def on_startup():
 
     # RAG: init DB and schedule incremental indexing every 15 minutes
     try:
-        from services.rag_service import init_rag_db, index_new_records
+        from services.rag_service import index_new_records, init_rag_db
+
         init_rag_db()
         _scheduler.add_job(
             index_new_records,

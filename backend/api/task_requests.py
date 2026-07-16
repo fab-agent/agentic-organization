@@ -31,7 +31,7 @@ from models import (
     TaskRequest,
     User,
 )
-from services.flow_runner import _build_system_prompt, _call_llm, _call_llm_streaming
+from services.flow_runner import _build_system_prompt, _call_llm_streaming
 
 router = APIRouter(prefix="/task-requests", tags=["task-requests"])
 
@@ -255,7 +255,10 @@ async def run_task(
         session.add(task)
         session.commit()
 
-        await _emit(task_id, {"type": "step", "step": "starting", "label": "Ajan başlatılıyor..."})
+        await _emit(
+            task_id,
+            {"type": "step", "step": "starting", "label": "Ajan başlatılıyor..."},
+        )
 
         try:
             agent = session.get(Personnel, task.assigned_agent_id)
@@ -271,7 +274,11 @@ async def run_task(
             provider_key = None
             agent_provider = _model_to_provider(agent_cfg.model or "")
             for prov in ([agent_provider] if agent_provider else []) + [
-                "anthropic", "openai", "google", "mistral", "qwen",
+                "anthropic",
+                "openai",
+                "google",
+                "mistral",
+                "qwen",
             ]:
                 if not prov:
                     continue
@@ -287,11 +294,14 @@ async def run_task(
             if not provider_key:
                 raise ValueError("No active provider key")
 
-            await _emit(task_id, {
-                "type": "step",
-                "step": "model_ready",
-                "label": f"Model: {agent_cfg.model} · Provider: {provider_key.provider}",
-            })
+            await _emit(
+                task_id,
+                {
+                    "type": "step",
+                    "step": "model_ready",
+                    "label": f"Model: {agent_cfg.model} · Provider: {provider_key.provider}",
+                },
+            )
 
             api_key = decrypt(provider_key.encrypted_key)
             system_prompt = _build_system_prompt(agent, agent_cfg)
@@ -299,7 +309,14 @@ async def run_task(
             if task.human_note:
                 user_prompt += f"\n\n**Sorumlu notu:** {task.human_note}"
 
-            await _emit(task_id, {"type": "step", "step": "calling_llm", "label": "LLM çağrısı yapılıyor..."})
+            await _emit(
+                task_id,
+                {
+                    "type": "step",
+                    "step": "calling_llm",
+                    "label": "LLM çağrısı yapılıyor...",
+                },
+            )
 
             # Stream tokens to SSE queue while collecting full result
             loop = asyncio.get_event_loop()

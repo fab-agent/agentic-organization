@@ -205,7 +205,9 @@ def _call_llm_streaming(
         import openai
 
         if provider == "qwen":
-            base_url = base_url or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+            base_url = (
+                base_url or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+            )
         elif provider == "mistral":
             base_url = "https://api.mistral.ai/v1"
         client = openai.OpenAI(api_key=api_key, base_url=base_url)

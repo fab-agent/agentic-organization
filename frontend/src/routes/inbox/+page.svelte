@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { inbox as inboxApi, taskRequests as taskApi, type InboxMessage, type TaskRequest } from '$lib/api/inbox';
+	import { API_URL } from '$lib/api/client';
 	import { companyStore } from '$lib/stores/company.svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
 	import { departments as deptApi, type Department } from '$lib/api/departments';
@@ -8,7 +9,7 @@
 	import Badge from '$lib/components/ui/badge.svelte';
 	import {
 		Inbox, Mail, MailOpen, Trash2, CheckCheck, Loader, AlertCircle,
-		Plus, X, Zap, FileText, Bot
+		Plus, X, Zap, FileText, Bot, CheckCircle2
 	} from '@lucide/svelte';
 	import { t } from '$lib/i18n/index.svelte';
 
@@ -91,6 +92,13 @@
 	let taskNote: Record<string, string> = $state({});
 	let taskActioning: string | null = $state(null);
 
+	// ── Streaming state ───────────────────────────────────────────────────────
+	let streamingTaskId: string | null = $state(null);
+	let streamSteps: Array<{ step: string; label: string }> = $state([]);
+	let streamOutput: string = $state('');
+	let streamStatus: 'running' | 'done' | 'error' = $state('running');
+	let streamErrorMsg: string = $state('');
+
 	async function loadMyTasks() {
 		if (!activeCompanyId) return;
 		myTasks = await taskApi.list({ company_id: activeCompanyId });
@@ -98,12 +106,71 @@
 
 	async function runTask(task: TaskRequest) {
 		taskActioning = task.id;
+		streamingTaskId = task.id;
+		streamSteps = [];
+		streamOutput = '';
+		streamStatus = 'running';
+		streamErrorMsg = '';
+
 		try {
-			const updated = await taskApi.run(task.id, taskNote[task.id] || undefined);
-			myTasks = myTasks.map(t => t.id === task.id ? updated : t);
-			loadMessages();
-		} catch (e) { alert((e as Error).message); }
-		finally { taskActioning = null; }
+			const token = typeof localStorage !== 'undefined' ? localStorage.getItem('auth_token') : null;
+
+			// Open SSE connection before firing run so the queue is registered first
+			const resp = await fetch(`${API_URL}/task-requests/${task.id}/stream`, {
+				headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+			});
+			if (!resp.ok) throw new Error(`Akış bağlantısı hatası: ${resp.status}`);
+
+			// Fire run non-blocking — it will emit to the queue we just registered
+			taskApi.run(task.id, taskNote[task.id] || undefined)
+				.then(updated => {
+					myTasks = myTasks.map(t => t.id === task.id ? updated : t);
+					loadMessages();
+				})
+				.catch(e => {
+					if (streamStatus === 'running') {
+						streamStatus = 'error';
+						streamErrorMsg = (e as Error).message;
+					}
+				});
+
+			taskActioning = null;
+
+			// Drain SSE stream
+			const reader = resp.body!.getReader();
+			const decoder = new TextDecoder();
+			let buffer = '';
+
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split('\n');
+				buffer = lines.pop() ?? '';
+
+				for (const line of lines) {
+					if (!line.startsWith('data:')) continue;
+					try {
+						const data = JSON.parse(line.slice(5).trim());
+						if (data.type === 'step') {
+							streamSteps = [...streamSteps, { step: data.step, label: data.label }];
+						} else if (data.type === 'chunk') {
+							streamOutput += data.text;
+						} else if (data.type === 'done') {
+							streamStatus = 'done';
+						} else if (data.type === 'error') {
+							streamStatus = 'error';
+							streamErrorMsg = data.message;
+						}
+					} catch { /* skip malformed SSE line */ }
+				}
+				if (streamStatus !== 'running') break;
+			}
+		} catch (e) {
+			streamStatus = 'error';
+			streamErrorMsg = (e as Error).message;
+			taskActioning = null;
+		}
 	}
 
 	async function rejectTask(task: TaskRequest) {
@@ -200,11 +267,11 @@
 		</div>
 	{/if}
 
-	<!-- Pending tasks assigned to me -->
-	{#if myTasks.filter(task => task.status === 'assigned' && task.responsible_user_id === authStore.user?.id).length > 0}
+	<!-- Pending / running tasks assigned to me -->
+	{#if myTasks.filter(task => (task.status === 'assigned' || task.status === 'running') && task.responsible_user_id === authStore.user?.id).length > 0}
 		<div class="space-y-2">
 			<h3 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{t('inbox_pending_tasks')}</h3>
-			{#each myTasks.filter(task => task.status === 'assigned' && task.responsible_user_id === authStore.user?.id) as task (task.id)}
+			{#each myTasks.filter(task => (task.status === 'assigned' || task.status === 'running') && task.responsible_user_id === authStore.user?.id) as task (task.id)}
 				<div class="rounded-xl border bg-amber-50/50 dark:bg-amber-950/20 border-amber-200/60 p-4 space-y-3">
 					<div class="flex items-start justify-between gap-2">
 						<div>
@@ -213,19 +280,61 @@
 						</div>
 						<span class="text-xs text-muted-foreground flex-shrink-0">{relTime(task.created_at)}</span>
 					</div>
-					<textarea
-						bind:value={taskNote[task.id]}
-						placeholder={t('inbox_task_note_ph')}
-						rows={2}
-						class="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"
-					></textarea>
-					<div class="flex gap-2">
-						<Button size="sm" onclick={() => runTask(task)} disabled={taskActioning === task.id}>
-							<Bot class="w-3.5 h-3.5" />
-							{taskActioning === task.id ? t('running') : t('inbox_task_run')}
-						</Button>
-						<Button size="sm" variant="outline" onclick={() => rejectTask(task)} disabled={taskActioning === task.id}>{t('inbox_task_reject')}</Button>
-					</div>
+
+					{#if streamingTaskId === task.id}
+						<!-- Live streaming panel -->
+						<div class="rounded-lg border bg-card p-3 space-y-2">
+							<div class="flex flex-wrap gap-1.5">
+								{#each streamSteps as s}
+									<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+										<CheckCircle2 class="w-3 h-3" /> {s.label}
+									</span>
+								{/each}
+								{#if streamStatus === 'running'}
+									<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+										<Loader class="w-3 h-3 animate-spin" /> Çalışıyor...
+									</span>
+								{/if}
+							</div>
+
+							{#if streamOutput}
+								<div class="rounded bg-muted/50 p-2.5 max-h-52 overflow-y-auto">
+									<pre class="text-xs whitespace-pre-wrap font-sans leading-relaxed">{streamOutput}</pre>{#if streamStatus === 'running'}<span class="inline-block w-0.5 h-3 bg-foreground/60 animate-pulse ml-px"></span>{/if}
+								</div>
+							{/if}
+
+							{#if streamStatus === 'error'}
+								<p class="text-xs text-destructive flex items-center gap-1">
+									<AlertCircle class="w-3 h-3" /> {streamErrorMsg}
+								</p>
+							{/if}
+
+							{#if streamStatus === 'done'}
+								<div class="flex items-center justify-between">
+									<p class="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+										<CheckCircle2 class="w-3 h-3" /> Görev tamamlandı — sonuç gelen kutusuna iletildi
+									</p>
+									<Button size="sm" variant="outline" onclick={() => { streamingTaskId = null; }}>
+										<X class="w-3 h-3" /> Kapat
+									</Button>
+								</div>
+							{/if}
+						</div>
+					{:else}
+						<textarea
+							bind:value={taskNote[task.id]}
+							placeholder={t('inbox_task_note_ph')}
+							rows={2}
+							class="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+						></textarea>
+						<div class="flex gap-2">
+							<Button size="sm" onclick={() => runTask(task)} disabled={taskActioning === task.id || task.status === 'running'}>
+								<Bot class="w-3.5 h-3.5" />
+								{taskActioning === task.id ? t('running') : t('inbox_task_run')}
+							</Button>
+							<Button size="sm" variant="outline" onclick={() => rejectTask(task)} disabled={taskActioning === task.id || task.status === 'running'}>{t('inbox_task_reject')}</Button>
+						</div>
+					{/if}
 				</div>
 			{/each}
 		</div>

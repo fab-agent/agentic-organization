@@ -1,8 +1,11 @@
 """
-Task request routing, creation, run (mocked LLM), and rejection tests.
+Task request routing, creation, run (mocked LLM + streaming), and rejection tests.
 """
 
+import asyncio
 from unittest.mock import patch
+
+import pytest
 
 import models
 from tests.conftest import (
@@ -12,6 +15,22 @@ from tests.conftest import (
     make_provider_key,
     make_user,
 )
+
+
+def _streaming_mock(result: str):
+    """Build a _call_llm_streaming side_effect that calls on_chunk once and returns result."""
+
+    def _mock(
+        provider, model, system_prompt, user_prompt, api_key, on_chunk, base_url=None
+    ):
+        on_chunk(result)
+        return result
+
+    return _mock
+
+
+_LLM_RESULT = "Q1 sales were strong."
+_MOCK_STREAMING = _streaming_mock(_LLM_RESULT)
 
 # ── Setup helper ──────────────────────────────────────────────────────────────
 
@@ -142,19 +161,22 @@ def test_run_task_completes(auth_client, db_session):
     task = _post_task(auth_client, company_id).json()
     assert task["status"] == "assigned"
 
-    with patch("api.task_requests._call_llm", return_value="Q1 sales were strong."):
+    with patch("api.task_requests._call_llm_streaming", side_effect=_MOCK_STREAMING):
         r = auth_client.post(f"/task-requests/{task['id']}/run", json={})
     assert r.status_code == 200
     data = r.json()
     assert data["status"] == "completed"
-    assert "Q1 sales were strong." in data["result"]
+    assert _LLM_RESULT in data["result"]
 
 
 def test_run_task_delivers_inbox_message(auth_client, db_session):
     company_id, _, _, _ = _full_agent_setup(auth_client, db_session)
     task = _post_task(auth_client, company_id).json()
 
-    with patch("api.task_requests._call_llm", return_value="Analysis done."):
+    with patch(
+        "api.task_requests._call_llm_streaming",
+        side_effect=_streaming_mock("Analysis done."),
+    ):
         auth_client.post(f"/task-requests/{task['id']}/run", json={})
 
     # Requester should have an inbox message with the result
@@ -189,7 +211,9 @@ def test_run_task_wrong_status(auth_client, db_session):
     task = _post_task(auth_client, company_id).json()
 
     # Complete it first
-    with patch("api.task_requests._call_llm", return_value="Done."):
+    with patch(
+        "api.task_requests._call_llm_streaming", side_effect=_streaming_mock("Done.")
+    ):
         auth_client.post(f"/task-requests/{task['id']}/run", json={})
 
     # Try running again
@@ -201,7 +225,9 @@ def test_run_task_llm_error_reverts_to_assigned(auth_client, db_session):
     company_id, _, _, _ = _full_agent_setup(auth_client, db_session)
     task = _post_task(auth_client, company_id).json()
 
-    with patch("api.task_requests._call_llm", side_effect=Exception("Rate limit")):
+    with patch(
+        "api.task_requests._call_llm_streaming", side_effect=Exception("Rate limit")
+    ):
         r = auth_client.post(f"/task-requests/{task['id']}/run", json={})
     assert r.status_code == 200
     data = r.json()
@@ -245,3 +271,65 @@ def test_reject_task_not_responsible(auth_client, db_session):
     # responsible_user_id = other_user.id → auth_client user gets 403
     r = auth_client.post(f"/task-requests/{task['id']}/reject", json={})
     assert r.status_code == 403
+
+
+# ── SSE / streaming ───────────────────────────────────────────────────────────
+
+
+@pytest.mark.anyio
+async def test_emit_delivers_to_queue():
+    """_emit pushes events into the per-task queue."""
+    from api.task_requests import _emit, _task_queues
+
+    task_id = "emit-unit-test"
+    q: asyncio.Queue = asyncio.Queue()
+    _task_queues[task_id] = q
+
+    try:
+        await _emit(task_id, {"type": "step", "step": "starting"})
+        await _emit(task_id, {"type": "chunk", "text": "Hello"})
+        await _emit(task_id, {"type": "done"})
+
+        events = []
+        while not q.empty():
+            events.append(q.get_nowait())
+
+        assert len(events) == 3
+        assert events[0] == {"type": "step", "step": "starting"}
+        assert events[1] == {"type": "chunk", "text": "Hello"}
+        assert events[2] == {"type": "done"}
+    finally:
+        _task_queues.pop(task_id, None)
+
+
+@pytest.mark.anyio
+async def test_emit_noop_without_listener():
+    """_emit silently does nothing when no client is connected."""
+    from api.task_requests import _emit
+
+    await _emit("nonexistent-task-id", {"type": "done"})  # must not raise
+
+
+def test_run_task_emits_chunks(auth_client, db_session):
+    """run_task calls on_chunk, result accumulates and is persisted."""
+    company_id, _, _, _ = _full_agent_setup(auth_client, db_session)
+    task = _post_task(auth_client, company_id).json()
+
+    chunks_received: list[str] = []
+
+    def _capturing_mock(
+        provider, model, system_prompt, user_prompt, api_key, on_chunk, base_url=None
+    ):
+        chunks = ["Chunk A. ", "Chunk B. ", "Chunk C."]
+        for c in chunks:
+            chunks_received.append(c)
+            on_chunk(c)
+        return "".join(chunks)
+
+    with patch("api.task_requests._call_llm_streaming", side_effect=_capturing_mock):
+        r = auth_client.post(f"/task-requests/{task['id']}/run", json={})
+
+    assert r.status_code == 200
+    assert r.json()["status"] == "completed"
+    assert r.json()["result"] == "Chunk A. Chunk B. Chunk C."
+    assert chunks_received == ["Chunk A. ", "Chunk B. ", "Chunk C."]

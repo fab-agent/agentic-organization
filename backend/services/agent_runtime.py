@@ -106,7 +106,9 @@ def build_system_prompt(
         try:
             from services.rag_service import search as rag_search
 
-            hits = rag_search(rag_query, company_id=company_id, personnel_id=person.id, k=4)
+            hits = rag_search(
+                rag_query, company_id=company_id, personnel_id=person.id, k=4
+            )
             if hits:
                 lines.append("\n--- Relevant knowledge from past work ---")
                 for hit in hits:
@@ -1079,7 +1081,10 @@ async def run_session(
                 seen_ids.add(p.id)
 
         system_prompt = build_system_prompt(
-            person, dept, list(skills), policy_names or None,
+            person,
+            dept,
+            list(skills),
+            policy_names or None,
             rag_query=user_message[:500] if not history_rows else None,
             company_id=person.company_id,
         )
