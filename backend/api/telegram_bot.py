@@ -475,9 +475,31 @@ def _polling_loop() -> None:
             time.sleep(5)
 
 
+_BOT_COMMANDS = [
+    {"command": "ajanlar",   "description": "Ajan seçim menüsünü aç"},
+    {"command": "degistir",  "description": "Aktif ajanı değiştir"},
+    {"command": "durum",     "description": "Seçili ajan ve oturum bilgisi"},
+    {"command": "onaylar",   "description": "Bekleyen görev ve A2A onayları"},
+]
+
+
+def _register_commands(token: str) -> None:
+    try:
+        with httpx.Client(timeout=10) as c:
+            c.post(
+                _tg_url(token, "setMyCommands"),
+                json={"commands": _BOT_COMMANDS},
+            )
+    except Exception:
+        pass
+
+
 def start_polling() -> None:
     global _polling_thread, _polling_active
     _polling_active = True
+    token = _get_bot_token()
+    if token:
+        _register_commands(token)
     _polling_thread = threading.Thread(
         target=_polling_loop, daemon=True, name="tg-polling"
     )
