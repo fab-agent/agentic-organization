@@ -83,6 +83,7 @@
 	let pendingAttachments = $state<Attachment[]>([]);
 	let fileUploading = $state(false);
 	let fileInputEl = $state<HTMLInputElement | null>(null);
+	let fileUploadError = $state<string | null>(null);
 
 	// Background-run polling
 	let polling = $state(false);
@@ -234,14 +235,23 @@
 		const files = input.files;
 		if (!files?.length) return;
 		input.value = '';
+		fileUploadError = null;
 
 		if (!activeSession) {
-			if (!selectedAgent) return;
-			const s = await sessionsApi.create(selectedAgent.id);
-			sessions = [s, ...sessions];
-			activeSession = s;
-			messages = [];
-			localStorage.setItem(LAST_SESSION_KEY, s.id);
+			if (!selectedAgent) {
+				fileUploadError = 'Önce bir ajan seçin.';
+				return;
+			}
+			try {
+				const s = await sessionsApi.create(selectedAgent.id);
+				sessions = [s, ...sessions];
+				activeSession = s;
+				messages = [];
+				localStorage.setItem(LAST_SESSION_KEY, s.id);
+			} catch (err) {
+				fileUploadError = 'Oturum başlatılamadı.';
+				return;
+			}
 		}
 
 		fileUploading = true;
@@ -251,7 +261,7 @@
 				pendingAttachments = [...pendingAttachments, att];
 			}
 		} catch (err) {
-			console.error('File upload error:', err);
+			fileUploadError = err instanceof Error ? err.message : 'Dosya yüklenemedi.';
 		} finally {
 			fileUploading = false;
 		}
@@ -688,6 +698,15 @@
 			<!-- Input -->
 			<div class="px-6 py-4 border-t border-border flex-shrink-0">
 
+				<!-- File upload error -->
+				{#if fileUploadError}
+					<div class="flex items-center gap-2 px-3 py-2 mb-2 rounded-xl bg-destructive/10 border border-destructive/20 text-xs text-destructive">
+						<AlertTriangle class="w-3.5 h-3.5 flex-shrink-0" />
+						<span>{fileUploadError}</span>
+						<button class="ml-auto" onclick={() => (fileUploadError = null)}><X class="w-3 h-3" /></button>
+					</div>
+				{/if}
+
 				<!-- Attachment chips -->
 				{#if pendingAttachments.length > 0}
 					<div class="flex flex-wrap gap-2 mb-2">
@@ -719,7 +738,7 @@
 					<button
 						type="button"
 						class="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
-						title="Dosya ekle (PDF veya görsel)"
+						title="Dosya ekle (PDF, TXT, CSV veya görsel)"
 						disabled={streaming || polling}
 						onclick={() => fileInputEl?.click()}
 					>
@@ -755,7 +774,7 @@
 					</Button>
 				</div>
 				<p class="text-xs text-muted-foreground text-center mt-2">
-					{selectedAgent?.name ?? 'Ajan'} · Mesajlar kaydedilir · PDF ve görsel yükleyebilirsiniz
+					{selectedAgent?.name ?? 'Ajan'} · Mesajlar kaydedilir · PDF, metin ve görsel yükleyebilirsiniz
 				</p>
 			</div>
 		{:else}
@@ -897,7 +916,7 @@
 <input
 	bind:this={fileInputEl}
 	type="file"
-	accept=".pdf,image/*"
+	accept=".pdf,.txt,.csv,image/*"
 	multiple
 	class="hidden"
 	onchange={handleFileSelect}
