@@ -210,29 +210,68 @@ def _apply_limit(sql: str, limit: int) -> str:
 _SQL_BLOCK = re.compile(r"```(?:sql)?\s*(.*?)```", re.DOTALL | re.IGNORECASE)
 _SQL_START = re.compile(r"((?:WITH|SELECT)\b.*)", re.DOTALL | re.IGNORECASE)
 
+# Temporal words in Turkish and English that imply a date filter should be present
+_TEMPORAL_WORDS = re.compile(
+    r"\b(bu\s+ay|geçen\s+ay|bu\s+hafta|geçen\s+hafta|bu\s+yıl|geçen\s+yıl"
+    r"|son\s+\d+|bugün|dün|bu\s+çeyrek|geçen\s+çeyrek"
+    r"|this\s+month|last\s+month|this\s+week|last\s+week|this\s+year|last\s+year"
+    r"|today|yesterday|last\s+\d+)\b",
+    re.IGNORECASE,
+)
+
+# Date operators/functions — presence means a date filter likely exists
+_DATE_OPS = re.compile(
+    r"\b(BETWEEN|strftime|DATE|YEAR\s*\(|MONTH\s*\(|NOW\s*\(|CURDATE\s*\("
+    r"|GETDATE\s*\(|DATEADD|DATEDIFF|datetime|timestamp)\b"
+    r"|[><=!]=?\s*['\"]?\d{4}-\d{2}",  # literal date comparison e.g. >= '2026-01'
+    re.IGNORECASE,
+)
+
 _TEXT2SQL_SYSTEM = """\
-You are a SQL expert. Generate a single, correct SQL SELECT query that answers \
-the user's question using the schema below.
+You are a SQL expert. Answer the user's question using the schema below.
 
 {schema}
 
+Respond in EXACTLY this format — two lines, nothing else:
+SQL: <single SQL SELECT query>
+EXPLANATION: <one sentence in Turkish describing what the query returns, \
+including any time range or filters applied>
+
 Rules:
-- Return ONLY the raw SQL, no explanation, no markdown fences.
 - Use exact table and column names from the schema.
 - Do NOT add a LIMIT clause unless the user explicitly requests a specific number of rows.
+- If the question implies a time period (this month, last week, etc.), \
+  always include the appropriate date/time filter in the WHERE clause.
 - Use standard SQL compatible with {db_type}.
 """
 
 
-def _extract_sql(text: str) -> str:
-    """Pull the SQL out of an LLM response (handles code fences and plain text)."""
-    m = _SQL_BLOCK.search(text)
-    if m:
-        return m.group(1).strip()
-    m = _SQL_START.search(text)
-    if m:
-        return m.group(1).strip()
-    return text.strip()
+def _parse_llm_response(raw: str) -> tuple[str, str]:
+    """Parse 'SQL: ...\nEXPLANATION: ...' format. Returns (sql, explanation)."""
+    sql, explanation = "", ""
+    for line in raw.splitlines():
+        if line.upper().startswith("SQL:"):
+            sql = line[4:].strip()
+        elif line.upper().startswith("EXPLANATION:"):
+            explanation = line[12:].strip()
+    # Fallback: if format wasn't followed, extract SQL the old way
+    if not sql:
+        m = _SQL_BLOCK.search(raw)
+        sql = m.group(1).strip() if m else ""
+    if not sql:
+        m = _SQL_START.search(raw)
+        sql = m.group(1).strip() if m else raw.strip()
+    return sql, explanation
+
+
+def _temporal_warning(question: str, sql: str) -> str | None:
+    """Return a warning string if question implies a time filter but SQL has none."""
+    if _TEMPORAL_WORDS.search(question) and not _DATE_OPS.search(sql):
+        return (
+            "Soruda zaman kısıtı algılandı ancak SQL'de tarih filtresi bulunamadı — "
+            "sonuçlar tüm dönemi kapsıyor olabilir. SQL'i gözden geçirin."
+        )
+    return None
 
 
 def ask_database(
@@ -267,6 +306,7 @@ def ask_database(
 
     last_exc: Exception | None = None
     last_sql: str = ""
+    last_explanation: str = ""
 
     for attempt in range(max_retries + 1):
         if attempt == 0:
@@ -276,7 +316,7 @@ def ask_database(
                 f"Original question: {question}\n\n"
                 f"Previous SQL attempt:\n{last_sql}\n\n"
                 f"Error: {last_exc}\n\n"
-                f"Please return only the corrected SQL query."
+                f"Please return the corrected response in the same SQL: / EXPLANATION: format."
             )
 
         raw = _call_llm(
@@ -287,12 +327,14 @@ def ask_database(
             api_key=api_key,
         )
 
-        last_sql = _extract_sql(raw)
+        last_sql, last_explanation = _parse_llm_response(raw)
 
         try:
             result = execute_query(dsn, db_type, last_sql, limit=limit)
             return {
                 "sql": last_sql,
+                "explanation": last_explanation,
+                "warning": _temporal_warning(question, last_sql),
                 "columns": result["columns"],
                 "rows": result["rows"],
                 "row_count": result["row_count"],
