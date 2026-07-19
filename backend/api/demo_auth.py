@@ -19,7 +19,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from sqlmodel import select
 
 from api.auth import create_access_token
@@ -38,11 +38,11 @@ RATE_LIMIT_MINUTES = 5
 
 
 class OtpRequestBody(BaseModel):
-    email: EmailStr
+    email: str
 
 
 class OtpVerifyBody(BaseModel):
-    email: EmailStr
+    email: str
     code: str
 
 
