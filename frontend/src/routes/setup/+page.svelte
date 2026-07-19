@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { Layers, User, Mail, Lock, Building2, Loader } from '@lucide/svelte';
+	import { Layers, User, Mail, Lock, Building2, Loader, Globe, Check } from '@lucide/svelte';
 	import Button from '$lib/components/ui/button.svelte';
 	import Input from '$lib/components/ui/input.svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
+	import { i18n, type Locale } from '$lib/i18n/index.svelte';
 
 	const API = import.meta.env.VITE_API_URL ?? '';
 
@@ -14,17 +15,25 @@
 	let companyName = $state('');
 	let error = $state('');
 	let loading = $state(false);
+	let langMenuOpen = $state(false);
+
+	const locales: { code: Locale; label: string; flag: string }[] = [
+		{ code: 'tr', label: 'Türkçe', flag: '🇹🇷' },
+		{ code: 'en', label: 'English', flag: '🇬🇧' }
+	];
+
+	const currentLang = $derived(locales.find((l) => l.code === i18n.locale)!);
 
 	async function submit(e: Event) {
 		e.preventDefault();
 		error = '';
 
 		if (password !== confirmPassword) {
-			error = 'Şifreler eşleşmiyor';
+			error = i18n.t('setup_error_mismatch');
 			return;
 		}
 		if (password.length < 8) {
-			error = 'Şifre en az 8 karakter olmalı';
+			error = i18n.t('setup_error_short');
 			return;
 		}
 
@@ -36,7 +45,7 @@
 				body: JSON.stringify({ name, email, password, company_name: companyName }),
 			});
 			const data = await res.json();
-			if (!res.ok) throw new Error(data.detail ?? 'Kurulum başarısız');
+			if (!res.ok) throw new Error(data.detail ?? i18n.t('setup_error_default'));
 
 			await authStore.login(email, password);
 
@@ -49,7 +58,7 @@
 				goto('/');
 			}
 		} catch (e: any) {
-			error = e?.message ?? 'Kurulum başarısız';
+			error = e?.message ?? i18n.t('setup_error_default');
 		} finally {
 			loading = false;
 		}
@@ -57,10 +66,42 @@
 </script>
 
 <svelte:head>
-	<title>Kurulum • fab.engineering</title>
+	<title>{i18n.t('setup_title')} • fab.engineering</title>
 </svelte:head>
 
 <div class="min-h-screen bg-background flex items-center justify-center p-4">
+
+	<!-- Language switcher -->
+	<div class="absolute top-4 right-4">
+		<div class="relative">
+			<button
+				class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors border border-border/50"
+				onclick={() => (langMenuOpen = !langMenuOpen)}
+			>
+				<Globe class="w-3.5 h-3.5" />
+				<span>{currentLang.flag} {currentLang.label}</span>
+			</button>
+			{#if langMenuOpen}
+				<div class="absolute right-0 top-full mt-1 w-36 rounded-xl border bg-card shadow-lg overflow-hidden z-50">
+					{#each locales as loc}
+						<button
+							class="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-muted/60 transition-colors {loc.code === i18n.locale ? 'font-semibold text-primary' : 'text-foreground'}"
+							onclick={() => { i18n.locale = loc.code; langMenuOpen = false; }}
+						>
+							<span>{loc.flag}</span>
+							<span>{loc.label}</span>
+							{#if loc.code === i18n.locale}<Check class="w-3.5 h-3.5 ml-auto" />{/if}
+						</button>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	</div>
+
+	{#if langMenuOpen}
+		<div class="fixed inset-0 z-40" onclick={() => (langMenuOpen = false)}></div>
+	{/if}
+
 	<div class="w-full max-w-sm">
 		<!-- Logo -->
 		<div class="flex items-center justify-center gap-2.5 mb-8">
@@ -75,22 +116,19 @@
 
 		<!-- Card -->
 		<div class="rounded-2xl border bg-card p-8 shadow-sm">
-			<h1 class="font-display text-xl tracking-tight text-center mb-1">Sistemi Kur</h1>
-			<p class="text-sm text-muted-foreground text-center mb-6">
-				İlk yönetici hesabını oluşturarak başla
-			</p>
+			<h1 class="font-display text-xl tracking-tight text-center mb-1">{i18n.t('setup_title')}</h1>
+			<p class="text-sm text-muted-foreground text-center mb-6">{i18n.t('setup_subtitle')}</p>
 
 			<form onsubmit={submit} class="space-y-4">
-				<!-- Ad Soyad -->
 				<div class="space-y-1.5">
-					<label class="text-sm font-medium" for="name">Ad Soyad</label>
+					<label class="text-sm font-medium" for="name">{i18n.t('setup_name')}</label>
 					<div class="relative">
 						<User class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
 						<Input
 							id="name"
 							type="text"
 							bind:value={name}
-							placeholder="Kuntay Kunt"
+							placeholder={i18n.t('setup_name_ph')}
 							class="pl-9"
 							autocomplete="name"
 							required
@@ -98,32 +136,30 @@
 					</div>
 				</div>
 
-				<!-- Şirket Adı -->
 				<div class="space-y-1.5">
-					<label class="text-sm font-medium" for="company">Şirket Adı</label>
+					<label class="text-sm font-medium" for="company">{i18n.t('setup_company')}</label>
 					<div class="relative">
 						<Building2 class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
 						<Input
 							id="company"
 							type="text"
 							bind:value={companyName}
-							placeholder="Fabrika Yazılım"
+							placeholder={i18n.t('setup_company_ph')}
 							class="pl-9"
 							required
 						/>
 					</div>
 				</div>
 
-				<!-- E-posta -->
 				<div class="space-y-1.5">
-					<label class="text-sm font-medium" for="email">E-posta</label>
+					<label class="text-sm font-medium" for="email">{i18n.t('setup_email')}</label>
 					<div class="relative">
 						<Mail class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
 						<Input
 							id="email"
 							type="email"
 							bind:value={email}
-							placeholder="ad@sirket.com"
+							placeholder={i18n.t('setup_email_ph')}
 							class="pl-9"
 							autocomplete="email"
 							required
@@ -131,16 +167,15 @@
 					</div>
 				</div>
 
-				<!-- Şifre -->
 				<div class="space-y-1.5">
-					<label class="text-sm font-medium" for="password">Şifre</label>
+					<label class="text-sm font-medium" for="password">{i18n.t('setup_password')}</label>
 					<div class="relative">
 						<Lock class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
 						<Input
 							id="password"
 							type="password"
 							bind:value={password}
-							placeholder="En az 8 karakter"
+							placeholder={i18n.t('setup_password_ph')}
 							class="pl-9"
 							autocomplete="new-password"
 							required
@@ -148,9 +183,8 @@
 					</div>
 				</div>
 
-				<!-- Şifre Tekrar -->
 				<div class="space-y-1.5">
-					<label class="text-sm font-medium" for="confirm">Şifre Tekrar</label>
+					<label class="text-sm font-medium" for="confirm">{i18n.t('setup_password_confirm')}</label>
 					<div class="relative">
 						<Lock class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
 						<Input
@@ -178,16 +212,16 @@
 				>
 					{#if loading}
 						<Loader class="w-4 h-4 animate-spin" />
-						Kuruluyor...
+						{i18n.t('setup_submitting')}
 					{:else}
-						Kurulumu Tamamla
+						{i18n.t('setup_submit')}
 					{/if}
 				</Button>
 			</form>
 		</div>
 
 		<p class="text-center text-xs text-muted-foreground mt-4">
-			Bu form yalnızca ilk kurulumda görünür.
+			{i18n.t('setup_note')}
 		</p>
 	</div>
 </div>
