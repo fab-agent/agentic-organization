@@ -365,7 +365,12 @@ def setup(body: SetupRequest):
         user_id = user.id
 
     token = create_access_token(user_id)
-    return {"access_token": token, "token_type": "bearer", "user_id": user_id, "company_slug": slug}
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user_id": user_id,
+        "company_slug": slug,
+    }
 
 
 # ── Admin: reset user password ────────────────────────────────────────────────

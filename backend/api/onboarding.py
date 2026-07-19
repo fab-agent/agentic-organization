@@ -108,7 +108,11 @@ async def onboarding_chat(body: ChatRequest, _: User = Depends(get_current_user)
     # Build messages with system prompt and search context prepended
     system_content = build_onboarding_system(body.locale)
     if body.search_context:
-        label = "Web research results" if body.locale == "en" else "Web araştırması sonuçları"
+        label = (
+            "Web research results"
+            if body.locale == "en"
+            else "Web araştırması sonuçları"
+        )
         system_content += f"\n\n{label} ({body.company_name}):\n{body.search_context}"
 
     full_messages = [{"role": "system", "content": system_content}] + body.messages

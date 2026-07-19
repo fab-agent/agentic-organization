@@ -157,7 +157,9 @@ def request_otp(body: OtpRequestBody):
         ).first()
         if recent:
             wait_sec = int(
-                (recent.created_at + timedelta(minutes=RATE_LIMIT_MINUTES) - now).total_seconds()
+                (
+                    recent.created_at + timedelta(minutes=RATE_LIMIT_MINUTES) - now
+                ).total_seconds()
             )
             raise HTTPException(429, f"Lütfen {wait_sec} saniye bekleyin.")
 
