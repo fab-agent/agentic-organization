@@ -37,7 +37,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-https://agent.fab.engineering}
+        VITE_API_URL: ""
     container_name: agent-frontend
     ports:
       - "127.0.0.1:3000:3000"
