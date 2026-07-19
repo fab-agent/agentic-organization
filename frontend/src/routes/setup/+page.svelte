@@ -5,7 +5,7 @@
 	import Input from '$lib/components/ui/input.svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
 
-	const API = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+	const API = import.meta.env.VITE_API_URL ?? '';
 
 	let name = $state('');
 	let email = $state('');
@@ -38,9 +38,16 @@
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.detail ?? 'Kurulum başarısız');
 
-			// Store token and login with the new credentials
 			await authStore.login(email, password);
-			goto('/');
+
+			// On cloud deployment: redirect to company subdomain
+			const host = window.location.hostname;
+			const cloudDomain = 'agent.fab.engineering';
+			if (host.endsWith(cloudDomain) && data.company_slug) {
+				window.location.href = `https://${data.company_slug}.${cloudDomain}/`;
+			} else {
+				goto('/');
+			}
 		} catch (e: any) {
 			error = e?.message ?? 'Kurulum başarısız';
 		} finally {

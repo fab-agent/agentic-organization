@@ -12,6 +12,7 @@
 	import { skillsApi, type CompanySkill, type SkillCreate } from '$lib/api/skills';
 	import { companyStore } from '$lib/stores/company.svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
+	import { t } from '$lib/i18n/index.svelte';
 
 	let skills: CompanySkill[] = $state([]);
 	let loading = $state(true);
@@ -32,10 +33,10 @@
 	const canManage = $derived(authStore.can(activeCompanyId, 'dept_head'));
 
 	// ── Skill type labels ────────────────────────────────────────────────────
-	const TYPE_LABELS: Record<string, string> = {
-		builtin: 'Dahili', mcp: 'MCP', http: 'HTTP API',
-		function: 'Fonksiyon', database: 'Veritabanı',
-	};
+	const TYPE_LABELS = $derived<Record<string, string>>({
+		builtin: t('skill_type_builtin'), mcp: 'MCP', http: 'HTTP API',
+		function: t('skill_type_function'), database: t('skill_type_database'),
+	});
 	const TYPE_COLORS: Record<string, string> = {
 		builtin: 'default', mcp: 'secondary', http: 'outline',
 		function: 'secondary', database: 'outline',
@@ -161,7 +162,7 @@ Bu yeteneğin ne yaptığını buraya yaz.
 </script>
 
 <svelte:head>
-	<title>Yetenekler • fab.engineering</title>
+	<title>{t('skill_title')} • fab.engineering</title>
 </svelte:head>
 
 <div class="space-y-6">
@@ -169,19 +170,19 @@ Bu yeteneğin ne yaptığını buraya yaz.
 
 	<div class="flex items-center justify-between">
 		<div>
-			<h1 class="font-display text-3xl tracking-tight">Yetenekler</h1>
-			<p class="text-muted-foreground mt-1">Şirket geneli yetenek kütüphanesi · {skills.length} yetenek</p>
+			<h1 class="font-display text-3xl tracking-tight">{t('skill_title')}</h1>
+			<p class="text-muted-foreground mt-1">{t('skill_subtitle')} · {skills.length} {t('skill_count_suffix')}</p>
 		</div>
 		{#if canManage}
 			<Button onclick={openCreate} class="gap-2">
-				<Plus class="w-4 h-4" /> Yeni Yetenek
+				<Plus class="w-4 h-4" /> {t('skill_new')}
 			</Button>
 		{/if}
 	</div>
 
 	{#if loading}
 		<div class="flex items-center justify-center py-20 text-muted-foreground gap-2">
-			<Loader class="w-5 h-5 animate-spin" /><span class="text-sm">Yükleniyor…</span>
+			<Loader class="w-5 h-5 animate-spin" /><span class="text-sm">{t('loading')}</span>
 		</div>
 	{:else if error}
 		<div class="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div>
@@ -191,12 +192,12 @@ Bu yeteneğin ne yaptığını buraya yaz.
 				<Zap class="w-6 h-6 text-muted-foreground" />
 			</div>
 			<div>
-				<p class="font-medium">Henüz yetenek yok</p>
-				<p class="text-sm text-muted-foreground mt-1">Şirket geneli yetenekler oluşturun ve ajanlara atayın.</p>
+				<p class="font-medium">{t('skill_empty')}</p>
+				<p class="text-sm text-muted-foreground mt-1">{t('skill_empty_desc')}</p>
 			</div>
 			{#if canManage}
 				<Button onclick={openCreate} size="sm" class="gap-2 mt-2">
-					<Plus class="w-4 h-4" /> Yeni Yetenek
+					<Plus class="w-4 h-4" /> {t('skill_new')}
 				</Button>
 			{/if}
 		</div>
@@ -224,7 +225,7 @@ Bu yeteneğin ne yaptığını buraya yaz.
 					{/if}
 					<div class="flex items-center justify-between mt-3">
 						<span class="text-xs text-muted-foreground">
-							{s.assigned_agents.length} ajana atanmış
+							{s.assigned_agents.length} {t('skill_assigned')}
 						</span>
 						<ChevronRight class="w-3.5 h-3.5 text-muted-foreground" />
 					</div>
@@ -254,7 +255,7 @@ Bu yeteneğin ne yaptığını buraya yaz.
 					</div>
 				</div>
 			{:else}
-				<span class="font-semibold">{panelMode === 'edit' ? 'Yeteneği Düzenle' : 'Yeni Yetenek'}</span>
+				<span class="font-semibold">{panelMode === 'edit' ? t('skill_panel_edit') : t('skill_new')}</span>
 			{/if}
 			<button class="text-muted-foreground hover:text-foreground ml-2 flex-shrink-0" onclick={closePanel}>
 				<X class="w-5 h-5" />
@@ -272,9 +273,9 @@ Bu yeteneğin ne yaptığını buraya yaz.
 					{/if}
 
 					<div class="flex items-center gap-4 text-xs text-muted-foreground">
-						<span>{selected.assigned_agents.length} ajana atanmış</span>
+						<span>{selected.assigned_agents.length} {t('skill_assigned')}</span>
 						{#if !selected.is_active}
-							<span class="text-amber-600 font-medium">Pasif</span>
+							<span class="text-amber-600 font-medium">{t('skill_inactive')}</span>
 						{/if}
 					</div>
 
@@ -286,14 +287,14 @@ Bu yeteneğin ne yaptığını buraya yaz.
 						</div>
 					{:else}
 						<div class="rounded-xl border border-dashed border-border py-8 flex items-center justify-center text-sm text-muted-foreground">
-							İçerik henüz eklenmedi.
+							{t('skill_no_content')}
 						</div>
 					{/if}
 
 					{#if selected.config_json}
 						<div>
 							<div class="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
-								<Code2 class="w-3.5 h-3.5" /> Konfigürasyon
+								<Code2 class="w-3.5 h-3.5" /> {t('skill_config_label')}
 							</div>
 							<pre class="text-xs bg-muted/50 rounded-lg p-3 overflow-x-auto">{JSON.stringify(JSON.parse(selected.config_json), null, 2)}</pre>
 						</div>
@@ -308,8 +309,8 @@ Bu yeteneğin ne yaptığını buraya yaz.
 							<Check class="w-6 h-6 text-emerald-600" />
 						</div>
 						<div>
-							<div class="font-semibold">Değişiklik talebi gönderildi</div>
-							<div class="text-sm text-muted-foreground mt-1">Yetkili onayladıktan sonra uygulanacak.</div>
+							<div class="font-semibold">{t('skill_cr_title')}</div>
+							<div class="text-sm text-muted-foreground mt-1">{t('skill_cr_desc')}</div>
 						</div>
 						<Button variant="outline" onclick={() => { crSubmitted = false; selected && openView(selected); }}>
 							Kapat
@@ -320,29 +321,29 @@ Bu yeteneğin ne yaptığını buraya yaz.
 						{#if panelMode === 'edit'}
 							<div class="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
 								<AlertTriangle class="w-3.5 h-3.5 flex-shrink-0" />
-								Düzenlemeler onay sürecine gönderilir. Yetkili onayı gereklidir.
+								{t('skill_edit_warning')}
 							</div>
 						{/if}
 
 						<div class="grid grid-cols-2 gap-3">
 							<div class="space-y-1.5">
-								<label class="text-sm font-medium" for="sk-name">Ad</label>
-								<Input id="sk-name" bind:value={form.name} placeholder="Sunum Hazırlama" />
+								<label class="text-sm font-medium" for="sk-name">{t('skill_form_name')}</label>
+								<Input id="sk-name" bind:value={form.name} placeholder={t('skill_name_ph')} />
 							</div>
 							<div class="space-y-1.5">
-								<label class="text-sm font-medium" for="sk-slug">Slug</label>
-								<Input id="sk-slug" bind:value={form.slug} placeholder="sunum-hazirlama" class="font-mono text-xs" />
+								<label class="text-sm font-medium" for="sk-slug">{t('skill_form_slug')}</label>
+								<Input id="sk-slug" bind:value={form.slug} placeholder={t('skill_slug_ph')} class="font-mono text-xs" />
 							</div>
 						</div>
 
 						<div class="space-y-1.5">
-							<label class="text-sm font-medium" for="sk-desc">Kısa Açıklama</label>
-							<Input id="sk-desc" bind:value={form.description} placeholder="Bu yeteneğin tek satır özeti" />
+							<label class="text-sm font-medium" for="sk-desc">{t('skill_form_desc')}</label>
+							<Input id="sk-desc" bind:value={form.description} placeholder={t('skill_desc_ph')} />
 						</div>
 
 						<div class="grid grid-cols-2 gap-3">
 							<div class="space-y-1.5">
-								<label class="text-sm font-medium" for="sk-type">Tür</label>
+								<label class="text-sm font-medium" for="sk-type">{t('skill_form_type')}</label>
 								<select id="sk-type" class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" bind:value={form.skill_type}>
 									{#each Object.entries(TYPE_LABELS) as [val, lbl]}
 										<option value={val}>{lbl}</option>
@@ -352,7 +353,7 @@ Bu yeteneğin ne yaptığını buraya yaz.
 							<div class="space-y-1.5 flex items-end">
 								<label class="flex items-center gap-2 text-sm cursor-pointer">
 									<input type="checkbox" bind:checked={form.is_active} class="rounded" />
-									Aktif
+									{t('skill_form_active')}
 								</label>
 							</div>
 						</div>
@@ -360,17 +361,17 @@ Bu yeteneğin ne yaptığını buraya yaz.
 						<!-- Markdown Editor -->
 						<div class="space-y-1.5">
 							<div class="flex items-center justify-between">
-								<label class="text-sm font-medium">İçerik (Markdown)</label>
+								<label class="text-sm font-medium">{t('skill_form_content')}</label>
 								<div class="flex gap-1">
 									<button
 										class="text-xs px-2 py-1 rounded {editorTab === 'write' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}"
 										onclick={() => (editorTab = 'write')}>
-										<Pencil class="w-3 h-3 inline mr-1" />Yaz
+										<Pencil class="w-3 h-3 inline mr-1" />{t('skill_write_tab')}
 									</button>
 									<button
 										class="text-xs px-2 py-1 rounded {editorTab === 'preview' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}"
 										onclick={() => (editorTab = 'preview')}>
-										<Eye class="w-3 h-3 inline mr-1" />Önizle
+										<Eye class="w-3 h-3 inline mr-1" />{t('skill_preview_tab')}
 									</button>
 								</div>
 							</div>
@@ -388,7 +389,7 @@ Bu yeteneğin ne yaptığını buraya yaz.
 											{@html preview}
 										</div>
 									{:else}
-										<p class="text-muted-foreground text-sm">İçerik yok.</p>
+										<p class="text-muted-foreground text-sm">{t('skill_no_preview')}</p>
 									{/if}
 								</div>
 							{/if}
@@ -396,7 +397,7 @@ Bu yeteneğin ne yaptığını buraya yaz.
 
 						{#if form.skill_type !== 'builtin'}
 							<div class="space-y-1.5">
-								<label class="text-sm font-medium" for="sk-config">Konfigürasyon (JSON)</label>
+								<label class="text-sm font-medium" for="sk-config">{t('skill_config_json')}</label>
 								<textarea
 									id="sk-config"
 									bind:value={form.config_json}
@@ -415,7 +416,7 @@ Bu yeteneğin ne yaptığını buraya yaz.
 		{#if panelMode === 'view' && canManage && !crSubmitted}
 			<div class="flex gap-2 p-4 border-t flex-shrink-0">
 				<Button variant="outline" size="sm" class="flex-1 gap-1.5" onclick={() => selected && openEdit(selected)}>
-					<Pencil class="w-3.5 h-3.5" /> Düzenle
+					<Pencil class="w-3.5 h-3.5" /> {t('skill_edit_btn')}
 				</Button>
 				<Button variant="ghost" size="sm" class="text-destructive hover:bg-destructive/10"
 					onclick={() => selected && deleteSkill(selected)}>
@@ -426,13 +427,13 @@ Bu yeteneğin ne yaptığını buraya yaz.
 			<div class="flex gap-2 p-4 border-t flex-shrink-0">
 				<Button variant="outline" class="flex-1"
 					onclick={() => panelMode === 'edit' && selected ? openView(selected) : closePanel()}>
-					İptal
+					{t('cancel')}
 				</Button>
 				<Button class="flex-1" onclick={save} disabled={!form.name.trim() || saving}>
 					{#if saving}
 						<Loader class="w-4 h-4 animate-spin mr-1" />
 					{/if}
-					{panelMode === 'edit' ? 'Onaya Gönder' : 'Oluştur'}
+					{panelMode === 'edit' ? t('skill_submit_btn') : t('create')}
 				</Button>
 			</div>
 		{/if}

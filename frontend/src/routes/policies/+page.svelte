@@ -12,6 +12,7 @@
 	import { policiesApi, type Policy, type PolicyCreate } from '$lib/api/policies';
 	import { companyStore } from '$lib/stores/company.svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
+	import { t } from '$lib/i18n/index.svelte';
 
 	let allPolicies: Policy[] = $state([]);
 	let scopeFilter = $state<'all' | 'company' | 'department' | 'agent'>('all');
@@ -36,9 +37,9 @@
 		scopeFilter === 'all' ? allPolicies : allPolicies.filter(p => p.scope === scopeFilter)
 	);
 
-	const SCOPE_LABELS: Record<string, string> = {
-		company: 'Şirket', department: 'Bölüm', agent: 'Ajan',
-	};
+	const SCOPE_LABELS = $derived<Record<string, string>>({
+		company: t('policy_scope_company'), department: t('policy_scope_department'), agent: t('policy_scope_agent'),
+	});
 	const SCOPE_ICONS: Record<string, any> = {
 		company: Building2, department: Users, agent: Bot,
 	};
@@ -163,7 +164,7 @@ Bu politika onay tarihinden itibaren geçerlidir.
 </script>
 
 <svelte:head>
-	<title>Politikalar • fab.engineering</title>
+	<title>{t('policy_title')} • fab.engineering</title>
 </svelte:head>
 
 <div class="space-y-6">
@@ -171,19 +172,19 @@ Bu politika onay tarihinden itibaren geçerlidir.
 
 	<div class="flex items-center justify-between gap-4 flex-wrap">
 		<div>
-			<h1 class="font-display text-3xl tracking-tight">Politikalar</h1>
-			<p class="text-muted-foreground mt-1">Şirket geneli kural ve direktifler · {allPolicies.length} politika</p>
+			<h1 class="font-display text-3xl tracking-tight">{t('policy_title')}</h1>
+			<p class="text-muted-foreground mt-1">{t('policy_subtitle')} · {allPolicies.length} {t('policy_count_suffix')}</p>
 		</div>
 		{#if canManage}
 			<Button onclick={openCreate} class="gap-2">
-				<Plus class="w-4 h-4" /> Yeni Politika
+				<Plus class="w-4 h-4" /> {t('policy_new')}
 			</Button>
 		{/if}
 	</div>
 
 	<!-- Scope filter pills -->
 	<div class="flex gap-2 flex-wrap">
-		{#each [['all','Tümü'], ['company','Şirket'], ['department','Bölüm'], ['agent','Ajan']] as [val, lbl]}
+		{#each [['all', t('filter')], ['company', t('policy_scope_company')], ['department', t('policy_scope_department')], ['agent', t('policy_scope_agent')]] as [val, lbl]}
 			<button
 				class="scope-pill {scopeFilter === val ? 'scope-pill-active' : 'scope-pill-inactive'}"
 				onclick={() => (scopeFilter = val as any)}
@@ -193,7 +194,7 @@ Bu politika onay tarihinden itibaren geçerlidir.
 
 	{#if loading}
 		<div class="flex items-center justify-center py-20 text-muted-foreground gap-2">
-			<Loader class="w-5 h-5 animate-spin" /><span class="text-sm">Yükleniyor…</span>
+			<Loader class="w-5 h-5 animate-spin" /><span class="text-sm">{t('loading')}</span>
 		</div>
 	{:else if error}
 		<div class="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div>
@@ -203,12 +204,12 @@ Bu politika onay tarihinden itibaren geçerlidir.
 				<FileText class="w-6 h-6 text-muted-foreground" />
 			</div>
 			<div>
-				<p class="font-medium">Henüz politika yok</p>
-				<p class="text-sm text-muted-foreground mt-1">Şirket, bölüm veya ajan düzeyinde politikalar oluşturun.</p>
+				<p class="font-medium">{t('policy_empty')}</p>
+				<p class="text-sm text-muted-foreground mt-1">{t('policy_empty_desc')}</p>
 			</div>
 			{#if canManage}
 				<Button onclick={openCreate} size="sm" class="gap-2 mt-2">
-					<Plus class="w-4 h-4" /> Yeni Politika
+					<Plus class="w-4 h-4" /> {t('policy_new')}
 				</Button>
 			{/if}
 		</div>
@@ -262,7 +263,7 @@ Bu politika onay tarihinden itibaren geçerlidir.
 					</div>
 				</div>
 			{:else}
-				<span class="font-semibold">{panelMode === 'edit' ? 'Politikayı Düzenle' : 'Yeni Politika'}</span>
+				<span class="font-semibold">{panelMode === 'edit' ? t('policy_panel_edit') : t('policy_new')}</span>
 			{/if}
 			<button class="text-muted-foreground hover:text-foreground ml-2 flex-shrink-0" onclick={closePanel}>
 				<X class="w-5 h-5" />
@@ -283,7 +284,7 @@ Bu politika onay tarihinden itibaren geçerlidir.
 						</div>
 					{:else}
 						<div class="rounded-xl border border-dashed border-border py-8 flex items-center justify-center text-sm text-muted-foreground">
-							İçerik henüz eklenmedi.
+							{t('policy_no_content')}
 						</div>
 					{/if}
 
@@ -292,16 +293,10 @@ Bu politika onay tarihinden itibaren geçerlidir.
 						{#if selected.scope === 'company'}
 							<div class="flex items-center gap-1.5 text-emerald-700">
 								<Check class="w-3 h-3" />
-								Her zaman aktif — pasif edilemez
+								{t('policy_active')} — always on
 							</div>
 						{:else}
-							<div>Durum: <span class="{selected.is_active ? 'text-emerald-600' : 'text-amber-600'}">{selected.is_active ? 'Aktif' : 'Pasif'}</span></div>
-						{/if}
-						{#if selected.department_id}
-							<div>Bölüm ID: <span class="font-mono">{selected.department_id}</span></div>
-						{/if}
-						{#if selected.agent_config_id}
-							<div>Ajan ID: <span class="font-mono">{selected.agent_config_id}</span></div>
+							<div>{t('status')}: <span class="{selected.is_active ? 'text-emerald-600' : 'text-amber-600'}">{selected.is_active ? t('policy_active') : t('policy_inactive')}</span></div>
 						{/if}
 					</div>
 				</div>
@@ -314,8 +309,8 @@ Bu politika onay tarihinden itibaren geçerlidir.
 							<Check class="w-6 h-6 text-emerald-600" />
 						</div>
 						<div>
-							<div class="font-semibold">Değişiklik talebi gönderildi</div>
-							<div class="text-sm text-muted-foreground mt-1">Yetkili onayladıktan sonra uygulanacak.</div>
+							<div class="font-semibold">{t('policy_cr_title')}</div>
+							<div class="text-sm text-muted-foreground mt-1">{t('policy_cr_desc')}</div>
 						</div>
 						<Button variant="outline" onclick={() => { crSubmitted = false; selected && openView(selected); }}>
 							Kapat
@@ -326,33 +321,33 @@ Bu politika onay tarihinden itibaren geçerlidir.
 						{#if panelMode === 'edit'}
 							<div class="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
 								<AlertTriangle class="w-3.5 h-3.5 flex-shrink-0" />
-								Düzenlemeler onay sürecine gönderilir. Yetkili onayı gereklidir.
+								{t('policy_edit_warning')}
 							</div>
 						{/if}
 
 						<div class="grid grid-cols-2 gap-3">
 							<div class="space-y-1.5">
-								<label class="text-sm font-medium" for="pol-name">Ad</label>
-								<Input id="pol-name" bind:value={form.name} placeholder="Veri Güvenliği" />
+								<label class="text-sm font-medium" for="pol-name">{t('policy_form_name')}</label>
+								<Input id="pol-name" bind:value={form.name} placeholder="Data Security" />
 							</div>
 							<div class="space-y-1.5">
-								<label class="text-sm font-medium" for="pol-slug">Slug</label>
+								<label class="text-sm font-medium" for="pol-slug">{t('policy_form_slug')}</label>
 								<Input id="pol-slug" bind:value={form.slug} placeholder="veri-guvenligi" class="font-mono text-xs" />
 							</div>
 						</div>
 
 						<div class="space-y-1.5">
-							<label class="text-sm font-medium" for="pol-scope">Kapsam</label>
+							<label class="text-sm font-medium" for="pol-scope">{t('policy_form_scope')}</label>
 							<select id="pol-scope" class="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm" bind:value={form.scope}>
-								<option value="company">Şirket</option>
-								<option value="department">Bölüm</option>
-								<option value="agent">Ajan</option>
+								<option value="company">{t('policy_scope_company')}</option>
+								<option value="department">{t('policy_scope_department')}</option>
+								<option value="agent">{t('policy_scope_agent')}</option>
 							</select>
 						</div>
 
 						{#if form.scope === 'department'}
 							<div class="space-y-1.5">
-								<label class="text-sm font-medium" for="pol-dept">Bölüm ID</label>
+								<label class="text-sm font-medium" for="pol-dept">{t('policy_form_dept')} ID</label>
 								<Input id="pol-dept" bind:value={form.department_id} placeholder="uuid" class="font-mono text-xs" />
 							</div>
 						{:else if form.scope === 'agent'}
@@ -379,17 +374,17 @@ Bu politika onay tarihinden itibaren geçerlidir.
 						<!-- Markdown Editor -->
 						<div class="space-y-1.5">
 							<div class="flex items-center justify-between">
-								<label class="text-sm font-medium">İçerik (Markdown)</label>
+								<label class="text-sm font-medium">{t('policy_form_content')}</label>
 								<div class="flex gap-1">
 									<button
 										class="text-xs px-2 py-1 rounded {editorTab === 'write' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}"
 										onclick={() => (editorTab = 'write')}>
-										<Pencil class="w-3 h-3 inline mr-1" />Yaz
+										<Pencil class="w-3 h-3 inline mr-1" />{t('policy_write_tab')}
 									</button>
 									<button
 										class="text-xs px-2 py-1 rounded {editorTab === 'preview' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}"
 										onclick={() => (editorTab = 'preview')}>
-										<Eye class="w-3 h-3 inline mr-1" />Önizle
+										<Eye class="w-3 h-3 inline mr-1" />{t('policy_preview_tab')}
 									</button>
 								</div>
 							</div>
@@ -407,7 +402,7 @@ Bu politika onay tarihinden itibaren geçerlidir.
 											{@html preview}
 										</div>
 									{:else}
-										<p class="text-muted-foreground text-sm">İçerik yok.</p>
+										<p class="text-muted-foreground text-sm">{t('policy_no_preview')}</p>
 									{/if}
 								</div>
 							{/if}
@@ -432,13 +427,13 @@ Bu politika onay tarihinden itibaren geçerlidir.
 			<div class="flex gap-2 p-4 border-t flex-shrink-0">
 				<Button variant="outline" class="flex-1"
 					onclick={() => panelMode === 'edit' && selected ? openView(selected) : closePanel()}>
-					İptal
+					{t('cancel')}
 				</Button>
 				<Button class="flex-1" onclick={save} disabled={!form.name.trim() || saving}>
 					{#if saving}
 						<Loader class="w-4 h-4 animate-spin mr-1" />
 					{/if}
-					{panelMode === 'edit' ? 'Onaya Gönder' : 'Oluştur'}
+					{panelMode === 'edit' ? t('policy_submit_btn') : t('create')}
 				</Button>
 			</div>
 		{/if}
