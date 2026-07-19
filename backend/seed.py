@@ -24,7 +24,7 @@ def run_seed() -> None:
         )
         company2 = Company(
             name="Demo Corp",
-            slug="demo-corp",
+            slug="demo",
             sector="Technology",
             website="https://democorp.example.com",
         )

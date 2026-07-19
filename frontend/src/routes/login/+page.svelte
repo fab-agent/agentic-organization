@@ -80,7 +80,7 @@
 				body: JSON.stringify({ email: email.trim().toLowerCase() })
 			});
 			const data = await res.json();
-			if (!res.ok) throw new Error(data.detail ?? 'İstek başarısız');
+			if (!res.ok) throw new Error(data.detail ?? i18n.t('demo_req_failed'));
 			otpSent = true;
 			otpStep = 'code';
 			if (data.code) devCode = data.code; // dev fallback
@@ -103,7 +103,7 @@
 				body: JSON.stringify({ email: email.trim().toLowerCase(), code: otpCode.trim() })
 			});
 			const data = await res.json();
-			if (!res.ok) throw new Error(data.detail ?? 'Doğrulama başarısız');
+			if (!res.ok) throw new Error(data.detail ?? i18n.t('demo_verify_failed'));
 
 			// Store token and fetch /auth/me
 			await authStore.loginWithToken(data.access_token);
@@ -190,22 +190,22 @@
 				{#if otpStep === 'email'}
 					<div class="flex items-center gap-2 mb-1 justify-center">
 						<KeyRound class="w-5 h-5 text-primary" />
-						<h1 class="font-display text-xl tracking-tight">Demo Erişimi</h1>
+						<h1 class="font-display text-xl tracking-tight">{i18n.t('demo_title')}</h1>
 					</div>
 					<p class="text-sm text-muted-foreground text-center mb-6">
-						E-posta adresinize 6 haneli bir kod göndereceğiz.
+						{i18n.t('demo_subtitle')}
 					</p>
 
 					<form onsubmit={requestOtp} class="space-y-4">
 						<div class="space-y-1.5">
-							<label class="text-sm font-medium" for="demo-email">E-posta</label>
+							<label class="text-sm font-medium" for="demo-email">{i18n.t('login_email')}</label>
 							<div class="relative">
 								<Mail class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
 								<Input
 									id="demo-email"
 									type="email"
 									bind:value={email}
-									placeholder="siz@firma.com"
+									placeholder={i18n.t('demo_email_ph')}
 									class="pl-9"
 									autocomplete="email"
 									required
@@ -222,9 +222,9 @@
 						<Button type="submit" class="w-full" disabled={loading || !email}>
 							{#if loading}
 								<Loader class="w-4 h-4 animate-spin" />
-								Gönderiliyor…
+								{i18n.t('demo_sending')}
 							{:else}
-								Kod Gönder
+								{i18n.t('demo_send_code')}
 							{/if}
 						</Button>
 					</form>
@@ -232,23 +232,23 @@
 					<!-- code step -->
 					<div class="flex items-center gap-2 mb-1 justify-center">
 						<KeyRound class="w-5 h-5 text-primary" />
-						<h1 class="font-display text-xl tracking-tight">Doğrulama Kodu</h1>
+						<h1 class="font-display text-xl tracking-tight">{i18n.t('demo_verify_title')}</h1>
 					</div>
 					<p class="text-sm text-muted-foreground text-center mb-6">
-						<span class="font-medium text-foreground">{email}</span> adresine kod gönderildi.
-						15 dakika geçerlidir.
+						{i18n.t('demo_code_sent_pre')}<span class="font-medium text-foreground">{email}</span>{i18n.t('demo_code_sent_suf')}
+						{i18n.t('demo_code_valid')}
 					</p>
 
 					{#if devCode}
 						<div class="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-sm text-amber-800 mb-4 text-center">
-							<span class="font-medium">Test kodu:</span>
+							<span class="font-medium">{i18n.t('demo_test_code')}</span>
 							<span class="font-mono text-lg tracking-widest ml-2">{devCode}</span>
 						</div>
 					{/if}
 
 					<form onsubmit={verifyOtp} class="space-y-4">
 						<div class="space-y-1.5">
-							<label class="text-sm font-medium" for="otp-code">6 Haneli Kod</label>
+							<label class="text-sm font-medium" for="otp-code">{i18n.t('demo_code_label')}</label>
 							<Input
 								id="otp-code"
 								type="text"
@@ -272,9 +272,9 @@
 						<Button type="submit" class="w-full" disabled={loading || otpCode.length < 6}>
 							{#if loading}
 								<Loader class="w-4 h-4 animate-spin" />
-								Doğrulanıyor…
+								{i18n.t('demo_verifying')}
 							{:else}
-								Giriş Yap
+								{i18n.t('login_submit')}
 							{/if}
 						</Button>
 
@@ -283,7 +283,7 @@
 							class="w-full text-xs text-muted-foreground hover:text-foreground transition-colors"
 							onclick={() => { otpStep = 'email'; otpCode = ''; error = ''; devCode = ''; }}
 						>
-							Farklı e-posta kullan
+							{i18n.t('demo_change_email')}
 						</button>
 					</form>
 				{/if}
