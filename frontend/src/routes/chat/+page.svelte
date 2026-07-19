@@ -32,6 +32,7 @@
 	import { personnel as personnelApi, type PersonnelItem } from '$lib/api/personnel';
 	import { providers as providersApi, type ProviderStatus } from '$lib/api/providers';
 	import { companyStore } from '$lib/stores/company.svelte';
+	import { t } from '$lib/i18n/index.svelte';
 
 	const LAST_SESSION_KEY = 'chat:lastSessionId';
 	const POLL_INTERVAL_MS = 3000;
@@ -239,7 +240,7 @@
 
 		if (!activeSession) {
 			if (!selectedAgent) {
-				fileUploadError = 'Önce bir ajan seçin.';
+				fileUploadError = t('chat_err_select_agent');
 				return;
 			}
 			try {
@@ -249,7 +250,7 @@
 				messages = [];
 				localStorage.setItem(LAST_SESSION_KEY, s.id);
 			} catch (err) {
-				fileUploadError = 'Oturum başlatılamadı.';
+				fileUploadError = t('chat_err_session_start');
 				return;
 			}
 		}
@@ -261,7 +262,7 @@
 				pendingAttachments = [...pendingAttachments, att];
 			}
 		} catch (err) {
-			fileUploadError = err instanceof Error ? err.message : 'Dosya yüklenemedi.';
+			fileUploadError = err instanceof Error ? err.message : t('chat_err_file_upload');
 		} finally {
 			fileUploading = false;
 		}
@@ -290,7 +291,7 @@
 				messages = [];
 				localStorage.setItem(LAST_SESSION_KEY, s.id);
 			} catch (err) {
-				streamError = err instanceof Error ? err.message : 'Sohbet başlatılamadı';
+				streamError = err instanceof Error ? err.message : t('chat_err_chat_start');
 				return;
 			}
 		}
@@ -325,7 +326,7 @@
 		try {
 			for await (const event of streamMessage(
 				activeSession.id,
-				content || '(dosyaya bakınız)',
+				content || t('chat_file_ref'),
 				abortController.signal,
 				attachmentsToSend.length ? attachmentsToSend : undefined,
 			)) {
@@ -352,7 +353,7 @@
 					);
 					await scrollToBottom();
 				} else if (event.type === 'error') {
-					streamError = event.message ?? 'Bilinmeyen hata';
+					streamError = event.message ?? t('chat_err_unknown');
 					streamingText = '';
 					streamingTools = [];
 					await scrollToBottom();
@@ -375,7 +376,7 @@
 					startPolling(activeSession.id);
 				}
 			} else {
-				streamError = e instanceof Error ? e.message : 'Beklenmedik hata oluştu';
+				streamError = e instanceof Error ? e.message : t('chat_err_unexpected');
 				streamingText = '';
 			}
 		} finally {
@@ -419,7 +420,7 @@
 				>
 					<Bot class="w-4 h-4 text-primary flex-shrink-0" />
 					<span class="flex-1 text-left truncate text-foreground">
-						{selectedAgent?.name ?? 'Ajan seç...'}
+						{selectedAgent?.name ?? t('chat_select_agent_ph')}
 					</span>
 					<ChevronDown class="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
 				</button>
@@ -450,13 +451,13 @@
 									{/if}
 								</div>
 								{#if !keyOk}
-									<AlertTriangle class="w-3.5 h-3.5 text-amber-500 flex-shrink-0" title="Bu model için API anahtarı yapılandırılmamış" />
+									<AlertTriangle class="w-3.5 h-3.5 text-amber-500 flex-shrink-0" title={t('chat_no_key_tooltip')} />
 								{/if}
 							</button>
 						{/each}
 						{#if agents.length === 0}
 							<div class="px-3 py-4 text-sm text-muted-foreground text-center">
-								Henüz ajan yok
+								{t('chat_no_agents')}
 							</div>
 						{/if}
 					</div>
@@ -473,7 +474,7 @@
 				disabled={!selectedAgent}
 			>
 				<Plus class="w-3.5 h-3.5" />
-				Yeni Sohbet
+				{t('chat_new_session')}
 			</Button>
 		</div>
 
@@ -499,7 +500,7 @@
 						</div>
 						<div class="min-w-0 flex-1">
 							<div class="truncate font-medium text-xs leading-snug">
-								{s.title ?? 'Yeni sohbet'}
+								{s.title ?? t('chat_session_default')}
 							</div>
 							{#if s.last_message}
 								<div class="truncate text-xs text-muted-foreground mt-0.5">
@@ -522,7 +523,7 @@
 			{/each}
 			{#if visibleSessions.length === 0}
 				<div class="px-3 py-6 text-center text-xs text-muted-foreground">
-					{selectedAgent ? `${selectedAgent.name} için sohbet yok` : 'Sohbet yok'}
+					{selectedAgent ? `${t('chat_no_sessions_pre')}${selectedAgent.name}${t('chat_no_sessions_suf')}` : t('chat_no_sessions')}
 				</div>
 			{/if}
 		</div>
@@ -539,7 +540,7 @@
 					<Bot class="w-4 h-4 text-primary" />
 				</div>
 				<div>
-					<div class="font-semibold text-sm">{selectedAgent?.name ?? 'Ajan'}</div>
+					<div class="font-semibold text-sm">{selectedAgent?.name ?? t('chat_agent_fallback')}</div>
 					{#if selectedAgent?.title}
 						<div class="text-xs text-muted-foreground">{selectedAgent.title}</div>
 					{/if}
@@ -548,18 +549,18 @@
 					{#if polling}
 						<span class="text-xs text-emerald-600 flex items-center gap-1.5">
 							<RefreshCw class="w-3 h-3 animate-spin" />
-							Ajan arka planda çalışıyor...
+							{t('chat_bg_running')}
 						</span>
 					{:else if streaming}
 						<span class="text-xs text-muted-foreground flex items-center gap-1.5">
 							<Loader2 class="w-3 h-3 animate-spin" />
-							Yanıtlanıyor...
+							{t('chat_responding')}
 						</span>
 						<button
 							class="text-xs text-muted-foreground hover:text-foreground transition-colors"
 							onclick={cancelStream}
 						>
-							Durdur
+							{t('chat_stop')}
 						</button>
 					{/if}
 				</div>
@@ -573,7 +574,7 @@
 				{#if messages.length === 0 && !streaming && !polling}
 					<div class="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
 						<Bot class="w-12 h-12 mb-3 opacity-20" />
-						<p class="text-sm">Bir mesaj yazarak sohbete başlayın.</p>
+						<p class="text-sm">{t('chat_start_hint')}</p>
 					</div>
 				{/if}
 
@@ -634,7 +635,7 @@
 						</div>
 						<div class="bg-muted/40 rounded-2xl rounded-tl-sm px-4 py-2.5 flex items-center gap-2">
 							<RefreshCw class="w-3.5 h-3.5 animate-spin text-emerald-600" />
-							<span class="text-sm text-muted-foreground">Ajan çalışıyor, sonuç bekleniyor...</span>
+							<span class="text-sm text-muted-foreground">{t('chat_polling_label')}</span>
 						</div>
 					</div>
 				{/if}
@@ -647,7 +648,7 @@
 						</div>
 						<div class="flex-1 min-w-0">
 							<div class="bg-destructive/8 border border-destructive/20 rounded-2xl rounded-tl-sm px-4 py-3">
-								<p class="text-sm text-destructive font-medium mb-1">Ajan yanıt veremedi</p>
+								<p class="text-sm text-destructive font-medium mb-1">{t('chat_error_title')}</p>
 								<p class="text-xs text-destructive/80">{streamError}</p>
 							</div>
 						</div>
@@ -729,7 +730,7 @@
 				{#if selectedAgent && !agentHasKey(selectedAgent)}
 					<div class="flex items-center gap-2 px-3 py-2 mb-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-700 dark:text-amber-400">
 						<AlertTriangle class="w-3.5 h-3.5 flex-shrink-0" />
-						<span>Bu ajan <strong>{selectedAgent.agent_config?.model}</strong> modeli kullanıyor, ancak bu provider için API anahtarı yapılandırılmamış. <a href="/settings" class="underline">Ayarlar → AI Provider Keys</a> bölümünden ekleyebilirsiniz.</span>
+						<span>{t('chat_no_key_pre')} <strong>{selectedAgent.agent_config?.model}</strong> {t('chat_no_key_mid')} <a href="/settings" class="underline">{t('chat_no_key_link')}</a>{t('chat_no_key_post')}</span>
 					</div>
 				{/if}
 
@@ -738,7 +739,7 @@
 					<button
 						type="button"
 						class="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
-						title="Dosya ekle (PDF, TXT, CSV veya görsel)"
+						title={t('chat_file_attach_title')}
 						disabled={streaming || polling}
 						onclick={() => fileInputEl?.click()}
 					>
@@ -753,7 +754,7 @@
 						bind:this={inputEl}
 						bind:value={input}
 						onkeydown={handleKeydown}
-						placeholder="Mesaj yazın... (Enter gönderin, Shift+Enter yeni satır)"
+						placeholder={t('chat_input_ph')}
 						rows={1}
 						disabled={streaming || polling}
 						class="flex-1 bg-transparent text-sm resize-none outline-none placeholder:text-muted-foreground min-h-[20px] max-h-[120px] leading-5 disabled:opacity-50"
@@ -774,7 +775,7 @@
 					</Button>
 				</div>
 				<p class="text-xs text-muted-foreground text-center mt-2">
-					{selectedAgent?.name ?? 'Ajan'} · Mesajlar kaydedilir · PDF, metin ve görsel yükleyebilirsiniz
+					{selectedAgent?.name ?? t('chat_agent_fallback')} {t('chat_footer_suffix')}
 				</p>
 			</div>
 		{:else}
@@ -783,20 +784,20 @@
 				<div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
 					<MessageSquare class="w-8 h-8 text-primary/50" />
 				</div>
-				<h2 class="text-lg font-semibold text-foreground mb-1">Sohbete Başlayın</h2>
+				<h2 class="text-lg font-semibold text-foreground mb-1">{t('chat_start_title')}</h2>
 				<p class="text-sm text-center max-w-sm mb-6">
-					Bir ajan seçin ve yeni sohbet başlatın. Ajanlar politika ve araçlarıyla yanıt verecektir.
+					{t('chat_start_desc')}
 				</p>
 				{#if selectedAgent}
 					<Button onclick={newSession} class="gap-2">
 						<Plus class="w-4 h-4" />
-						{selectedAgent.name} ile Sohbet Başlat
+						{t('chat_start_with_pre')}{selectedAgent.name}{t('chat_start_with_suf')}
 					</Button>
 				{:else if agents.length > 0}
-					<p class="text-sm">Sol panelden bir ajan seçin.</p>
+					<p class="text-sm">{t('chat_select_from_panel')}</p>
 				{:else}
 					<p class="text-sm">
-						Önce <a href="/agents" class="text-primary underline">Ajanlar</a> sayfasından bir ajan yapılandırın.
+						{t('chat_no_agents_pre')} <a href="/agents" class="text-primary underline">{t('chat_no_agents_link')}</a> {t('chat_no_agents_post')}
 					</p>
 				{/if}
 			</div>
@@ -809,7 +810,7 @@
 			<!-- Agent card -->
 			<div class="p-4 border-b border-border">
 				<div class="flex items-center justify-between mb-3">
-					<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ajan Bilgisi</span>
+					<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('chat_info_title')}</span>
 					<button
 						class="text-muted-foreground hover:text-foreground transition-colors"
 						onclick={() => (infoPanelOpen = false)}
@@ -839,7 +840,7 @@
 							{cfg.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' :
 							 cfg.status === 'draft'  ? 'bg-amber-50 text-amber-700 border-amber-200' :
 							                          'bg-muted text-muted-foreground border-border'}">
-							{cfg.status === 'active' ? 'Aktif' : cfg.status === 'draft' ? 'Taslak' : 'Pasif'}
+							{cfg.status === 'active' ? t('status_active') : cfg.status === 'draft' ? t('status_draft') : t('status_inactive')}
 						</span>
 					</div>
 				{/if}
@@ -850,7 +851,7 @@
 				<div class="p-4 border-b border-border">
 					<div class="flex items-center gap-1.5 mb-2.5">
 						<Zap class="w-3.5 h-3.5 text-primary" />
-						<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Araçlar & Yetenekler</span>
+						<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('chat_tools_skills')}</span>
 					</div>
 					<div class="space-y-1.5">
 						{#each agentSkills as skill}
@@ -859,7 +860,7 @@
 									<div class="flex items-center gap-1.5">
 										<span class="text-xs font-medium truncate">{skill.name}</span>
 										{#if !skill.is_active}
-											<span class="text-xs text-muted-foreground">(pasif)</span>
+											<span class="text-xs text-muted-foreground">{t('chat_skill_inactive')}</span>
 										{/if}
 									</div>
 									{#if skill.description}
@@ -884,14 +885,14 @@
 				<div class="p-4">
 					<div class="flex items-center gap-1.5 mb-2.5">
 						<Shield class="w-3.5 h-3.5 text-primary" />
-						<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Departman</span>
+						<span class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('chat_department')}</span>
 					</div>
 					<div class="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-background border border-border/60 mb-2">
 						<span class="text-xs font-medium">{selectedAgent.department_name}</span>
 					</div>
 					{#if selectedAgent.manager_name}
 						<div class="text-xs text-muted-foreground">
-							Yönetici: {selectedAgent.manager_name}
+							{t('chat_manager')} {selectedAgent.manager_name}
 						</div>
 					{/if}
 				</div>
@@ -903,7 +904,7 @@
 			<button
 				class="text-muted-foreground hover:text-foreground transition-colors p-1"
 				onclick={() => (infoPanelOpen = true)}
-				title="Ajan bilgisini göster"
+				title={t('chat_show_info')}
 			>
 				<Info class="w-4 h-4" />
 			</button>
