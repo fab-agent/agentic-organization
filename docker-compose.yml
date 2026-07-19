@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: 3rdparty-backend
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./data:/app/data
       - ./backend/logs:/app/logs
@@ -30,7 +30,7 @@ services:
       dockerfile: Dockerfile
     container_name: 3rdparty-frontend
     ports:
-      - "5173:3000"
+      - "127.0.0.1:5173:3000"
     environment:
       - VITE_API_URL=http://localhost:8000
     depends_on:
