@@ -13,7 +13,7 @@ sidebar_position: 1
 | **Şifreleme** | Fernet (AES-256) | API anahtarları ve Git token'ları için |
 | **Git** | GitPython | YAML tabanlı senkronizasyon |
 | **CLI** | TypeScript + @clack/prompts | Kurulum sihirbazı |
-| **Deployment** | Docker Compose | Tek komutla tam stack |
+| **Deployment** | Docker Compose + Nginx | Self-hosted veya çok kiracılı bulut |
 
 ---
 
@@ -68,7 +68,23 @@ sidebar_position: 1
 │
 ├── packages/cli/             # `3pa` CLI sihirbazı
 ├── data/                     # SQLite DB + Git önbelleği
-└── docker-compose.yml
+├── docker-compose.yml          # Self-hosted temel yapı
+├── docker-compose.dev.yml      # Geliştirme ortamı (hot-reload)
+└── docker-compose.cloud.yml    # Bulut overlay (production)
+```
+
+### Bulut Dağıtımı
+
+`*.agent.fab.engineering` wildcard DNS kaydı ile çok kiracılı çalışma:
+
+```
+demo.agent.fab.engineering       → demo çalışma alanı
+fabrikayazilim.agent.fab.engineering → şirkete özel çalışma alanı
+app.agent.fab.engineering        → ana giriş noktası
+```
+
+Nginx wildcard `server_name` → tek Docker stack. Subdomain'den şirket slug'ı otomatik çözümlenir.
+
 ```
 
 ---

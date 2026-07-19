@@ -56,7 +56,16 @@ Ajanlarınız sadece sohbet etmez. Mevcut veritabanlarınıza, dahili API'lerini
 
 ---
 
-## Hızlı Başlangıç
+## Denemeye Başlayın
+
+| | |
+|---|---|
+| **Demo** | [demo.agent.fab.engineering](https://demo.agent.fab.engineering) — ücretsiz, kayıt gerektirmez |
+| **Uygulama** | [app.agent.fab.engineering](https://app.agent.fab.engineering) — kendi hesabınızla giriş yapın |
+
+---
+
+## Self-Hosted Kurulum
 
 ```bash
 git clone https://github.com/fab-agent/agentic-organization.git
