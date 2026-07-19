@@ -1,3 +1,5 @@
+import { t } from '$lib/i18n/index.svelte';
+
 export const API_URL = import.meta.env.VITE_API_URL ?? '';
 const BASE = API_URL;
 
@@ -17,7 +19,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	if (res.status === 401 && typeof window !== 'undefined') {
 		localStorage.removeItem('auth_token');
 		window.location.href = '/login';
-		throw new Error('Oturum süresi doldu');
+		throw new Error(t('session_expired'));
 	}
 
 	if (!res.ok) {

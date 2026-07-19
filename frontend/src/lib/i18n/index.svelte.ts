@@ -644,6 +644,7 @@ const dict = {
     login_forgot: 'Şifremi unuttum → yöneticiden sıfırlama talep et',
     login_powered_by: 'Powered by',
     login_error_default: 'Giriş başarısız',
+    session_expired: 'Oturum süresi doldu',
     // Demo OTP login
     demo_title: 'Demo Erişimi',
     demo_subtitle: 'E-posta adresinize 6 haneli bir kod göndereceğiz.',
@@ -1334,6 +1335,7 @@ const dict = {
     login_forgot: 'Forgot password → request reset from admin',
     login_powered_by: 'Powered by',
     login_error_default: 'Sign in failed',
+    session_expired: 'Session expired',
     // Demo OTP login
     demo_title: 'Demo Access',
     demo_subtitle: 'We will send a 6-digit code to your email address.',
