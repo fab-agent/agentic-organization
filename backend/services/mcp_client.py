@@ -130,9 +130,15 @@ async def _delegate_to_agent(
     from models import A2ARequest, AgentConfig, Personnel
 
     with _get_session() as db:
-        target = db.exec(select(Personnel).where(Personnel.slug == to_slug)).first()
+        # Support pre-configured target via _to_agent_id (bypasses slug lookup)
+        pre_id = args.get("_to_agent_id")
+        if pre_id:
+            target = db.get(Personnel, pre_id)
+        else:
+            target = db.exec(select(Personnel).where(Personnel.slug == to_slug)).first()
         if not target:
-            return f"[A2A delegation error: agent with slug '{to_slug}' not found]"
+            lookup = pre_id or to_slug
+            return f"[A2A delegation error: agent '{lookup}' not found]"
 
         # Verify target is an agent
         cfg = db.exec(

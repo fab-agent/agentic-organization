@@ -87,9 +87,27 @@ def build_system_prompt(
     if skills:
         active_skills = [s for s in skills if s.is_active]
         if active_skills:
-            lines.append(
-                "\nAvailable tools/skills: " + ", ".join(s.name for s in active_skills)
-            )
+            import json as _json
+            delegate_skills = [
+                s for s in active_skills
+                if s.skill_type == "builtin"
+                and s.config_json
+                and _json.loads(s.config_json).get("function_name") == "delegate_to_agent"
+            ]
+            if delegate_skills:
+                lines.append(
+                    "\nYou are an orchestrator agent. When given a task, you MUST call your delegation tools to assign sub-tasks to specialist agents — do NOT just describe what you would do."
+                )
+                lines.append("Delegation tools available (call these):")
+                for s in delegate_skills:
+                    lines.append(f"  - {s.name}: {s.description or s.name}")
+                other = [s for s in active_skills if s not in delegate_skills]
+                if other:
+                    lines.append("Other tools: " + ", ".join(s.name for s in other))
+            else:
+                lines.append(
+                    "\nAvailable tools/skills: " + ", ".join(s.name for s in active_skills)
+                )
 
     # Inject agent memory from past sessions
     try:
@@ -238,7 +256,18 @@ def build_tool_definitions(skills: list[Skill]) -> list[dict]:
 
         if s.skill_type == "builtin":
             fn_name = cfg.get("function_name", s.name)
-            parameters = _BUILTIN_SCHEMAS.get(fn_name, parameters)
+            if fn_name == "delegate_to_agent" and cfg.get("to_agent_id"):
+                # Target already pre-configured — model only needs to supply the task
+                parameters = {
+                    "type": "object",
+                    "properties": {
+                        "task": {"type": "string", "description": "Task description for the target agent"},
+                        "context": {"type": "string", "description": "Additional context or data to pass"},
+                    },
+                    "required": ["task"],
+                }
+            else:
+                parameters = _BUILTIN_SCHEMAS.get(fn_name, parameters)
         elif s.skill_type in ("mcp", "http"):
             input_schema = cfg.get("input_schema") or {}
             if input_schema:
@@ -313,6 +342,9 @@ async def execute_skill(
     try:
         if skill.skill_type == "builtin":
             fn_name = cfg.get("function_name", skill.name)
+            # For pre-configured delegate_to_agent, inject the target agent ID
+            if fn_name == "delegate_to_agent" and cfg.get("to_agent_id") and "_to_agent_id" not in args:
+                args = {**args, "_to_agent_id": cfg["to_agent_id"]}
             result = await execute_builtin(
                 fn_name, args, session_id=session_id, agent_id=agent_id
             )
