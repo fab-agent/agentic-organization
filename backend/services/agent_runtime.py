@@ -88,11 +88,14 @@ def build_system_prompt(
         active_skills = [s for s in skills if s.is_active]
         if active_skills:
             import json as _json
+
             delegate_skills = [
-                s for s in active_skills
+                s
+                for s in active_skills
                 if s.skill_type == "builtin"
                 and s.config_json
-                and _json.loads(s.config_json).get("function_name") == "delegate_to_agent"
+                and _json.loads(s.config_json).get("function_name")
+                == "delegate_to_agent"
             ]
             if delegate_skills:
                 lines.append(
@@ -106,7 +109,8 @@ def build_system_prompt(
                     lines.append("Other tools: " + ", ".join(s.name for s in other))
             else:
                 lines.append(
-                    "\nAvailable tools/skills: " + ", ".join(s.name for s in active_skills)
+                    "\nAvailable tools/skills: "
+                    + ", ".join(s.name for s in active_skills)
                 )
 
     # Inject agent memory from past sessions
@@ -261,8 +265,14 @@ def build_tool_definitions(skills: list[Skill]) -> list[dict]:
                 parameters = {
                     "type": "object",
                     "properties": {
-                        "task": {"type": "string", "description": "Task description for the target agent"},
-                        "context": {"type": "string", "description": "Additional context or data to pass"},
+                        "task": {
+                            "type": "string",
+                            "description": "Task description for the target agent",
+                        },
+                        "context": {
+                            "type": "string",
+                            "description": "Additional context or data to pass",
+                        },
                     },
                     "required": ["task"],
                 }
@@ -343,7 +353,11 @@ async def execute_skill(
         if skill.skill_type == "builtin":
             fn_name = cfg.get("function_name", skill.name)
             # For pre-configured delegate_to_agent, inject the target agent ID
-            if fn_name == "delegate_to_agent" and cfg.get("to_agent_id") and "_to_agent_id" not in args:
+            if (
+                fn_name == "delegate_to_agent"
+                and cfg.get("to_agent_id")
+                and "_to_agent_id" not in args
+            ):
                 args = {**args, "_to_agent_id": cfg["to_agent_id"]}
             result = await execute_builtin(
                 fn_name, args, session_id=session_id, agent_id=agent_id
@@ -1143,7 +1157,11 @@ async def run_session(
         raw_model = cfg.model or ""
         raw_version = cfg.model_version or ""
         # If model field is a bare version tag or unknown, try model_version instead
-        model_name = raw_model if detect_provider(raw_model) != "google" or raw_model.startswith("gemini") else (raw_version or raw_model or "gemini-2.0-flash")
+        model_name = (
+            raw_model
+            if detect_provider(raw_model) != "google" or raw_model.startswith("gemini")
+            else (raw_version or raw_model or "gemini-2.0-flash")
+        )
 
         provider = detect_provider(model_name)
         api_key = get_decrypted_key(provider)

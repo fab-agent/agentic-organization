@@ -306,9 +306,7 @@ def _maybe_compile_results(from_session_id: str) -> None:
 
     report = (
         "## 📊 Delegasyon Sonuçları — Yönetici Raporu\n\n"
-        f"*{len(done)} ajan tamamlandı*\n\n"
-        + "\n\n---\n\n".join(parts)
-        + "\n\n---\n\n"
+        f"*{len(done)} ajan tamamlandı*\n\n" + "\n\n---\n\n".join(parts) + "\n\n---\n\n"
         "_Tüm delegasyon görevleri tamamlandı. Yukarıdaki raporları inceleyebilir, "
         "detayları sormak için mesaj yazabilirsiniz._"
     )
@@ -324,6 +322,7 @@ def _maybe_compile_results(from_session_id: str) -> None:
             session.commit()
     except Exception as e:
         import traceback
+
         print(f"[A2A Compile] {e}\n{traceback.format_exc()}")
 
 
@@ -364,7 +363,7 @@ def _execute_a2a_task(req_id: str) -> None:
         req = session.get(A2ARequest, req_id)
         if req:
             req.result = result or "[Boş yanıt]"
-            req.status = "completed"          # auto-approve result
+            req.status = "completed"  # auto-approve result
             req.result_approved_at = datetime.utcnow()
             req.updated_at = datetime.utcnow()
             session.add(req)
@@ -379,23 +378,21 @@ def _execute_a2a_task(req_id: str) -> None:
 
 
 @router.get("/sessions/{session_id}/delegation-status")
-def session_delegation_status(
-    session_id: str, _: User = Depends(get_current_user)
-):
+def session_delegation_status(session_id: str, _: User = Depends(get_current_user)):
     """Return counts of A2A requests originating from a session."""
     with get_session() as session:
         reqs = session.exec(
             select(A2ARequest).where(A2ARequest.from_session_id == session_id)
         ).all()
 
-    total     = len(reqs)
-    pending   = sum(1 for r in reqs if r.status in ("pending_approval", "running"))
+    total = len(reqs)
+    pending = sum(1 for r in reqs if r.status in ("pending_approval", "running"))
     completed = sum(1 for r in reqs if r.status == "completed")
-    rejected  = sum(1 for r in reqs if r.status == "rejected")
+    rejected = sum(1 for r in reqs if r.status == "rejected")
     return {
-        "total":     total,
-        "pending":   pending,
+        "total": total,
+        "pending": pending,
         "completed": completed,
-        "rejected":  rejected,
-        "all_done":  total > 0 and pending == 0,
+        "rejected": rejected,
+        "all_done": total > 0 and pending == 0,
     }
