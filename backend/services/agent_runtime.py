@@ -392,6 +392,8 @@ def detect_provider(model: str) -> str:
         return "openai"
     if m.startswith("qwen"):
         return "qwen"
+    if m.startswith("deepseek") or m.startswith("kimi"):
+        return "qwen"
     if m.startswith("dall-e"):
         return "openai"
     if m.startswith(("wanx", "flux", "stable-diffusion")):
@@ -1105,8 +1107,11 @@ async def run_session(
 
         session.commit()
 
-        # Use cfg.model for provider detection (model_version may be just a short tag like "4.6")
-        model_name = cfg.model or "gemini-2.0-flash"
+        # Use cfg.model for provider detection; fall back to model_version if needed
+        raw_model = cfg.model or ""
+        raw_version = cfg.model_version or ""
+        # If model field is a bare version tag or unknown, try model_version instead
+        model_name = raw_model if detect_provider(raw_model) != "google" or raw_model.startswith("gemini") else (raw_version or raw_model or "gemini-2.0-flash")
 
         provider = detect_provider(model_name)
         api_key = get_decrypted_key(provider)
