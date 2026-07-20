@@ -419,7 +419,7 @@
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 				<div class="space-y-1.5 sm:col-span-2">
 					<label class="text-sm font-medium" for="dept-name">{t('dept_name_label')} <span class="text-destructive">*</span></label>
-					<Input id="dept-name" bind:value={form.name} placeholder="Yazılım Geliştirme" autocomplete="off" />
+					<Input id="dept-name" bind:value={form.name} placeholder={t('dept_name_ph')} autocomplete="off" />
 				</div>
 
 				<div class="space-y-1.5">
@@ -480,7 +480,7 @@
 					id="dept-goals"
 					class="flex min-h-[140px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y font-mono text-xs leading-relaxed"
 					bind:value={form.goals}
-					placeholder="Her satıra bir hedef yazın:&#10;Q2 sonuna kadar CI/CD pipeline otomasyonunu tamamlamak&#10;Kod kalitesi metriklerini %90 üzerinde tutmak&#10;..."
+					placeholder={t('dept_goals_ph')}
 				></textarea>
 				<p class="text-xs text-muted-foreground">{t('dept_goals_hint')} • {goalCount(form.goals)} {t('dept_goal_count')}</p>
 			</div>
@@ -496,7 +496,7 @@
 			<!-- Şirket politikaları — kilitli, her zaman aktif -->
 			{#if companyLevelPolicies.length > 0}
 				<div class="mb-2">
-					<div class="text-xs font-medium text-muted-foreground mb-1.5">Şirket Politikaları <span class="text-[10px] bg-muted px-1.5 py-0.5 rounded ml-1">her zaman aktif</span></div>
+					<div class="text-xs font-medium text-muted-foreground mb-1.5">{t('dept_company_policies')} <span class="text-[10px] bg-muted px-1.5 py-0.5 rounded ml-1">{t('dept_always_active')}</span></div>
 					<div class="space-y-1">
 						{#each companyLevelPolicies as policy (policy.id)}
 							<div class="flex items-center gap-2.5 px-3 py-2 rounded-xl border border-border/50 bg-muted/30 opacity-70 cursor-not-allowed">
@@ -513,11 +513,11 @@
 			<!-- Bölüm politikaları — seçilebilir -->
 			{#if deptLevelPolicies.length === 0}
 				<p class="text-xs text-muted-foreground italic">
-					Bölüm politikası oluşturulmamış.
-					<a href="/policies" class="underline text-primary">Politikalar</a> sayfasından "Bölüm" kapsamında ekleyin.
+					{t('dept_no_dept_policies_pre')}
+					<a href="/policies" class="underline text-primary">{t('nav_policies')}</a>{t('dept_no_dept_policies_suf')}
 				</p>
 			{:else}
-				<p class="text-xs text-muted-foreground mb-1">Bu bölüme uygulanacak politikaları seçin:</p>
+				<p class="text-xs text-muted-foreground mb-1">{t('dept_select_policies')}</p>
 				<div class="space-y-1.5 max-h-56 overflow-y-auto pr-1">
 					{#each deptLevelPolicies as policy (policy.id)}
 						{@const selected = form.policyIds.includes(policy.id)}
@@ -542,7 +542,7 @@
 					{/each}
 				</div>
 				{#if form.policyIds.length > 0}
-					<p class="text-xs text-muted-foreground">{form.policyIds.length} politika seçili</p>
+					<p class="text-xs text-muted-foreground">{form.policyIds.length} {t('dept_policies_selected')}</p>
 				{/if}
 			{/if}
 		</section>

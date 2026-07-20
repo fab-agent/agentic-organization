@@ -19,7 +19,7 @@
 	const tree: OrgNode = $derived(
 		roots.length === 1
 			? roots[0]
-			: { id: '__root__', name: companyStore.active?.name ?? 'Şirket', title: '', type: 'human', department: null, children: roots }
+			: { id: '__root__', name: companyStore.active?.name ?? t('company_fallback'), title: '', type: 'human', department: null, children: roots }
 	);
 
 	// ── Department view data ──────────────────────────────────────────────────
@@ -152,7 +152,7 @@
 </script>
 
 <svelte:head>
-	<title>Org Şeması • fab.engineering</title>
+	<title>{t('org_chart_title')} • fab.engineering</title>
 </svelte:head>
 
 <div class="space-y-6">

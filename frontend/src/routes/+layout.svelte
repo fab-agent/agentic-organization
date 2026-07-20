@@ -115,7 +115,7 @@
 			await companyStore.create(newCompanyName.trim());
 			newCompanyName = ''; addingCompany = false; companyMenuOpen = false;
 		} catch (e: any) {
-			addError = e?.message ?? 'Hata oluştu';
+			addError = e?.message ?? t('error_occurred');
 		} finally { adding = false; }
 	}
 
@@ -231,7 +231,7 @@
 				<!-- Left: Hamburger (mobile) + Logo -->
 				<div class="flex items-center gap-x-3">
 					<Button variant="ghost" size="icon" class="lg:hidden"
-						onclick={() => (sidebarOpen = !sidebarOpen)} aria-label="Menüyü aç">
+						onclick={() => (sidebarOpen = !sidebarOpen)} aria-label={t('menu_open')}>
 						<Menu class="w-5 h-5" />
 					</Button>
 					<div class="flex items-center gap-x-2.5">
@@ -315,7 +315,7 @@
 					<!-- Company.md gear icon -->
 					{#if active}
 						<Button variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground hover:text-foreground"
-							onclick={openCoMd} title="Şirket bilgileri">
+							onclick={openCoMd} title={t('company_info_title')}>
 							<Settings2 class="w-4 h-4" />
 						</Button>
 					{/if}
@@ -347,11 +347,11 @@
 							<div class="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center ring-1 ring-border text-xs font-bold text-primary">
 								{userInitials}
 							</div>
-							<span class="hidden sm:block text-sm font-medium">{currentUser?.name ?? 'Kullanıcı'}</span>
+							<span class="hidden sm:block text-sm font-medium">{currentUser?.name ?? t('user_fallback')}</span>
 						</Button>
 					</a>
 					<Button variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground hover:text-foreground"
-						onclick={logout} title="Çıkış Yap">
+						onclick={logout} title={t('logout_label')}>
 						<LogOut class="w-4 h-4" />
 					</Button>
 				</div>
@@ -394,7 +394,7 @@
 						<span class="font-semibold tracking-tight text-muted-foreground">.engineering</span>
 					</div>
 				</div>
-				<Button variant="ghost" size="icon" onclick={() => (sidebarOpen = false)} aria-label="Menüyü kapat">
+				<Button variant="ghost" size="icon" onclick={() => (sidebarOpen = false)} aria-label={t('menu_close')}>
 					<X class="w-5 h-5" />
 				</Button>
 			</div>
@@ -606,7 +606,7 @@
 							<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
 								{val}
 								{#if canManageCompany}
-									<button type="button" onclick={() => coRemoveValue(val)} class="hover:text-destructive transition-colors" aria-label="Kaldır">
+									<button type="button" onclick={() => coRemoveValue(val)} class="hover:text-destructive transition-colors" aria-label={t('remove')}>
 										<X class="w-3 h-3" />
 									</button>
 								{/if}
@@ -637,7 +637,7 @@
 								{#if canManageCompany}
 									<button type="button" onclick={() => coRemoveGoal(goal.id)}
 										class="text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover/g:opacity-100 flex-shrink-0"
-										aria-label="Kaldır">
+										aria-label={t('remove')}>
 										<X class="w-3.5 h-3.5" />
 									</button>
 								{/if}

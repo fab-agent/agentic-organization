@@ -313,7 +313,7 @@ Bu yeteneğin ne yaptığını buraya yaz.
 							<div class="text-sm text-muted-foreground mt-1">{t('skill_cr_desc')}</div>
 						</div>
 						<Button variant="outline" onclick={() => { crSubmitted = false; selected && openView(selected); }}>
-							Kapat
+							{t('close')}
 						</Button>
 					</div>
 				{:else}
@@ -380,7 +380,7 @@ Bu yeteneğin ne yaptığını buraya yaz.
 									bind:value={form.content}
 									class="md-editor"
 									rows="16"
-									placeholder="# Yetenek Adı&#10;&#10;## Açıklama&#10;Bu yeteneğin ne yaptığını yaz..."
+									placeholder={t('skill_content_ph')}
 								></textarea>
 							{:else}
 								<div class="md-preview">
