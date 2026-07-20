@@ -118,11 +118,12 @@ async def _delegate_to_agent(
         return "[A2A delegation error: missing session_id or agent_id]"
 
     to_slug = args.get("to_agent_slug", "")
+    pre_id = args.get("_to_agent_id", "")
     task = args.get("task", "")
     context = args.get("context")
 
-    if not to_slug or not task:
-        return "[A2A delegation error: to_agent_slug and task are required]"
+    if not (to_slug or pre_id) or not task:
+        return "[A2A delegation error: to_agent_slug (or pre-configured target) and task are required]"
 
     from sqlmodel import select
 
@@ -130,8 +131,6 @@ async def _delegate_to_agent(
     from models import A2ARequest, AgentConfig, Personnel
 
     with _get_session() as db:
-        # Support pre-configured target via _to_agent_id (bypasses slug lookup)
-        pre_id = args.get("_to_agent_id")
         if pre_id:
             target = db.get(Personnel, pre_id)
         else:
