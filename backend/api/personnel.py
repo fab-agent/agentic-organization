@@ -718,8 +718,14 @@ def get_org_tree(
         roots: list[dict] = []
         for p in all_personnel:
             node = nodes[p.id]
-            if p.manager_id and p.manager_id in nodes:
-                nodes[p.manager_id]["children"].append(node)
+            parent_id = p.manager_id
+            # Agents without an explicit manager fall under their responsible person
+            if not parent_id and p.type == "agent":
+                cfg = cfg_map.get(p.id)
+                if cfg and cfg.responsible_id and cfg.responsible_id in nodes:
+                    parent_id = cfg.responsible_id
+            if parent_id and parent_id in nodes:
+                nodes[parent_id]["children"].append(node)
             else:
                 roots.append(node)
 
