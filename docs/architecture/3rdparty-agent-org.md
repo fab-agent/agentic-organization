@@ -2,75 +2,77 @@
 sidebar_position: 1
 ---
 
-# Mimari: 3rdParty Agent Organization
+# Mimari: Agentic Organization
 
 ## Genel Bakış
 
 | Katman | Teknoloji | Notlar |
 |---|---|---|
-| **Backend** | FastAPI + SQLModel + SQLite | Modüler router yapısı |
+| **Backend** | FastAPI + SQLModel + SQLite | Modüler router yapısı, Alembic migration |
 | **Frontend** | SvelteKit 5 + Tailwind CSS | Svelte 5 runes (`$state`, `$derived`, `$effect`) |
-| **Şifreleme** | Fernet (AES-256) | API anahtarları ve Git token'ları için |
-| **Git** | GitPython | YAML tabanlı senkronizasyon |
-| **CLI** | TypeScript + @clack/prompts | Kurulum sihirbazı |
-| **Deployment** | Docker Compose + Nginx | Self-hosted veya çok kiracılı bulut |
+| **Şifreleme** | Fernet (AES-256) | API anahtarları, Git token'ları, sosyal medya kimlik bilgileri |
+| **Git** | GitPython | YAML tabanlı senkronizasyon, iki aşamalı onay akışı |
+| **Scheduler** | APScheduler | Otonom akış cron zamanlaması |
+| **Deployment** | Docker Compose + Nginx | Self-hosted, prodüksiyon + dev konfigürasyonları |
 
 ---
 
 ## Klasör Yapısı
 
 ```
-3rdparty-agent-org/
+agentic-organization/
 ├── backend/
 │   ├── main.py              # Router kaydı + startup hooks
 │   ├── models.py            # SQLModel ORM modelleri
 │   ├── schemas.py           # Pydantic istek/yanıt şemaları
 │   ├── database.py          # SQLite engine + session context manager
-│   ├── seed.py              # İlk açılışta örnek veri (2 şirket)
 │   ├── api/
+│   │   ├── auth.py             # Login, invite, setup wizard, JWT
 │   │   ├── companies.py        # Şirket CRUD + stats
 │   │   ├── departments.py      # Departman CRUD (parent_id hiyerarşi)
-│   │   ├── personnel.py        # Personel + AgentConfig + Skill CRUD
+│   │   ├── personnel.py        # Personel + AgentConfig + org-tree
+│   │   ├── skills.py           # CompanySkill CRUD + AgentSkillLink
+│   │   ├── policies.py         # Politika yönetimi
+│   │   ├── onboarding.py       # AI Onboarding (search/chat/generate/create)
+│   │   ├── sessions.py         # AI oturumları + SSE akışı
+│   │   ├── flows.py            # Otonom Akışlar (APScheduler)
+│   │   ├── task_requests.py    # Görev yönlendirme + insan onayı
+│   │   ├── a2a.py              # A2A delegasyon + otomatik rapor derleme
 │   │   ├── providers.py        # AI sağlayıcı anahtar yönetimi
-│   │   ├── git_sync.py         # Git pull/push/diff/logs
-│   │   ├── change_requests.py  # Değişiklik Talepleri onay akışı
-│   │   ├── flows.py            # Otonom Akışlar (cron zamanlayıcı)
-│   │   ├── inbox.py            # Gelen Kutusu mesajları
-│   │   └── task_requests.py    # Görev Talepleri + ajan eşleştirme
+│   │   ├── dashboard.py        # Canlı telemetri + SLA metrikleri
+│   │   ├── audit.py            # Denetim günlüğü
+│   │   └── git_sync.py         # Git pull/push/diff/PR
 │   ├── core/
 │   │   └── security.py      # Fernet şifreleme/çözme
 │   └── services/
-│       ├── provider_service.py   # API anahtar testi (httpx)
-│       └── git_service.py        # GitPython işlemleri + YAML I/O
+│       ├── agent_runtime.py    # AI çalışma motoru (çoklu sağlayıcı)
+│       ├── memory_service.py   # Uzun dönem hafıza özeti (oturum kapatma)
+│       ├── flow_runner.py      # Cron akış çalıştırıcı + görsel üretim
+│       └── onboarding_agent.py # DDG araması + LLM sohbeti + toplu oluşturma
 │
 ├── frontend/
 │   └── src/
 │       ├── lib/
 │       │   ├── api/             # Tip güvenli fetch istemcileri
-│       │   │   ├── client.ts    # Temel fetch wrapper
-│       │   │   ├── companies.ts
-│       │   │   ├── departments.ts
-│       │   │   ├── personnel.ts
-│       │   │   ├── orgtree.ts
-│       │   │   ├── providers.ts
-│       │   │   └── git.ts
 │       │   ├── components/ui/   # Bespoke bileşenler (Button, Dialog, Badge...)
-│       │   ├── i18n/            # TR/EN/DE/ES çeviri sözlükleri
+│       │   ├── i18n/            # TR/EN çeviri sözlükleri
 │       │   └── stores/
 │       │       └── company.svelte.ts  # Aktif şirket state'i
 │       └── routes/
 │           ├── +layout.svelte   # Şirket switcher + dil seçici + nav
-│           ├── +page.svelte     # Dashboard
+│           ├── +page.svelte     # Dashboard (telemetri + SLA)
+│           ├── chat/            # Ajan sohbet arayüzü
 │           ├── departments/
 │           ├── personnel/
+│           ├── skills/
+│           ├── policies/
 │           ├── org-chart/
-│           └── settings/        # AI sağlayıcılar + Git
+│           ├── jobs/            # Görev talepleri + A2A delegasyon
+│           └── settings/        # AI sağlayıcılar + Git + entegrasyonlar
 │
-├── packages/cli/             # `3pa` CLI sihirbazı
-├── data/                     # SQLite DB + Git önbelleği
-├── docker-compose.yml          # Self-hosted temel yapı
-├── docker-compose.dev.yml      # Geliştirme ortamı (hot-reload)
-└── docker-compose.cloud.yml    # Bulut overlay (production)
+├── data/                     # SQLite DB
+├── docker-compose.yml          # Geliştirme (hot-reload)
+└── docker-compose.prod.yml     # Prodüksiyon (Nginx + rate limiting)
 ```
 
 ### Bulut Dağıtımı
@@ -134,11 +136,21 @@ Ek tablolar:
 `main.py` ince bir orkestratör olarak çalışır:
 
 ```python
+app.include_router(auth_router)         # /auth
 app.include_router(companies_router)    # /companies
 app.include_router(dept_router)         # /departments
 app.include_router(personnel_router)    # /personnel + /org-tree
+app.include_router(skills_router)       # /skills + /builtin-tools
+app.include_router(policies_router)     # /policies
 app.include_router(providers_router)    # /providers
+app.include_router(sessions_router)     # /sessions
+app.include_router(flows_router)        # /flows
+app.include_router(a2a_router)          # /a2a
+app.include_router(task_router)         # /tasks
+app.include_router(dashboard_router)    # /dashboard
+app.include_router(audit_router)        # /audit
 app.include_router(git_router)          # /git
+app.include_router(onboarding_router)   # /onboarding
 ```
 
 Her router kendi prefix'i ile tanımlanır. Trailing slash sorunundan kaçınmak için route'lar `""` (boş string) ile tanımlanır, `/` ile değil.
@@ -194,7 +206,7 @@ export const i18n = {
 };
 ```
 
-Desteklenen diller: TR / EN / DE / ES (~50 çeviri anahtarı)
+Desteklenen diller: TR / EN
 
 ### Şirket Filtreleme
 
@@ -226,17 +238,23 @@ departments = await deptApi.list(companyStore.active?.id);
 
 | Bileşen | Açıklama |
 |---|---|
-| Organizasyon yönetimi | Şirket + departman hiyerarşisi + personel CRUD |
-| AI sağlayıcılar | Fernet şifreli API anahtar yönetimi (Gemini / Anthropic / OpenAI) |
-| CLI | `3pa init` kurulum sihirbazı |
-| Git entegrasyonu | Pull/push/diff/PR, YAML I/O, GitHub PAT |
-| Çoklu şirket | Şirket switcher + i18n (TR/EN/DE/ES) |
-| Skill sistemi | `builtin \| mcp \| http \| function` tipleri, `config_json` şemaları, `is_active` bayrağı |
-| Agent runtime | SSE akışı, çoklu provider yönlendirmesi, agentic döngü (maks 8 iter.) |
-| Chat UI | Markdown/Mermaid render, agent bilgi paneli |
-| A2A delegasyon | İki aşamalı onay akışı |
-| Kimlik doğrulama | JWT + davet sistemi, rol hiyerarşisi, profil sayfası |
-| Operasyonel modüller | Departman hiyerarşisi, Değişiklik Talepleri, GitHub commit entegrasyonu, Otonom Akışlar (cron), Görev Talepleri, Gelen Kutusu |
+| Organizasyon yönetimi | Şirket + departman hiyerarşisi + personel CRUD, iç içe `parent_id` desteği |
+| AI sağlayıcılar | Fernet şifreli anahtar yönetimi — Anthropic, OpenAI, Google, Mistral, Qwen, Ollama, LM Studio |
+| AI Onboarding | Web araştırması + çok turlu LLM sohbeti + toplu varlık oluşturma |
+| Git entegrasyonu | Pull/push/diff/PR, YAML I/O, iki aşamalı onay akışı (dept_head → admin → commit) |
+| Çoklu şirket | Navbar şirket switcher + i18n (TR/EN) |
+| Skill sistemi | `builtin \| mcp \| http \| function` tipleri, `AgentSkillLink` çoka-çok bağlantı |
+| Agent runtime | SSE akışı, çoklu provider yönlendirmesi, agentic döngü, uzun dönem hafıza |
+| Chat UI | Markdown/Mermaid render, ajan bilgi paneli, oturum geçmişi |
+| A2A delegasyon | `pending_approval → running → completed → otomatik rapor` akışı |
+| Otonom Akışlar | APScheduler cron + tüm sağlayıcılar + DashScope görsel üretim yönlendirmesi |
+| Dashboard | Şirket telemetrisi, kullanıcı telemetrisi, ajan SLA metrikleri |
+| Kimlik doğrulama | JWT + davet sistemi, 5 rol kademesi, şifre zorunluluğu, şifre değiştirme akışı |
+| Güvenlik | Nginx hız sınırlama, JWT_SECRET uyarısı, Pydantic şema doğrulama, şirket düzeyi yetkilendirme |
+| Yedekleme | S3/R2/MinIO yedekleme, `sqlite3.backup()` API, yedekleme geçmişi |
+| Sosyal Medya | Instagram Graph API + WhatsApp Business Cloud API builtin skill'leri |
+| Telegram | Bot API bildirimleri (davet, şifre sıfırlama), şifreli token saklama |
+| Denetim Günlüğü | Tüm mutasyon endpoint'leri için `log_action()` kaydı |
 
 ---
 

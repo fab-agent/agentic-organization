@@ -143,12 +143,15 @@ The token is signed with the `JWT_SECRET` environment variable. When it expires,
 
 ---
 
-## Email Infrastructure
+## Notification Infrastructure
 
-All system emails are sent via [Resend](https://resend.com) from the `noreply@fab.limited` address. This can be customized with the `EMAIL_FROM` environment variable.
+Invitation and password reset notifications are delivered via the **Telegram Bot API**. No email infrastructure is required — delivers instantly to an admin chat.
 
-Types of emails sent:
-- **Invitation email:** Welcome message with the temporary password
-- **Password reset email:** New temporary password after an admin reset
+Types of notifications sent:
+- **Invitation notification:** The new user's temporary password is sent to the admin chat
+- **Password renewal:** A new temporary password is sent when the previous one expires
+- **Admin reset:** New temporary password sent after an admin password reset
 
-For setup details, see → [Installation — Resend Setup](../getting-started/installation.md#resend-kurulumu)
+Configuration: Go to **Settings → Integrations → Telegram Notifications**, enter your BotFather token and admin chat ID.
+
+If Telegram is not configured, temporary passwords are shown in the API response and the UI.

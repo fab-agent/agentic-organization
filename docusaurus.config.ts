@@ -64,7 +64,7 @@ const config: Config = {
     },
     footer: {
       style: 'dark',
-      copyright: `© 2025 Fabrika Yazılım Ticaret Limited Şirketi · Kuntay Kunt`,
+      copyright: `© 2026 Fabrika Yazılım Ticaret Limited Şirketi · Kuntay Kunt`,
     },
     prism: {
       theme: prismThemes.github,

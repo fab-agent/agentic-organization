@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # fab.engineering — Kurumsal Yapay Zeka Katmanı
 
-**Versiyon 1.0** · Self-hosted, açık kaynak (MIT) · [GitHub](https://github.com/fab-agent/agentic-organization)
+**Versiyon 1.1** · Self-hosted, açık kaynak (MIT + Commons Clause) · [GitHub](https://github.com/fab-agent/agentic-organization)
 
 > **Kurumsal hafıza ve kurumsal yapay zeka ile işleriniz artık çok daha verimli ve hızlı.**
 
