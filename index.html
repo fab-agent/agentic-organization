@@ -171,6 +171,44 @@
     body, nav, .card, .badge, .pill, .code-block, .code-bar, footer, section {
       transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
     }
+
+    /* Screenshots gallery */
+    .shot-scroll {
+      display: flex; gap: 20px; overflow-x: auto; scroll-snap-type: x proximity;
+      padding: 8px 4px 20px; margin: 0 -4px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .shot-scroll::-webkit-scrollbar { height: 8px; }
+    .shot-scroll::-webkit-scrollbar-track { background: transparent; }
+    .shot-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 999px; }
+    body.light .shot-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); }
+    .shot-card {
+      flex: 0 0 auto; width: 340px; scroll-snap-align: start; cursor: pointer;
+      border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+      background: var(--card); transition: border-color 0.2s, transform 0.2s;
+    }
+    .shot-card:hover { border-color: rgba(99,102,241,0.4); transform: translateY(-3px); }
+    .shot-card img { display: block; width: 100%; height: auto; }
+    .shot-card .shot-cap { padding: 12px 14px; font-size: 13px; font-weight: 500; color: #d4d4d8; }
+    body.light .shot-card .shot-cap { color: #3f3f46; }
+
+    /* Lightbox */
+    .lightbox {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.88); z-index: 100;
+      display: none; align-items: center; justify-content: center; padding: 40px 20px;
+    }
+    .lightbox.open { display: flex; }
+    .lightbox img { max-width: min(1200px, 92vw); max-height: 84vh; border-radius: 10px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+    .lightbox-close, .lightbox-nav {
+      position: absolute; display: flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%; background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15); color: #fff; cursor: pointer; transition: background 0.15s;
+    }
+    .lightbox-close:hover, .lightbox-nav:hover { background: rgba(255,255,255,0.18); }
+    .lightbox-close { top: 20px; right: 20px; }
+    .lightbox-nav.prev { left: 20px; top: 50%; transform: translateY(-50%); }
+    .lightbox-nav.next { right: 20px; top: 50%; transform: translateY(-50%); }
+    .lightbox-caption { position: absolute; bottom: 24px; left: 0; right: 0; text-align: center; color: #d4d4d8; font-size: 14px; }
   </style>
 </head>
 <body>
@@ -590,6 +628,82 @@
 </section>
 
 
+<!-- ─── Screenshots ───────────────────────────────────────────────────────── -->
+<section style="border-top:1px solid rgba(255,255,255,0.06)">
+  <div style="max-width:1120px" class="mx-auto px-6">
+    <div class="text-center mb-12">
+      <p class="text-indigo-400 font-semibold text-sm tracking-widest uppercase mb-3" data-i18n="shots.label">Ekran Görüntüleri</p>
+      <h2 class="font-display grad-text" style="font-size:2.2rem;letter-spacing:-1px;margin:0 0 14px" data-i18n="shots.title">
+        Arayüze bir bakış
+      </h2>
+      <p class="text-zinc-400" style="max-width:560px;margin:0 auto;line-height:1.7;font-size:0.95rem" data-i18n="shots.sub">
+        Kaydırarak gezin, büyütmek için bir görsele tıklayın.
+      </p>
+    </div>
+  </div>
+
+  <div style="max-width:1120px" class="mx-auto px-6">
+    <div class="shot-scroll" id="shotScroll">
+      <div class="shot-card" onclick="openLightbox(0)">
+        <img src="screenshots/dashboard.jpg" loading="lazy" alt="Dashboard">
+        <div class="shot-cap" data-i18n="shot1.cap">Gösterge Paneli — Canlı Telemetri & SLA</div>
+      </div>
+      <div class="shot-card" onclick="openLightbox(1)">
+        <img src="screenshots/org-chart.jpg" loading="lazy" alt="Organization Chart">
+        <div class="shot-cap" data-i18n="shot2.cap">Organizasyon Şeması</div>
+      </div>
+      <div class="shot-card" onclick="openLightbox(2)">
+        <img src="screenshots/agents.jpg" loading="lazy" alt="Agents">
+        <div class="shot-cap" data-i18n="shot3.cap">Ajan Yönetimi</div>
+      </div>
+      <div class="shot-card" onclick="openLightbox(3)">
+        <img src="screenshots/personnel.jpg" loading="lazy" alt="Personnel">
+        <div class="shot-cap" data-i18n="shot4.cap">Personel Listesi</div>
+      </div>
+      <div class="shot-card" onclick="openLightbox(4)">
+        <img src="screenshots/skills.jpg" loading="lazy" alt="Skills">
+        <div class="shot-cap" data-i18n="shot5.cap">Skill Kütüphanesi</div>
+      </div>
+      <div class="shot-card" onclick="openLightbox(5)">
+        <img src="screenshots/policies.jpg" loading="lazy" alt="Policies">
+        <div class="shot-cap" data-i18n="shot6.cap">Politika Yönetimi</div>
+      </div>
+      <div class="shot-card" onclick="openLightbox(6)">
+        <img src="screenshots/chat.jpg" loading="lazy" alt="Agent chat">
+        <div class="shot-cap" data-i18n="shot7.cap">Ajanla Sohbet — Canlı ERP Sorgusu</div>
+      </div>
+      <div class="shot-card" onclick="openLightbox(7)">
+        <img src="screenshots/changes.jpg" loading="lazy" alt="Change requests">
+        <div class="shot-cap" data-i18n="shot8.cap">Değişiklik Onay Akışı</div>
+      </div>
+      <div class="shot-card" onclick="openLightbox(8)">
+        <img src="screenshots/delegation.jpg" loading="lazy" alt="Agent delegation">
+        <div class="shot-cap" data-i18n="shot9.cap">Ajan-Ajan Delegasyonu (A2A)</div>
+      </div>
+      <div class="shot-card" onclick="openLightbox(9)">
+        <img src="screenshots/settings.jpg" loading="lazy" alt="AI provider settings">
+        <div class="shot-cap" data-i18n="shot10.cap">Model Sağlayıcı Ayarları</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Lightbox overlay -->
+<div class="lightbox" id="lightbox" onclick="if(event.target===this) closeLightbox()">
+  <div class="lightbox-close" onclick="closeLightbox()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+  </div>
+  <div class="lightbox-nav prev" onclick="navLightbox(-1)">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+  </div>
+  <img id="lightboxImg" src="" alt="">
+  <div class="lightbox-nav next" onclick="navLightbox(1)">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+  </div>
+  <div class="lightbox-caption" id="lightboxCaption"></div>
+</div>
+
+
 <!-- ─── How It Works ──────────────────────────────────────────────────────── -->
 <section style="border-top:1px solid rgba(255,255,255,0.06)">
   <div style="max-width:720px" class="mx-auto px-6">
@@ -856,6 +970,19 @@ const LANGS = {
     'contact.email': 'bilgi@kuntaykunt.com',
     'footer.copy': '© 2026 Fabrika Yazılım Ticaret Limited Şirketi · Kuntay Kunt',
     'footer.docs': 'Docs',
+    'shots.label': 'Ekran Görüntüleri',
+    'shots.title': 'Arayüze bir bakış',
+    'shots.sub': 'Kaydırarak gezin, büyütmek için bir görsele tıklayın.',
+    'shot1.cap': 'Gösterge Paneli — Canlı Telemetri & SLA',
+    'shot2.cap': 'Organizasyon Şeması',
+    'shot3.cap': 'Ajan Yönetimi',
+    'shot4.cap': 'Personel Listesi',
+    'shot5.cap': 'Skill Kütüphanesi',
+    'shot6.cap': 'Politika Yönetimi',
+    'shot7.cap': 'Ajanla Sohbet — Canlı ERP Sorgusu',
+    'shot8.cap': 'Değişiklik Onay Akışı',
+    'shot9.cap': 'Ajan-Ajan Delegasyonu (A2A)',
+    'shot10.cap': 'Model Sağlayıcı Ayarları',
   },
   en: {
     'nav.docs': 'Docs',
@@ -943,6 +1070,19 @@ const LANGS = {
     'contact.email': 'bilgi@kuntaykunt.com',
     'footer.copy': '© 2026 Fabrika Yazılım Ticaret Limited Şirketi · Kuntay Kunt',
     'footer.docs': 'Docs',
+    'shots.label': 'Screenshots',
+    'shots.title': 'A look at the interface',
+    'shots.sub': 'Scroll to browse, click any screenshot to enlarge it.',
+    'shot1.cap': 'Dashboard — Live Telemetry & SLA',
+    'shot2.cap': 'Organization Chart',
+    'shot3.cap': 'Agent Management',
+    'shot4.cap': 'Personnel Directory',
+    'shot5.cap': 'Skill Library',
+    'shot6.cap': 'Policy Management',
+    'shot7.cap': 'Chat With an Agent — Live ERP Query',
+    'shot8.cap': 'Change Approval Workflow',
+    'shot9.cap': 'Agent-to-Agent Delegation (A2A)',
+    'shot10.cap': 'AI Provider Settings',
   },
   de: {
     'nav.docs': 'Docs',
@@ -1030,6 +1170,19 @@ const LANGS = {
     'contact.email': 'bilgi@kuntaykunt.com',
     'footer.copy': '© 2026 Fabrika Yazılım Ticaret Limited Şirketi · Kuntay Kunt',
     'footer.docs': 'Docs',
+    'shots.label': 'Screenshots',
+    'shots.title': 'Ein Blick auf die Oberfläche',
+    'shots.sub': 'Scrollen Sie, um zu stöbern, klicken Sie auf ein Bild zum Vergrößern.',
+    'shot1.cap': 'Dashboard — Live-Telemetrie & SLA',
+    'shot2.cap': 'Organigramm',
+    'shot3.cap': 'Agentenverwaltung',
+    'shot4.cap': 'Personalverzeichnis',
+    'shot5.cap': 'Skill-Bibliothek',
+    'shot6.cap': 'Richtlinienverwaltung',
+    'shot7.cap': 'Chat mit einem Agenten — Live-ERP-Abfrage',
+    'shot8.cap': 'Änderungsgenehmigung',
+    'shot9.cap': 'Agent-zu-Agent-Delegation (A2A)',
+    'shot10.cap': 'KI-Anbieter-Einstellungen',
   },
   es: {
     'nav.docs': 'Docs',
@@ -1117,6 +1270,19 @@ const LANGS = {
     'contact.email': 'bilgi@kuntaykunt.com',
     'footer.copy': '© 2026 Fabrika Yazılım Ticaret Limited Şirketi · Kuntay Kunt',
     'footer.docs': 'Docs',
+    'shots.label': 'Capturas de Pantalla',
+    'shots.title': 'Un vistazo a la interfaz',
+    'shots.sub': 'Desplázate para explorar, haz clic en una imagen para ampliarla.',
+    'shot1.cap': 'Panel — Telemetría en Vivo y SLA',
+    'shot2.cap': 'Organigrama',
+    'shot3.cap': 'Gestión de Agentes',
+    'shot4.cap': 'Directorio de Personal',
+    'shot5.cap': 'Biblioteca de Skills',
+    'shot6.cap': 'Gestión de Políticas',
+    'shot7.cap': 'Chat con un Agente — Consulta ERP en Vivo',
+    'shot8.cap': 'Flujo de Aprobación de Cambios',
+    'shot9.cap': 'Delegación Agente-a-Agente (A2A)',
+    'shot10.cap': 'Configuración de Proveedores IA',
   }
 };
 
@@ -1174,6 +1340,53 @@ function setLang(lang) {
 const style = document.createElement('style');
 style.textContent = `@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }`;
 document.head.appendChild(style);
+
+// ── Screenshots lightbox ─────────────────────────────────────────────────────
+const SHOT_SRCS = [
+  'screenshots/dashboard.jpg',
+  'screenshots/org-chart.jpg',
+  'screenshots/agents.jpg',
+  'screenshots/personnel.jpg',
+  'screenshots/skills.jpg',
+  'screenshots/policies.jpg',
+  'screenshots/chat.jpg',
+  'screenshots/changes.jpg',
+  'screenshots/delegation.jpg',
+  'screenshots/settings.jpg',
+];
+let lightboxIndex = 0;
+
+function shotCaption(i) {
+  const dict = LANGS[currentLang] || LANGS.tr;
+  return dict['shot' + (i + 1) + '.cap'] || '';
+}
+
+function openLightbox(i) {
+  lightboxIndex = i;
+  const img = document.getElementById('lightboxImg');
+  img.src = SHOT_SRCS[i];
+  img.alt = shotCaption(i);
+  document.getElementById('lightboxCaption').textContent = shotCaption(i);
+  document.getElementById('lightbox').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function navLightbox(delta) {
+  lightboxIndex = (lightboxIndex + delta + SHOT_SRCS.length) % SHOT_SRCS.length;
+  openLightbox(lightboxIndex);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (!document.getElementById('lightbox').classList.contains('open')) return;
+  if (e.key === 'Escape') closeLightbox();
+  if (e.key === 'ArrowLeft') navLightbox(-1);
+  if (e.key === 'ArrowRight') navLightbox(1);
+});
 </script>
 
 </body>
