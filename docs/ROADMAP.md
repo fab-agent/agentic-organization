@@ -94,8 +94,12 @@ basic injection defense.
       (replaces `sqlite-vec`), cross-process write lock for the audit chain.
 - [ ] **Per-tenant audit chain** — one chain per company, done together with the
       Postgres move (ADR-0006).
-- [ ] **`bash` AST parsing** (`bashlex`) for the Policy Engine — before `enforce`
-      is meaningful for shell (ADR-0005).
+- [x] **`bash` AST parsing** (`bashlex`) for the Policy Engine —
+      `services/command_parser.py` + a `command` rule matcher (`program` /
+      `args_all_of` / `args_any_of` / `any_program` / `pipes_into`). Baseline
+      rules moved to it; immune to whitespace / split flags / `sudo` / `$(...)`.
+      An unparseable command with a `command` rule present → fail closed.
+      `test_command_parser.py` (10) + AST bypass-resistance tests (13).
 - [ ] `3pa login` — platform-local identity as the baseline; pluggable OIDC for
       orgs that bring their own IdP (`3pa login --oidc <issuer>`) (ADR-0007).
 - [ ] `api/well_known.py` — `/.well-known/opencode`, signed org config (ADR-0011).

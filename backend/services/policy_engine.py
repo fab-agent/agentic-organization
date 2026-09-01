@@ -89,10 +89,48 @@ class PolicyDecision:
 # wins). These are catastrophic-command guards, not a substitute for real org
 # policy. Kept deliberately small and specific to avoid false positives.
 
+_SYSTEM_DIRS = [
+    "bin",
+    "boot",
+    "dev",
+    "etc",
+    "home",
+    "lib",
+    "lib32",
+    "lib64",
+    "opt",
+    "proc",
+    "root",
+    "run",
+    "sbin",
+    "srv",
+    "sys",
+    "usr",
+    "var",
+]
+# Exact targets only — "/*" would cross "/" under fnmatch and over-match, and a
+# bare "*" would match the "-rf" flag itself. "/", "~", "$HOME", and each system
+# dir (with/without trailing slash, and one level of children).
+_ROOT_TARGETS = (
+    ["/", "~", "$HOME", "--no-preserve-root"]
+    + [f"/{d}" for d in _SYSTEM_DIRS]
+    + [f"/{d}/" for d in _SYSTEM_DIRS]
+    + [f"/{d}/*" for d in _SYSTEM_DIRS]
+)
+
 BASELINE_RULES: list[dict] = [
     {
         "id": "baseline:rm-rf-root",
-        "match": {"tool": "bash", "args": {"command": ["*rm -rf /*", "*rm -rf /"]}},
+        # AST-based: program `rm`, a recursive flag, targeting a top-level path.
+        # Immune to spacing / quoting / `sudo` / `$(...)` (ADR-0005).
+        "match": {
+            "tool": "bash",
+            "command": {
+                "program": ["rm"],
+                "args_all_of": ["-*[rR]*"],
+                "args_any_of": _ROOT_TARGETS,
+            },
+        },
         "effect": "deny",
         "reason": "Recursive delete of a root path",
     },
@@ -100,20 +138,23 @@ BASELINE_RULES: list[dict] = [
         "id": "baseline:disk-format",
         "match": {
             "tool": "bash",
-            "args": {
-                "command": [
-                    "*mkfs*",
-                    "*mkfs.*",
-                    "dd if=*of=/dev/*",
-                    "* dd if=*of=/dev/*",
-                ]
-            },
+            "command": {"any_program": ["mkfs", "mkfs.*", "fdisk", "parted", "wipefs"]},
         },
         "effect": "deny",
-        "reason": "Disk format / raw device write",
+        "reason": "Disk partition / format tool",
+    },
+    {
+        "id": "baseline:dd-to-device",
+        "match": {
+            "tool": "bash",
+            "command": {"program": ["dd"], "args_any_of": ["of=/dev/*"]},
+        },
+        "effect": "deny",
+        "reason": "Raw write to a block device",
     },
     {
         "id": "baseline:fork-bomb",
+        # Structural parse of `:(){ ... }` is unreliable — keep the literal glob.
         "match": {"tool": "bash", "args": {"command": "*:(){*:|:&*};:*"}},
         "effect": "deny",
         "reason": "Fork bomb",
@@ -122,10 +163,22 @@ BASELINE_RULES: list[dict] = [
         "id": "baseline:curl-pipe-shell",
         "match": {
             "tool": "bash",
-            "args": {"command": ["*curl *| *sh*", "*wget *| *sh*", "*curl *| *bash*"]},
+            "command": {
+                "any_program": ["curl", "wget", "fetch"],
+                "pipes_into": [
+                    "sh",
+                    "bash",
+                    "zsh",
+                    "dash",
+                    "python",
+                    "python3",
+                    "perl",
+                    "ruby",
+                ],
+            },
         },
         "effect": "ask",
-        "reason": "Piping a downloaded script straight into a shell",
+        "reason": "Piping a downloaded script straight into an interpreter",
     },
     {
         "id": "baseline:write-ssh-dir",
@@ -158,7 +211,60 @@ def _glob_any(text: str, patterns: list[str]) -> bool:
     return any(fnmatch.fnmatch(text, p) for p in patterns)
 
 
-def _match_rule(rule: dict, req: PolicyDecisionRequest) -> bool:
+def _match_command_spec(spec: dict, parsed) -> bool:
+    """
+    Structural match against a parsed shell command (ADR-0005). Keys:
+      program      — glob(s); at least one parsed command's program must match
+      args_all_of  — every glob must match SOME arg of that command
+      args_any_of  — at least one glob must match some arg of that command
+      any_program  — glob(s) against every program seen (incl. substitutions/pipes)
+      pipes_into   — glob(s) against a non-first stage of any pipeline
+    """
+    if not isinstance(spec, dict):
+        raise _RuleError("'match.command' must be an object")
+
+    if "any_program" in spec:
+        pats = _as_patterns(spec["any_program"])
+        if not any(_glob_any(p, pats) for p in parsed.programs):
+            return False
+
+    if "pipes_into" in spec:
+        pats = _as_patterns(spec["pipes_into"])
+        if not any(
+            _glob_any(prog, pats)
+            for pipeline in parsed.pipelines
+            for idx, prog in enumerate(pipeline)
+            if idx > 0
+        ):
+            return False
+
+    if "program" in spec:
+        prog_pats = _as_patterns(spec["program"])
+        all_of = _as_patterns(spec.get("args_all_of", []))
+        any_of = _as_patterns(spec.get("args_any_of", []))
+        ok = False
+        for program, args in parsed.commands:
+            if not _glob_any(program, prog_pats):
+                continue
+            if all_of and not all(
+                any(fnmatch.fnmatch(a, pat) for a in args) for pat in all_of
+            ):
+                continue
+            if any_of and not any(_glob_any(a, any_of) for a in args):
+                continue
+            ok = True
+        if not ok:
+            return False
+
+    return True
+
+
+def _match_rule(
+    rule: dict,
+    req: PolicyDecisionRequest,
+    parsed_cmd=None,
+    parse_error: str | None = None,
+) -> bool:
     """Return True if `rule.match` applies to `req`. Raises _RuleError if malformed."""
     if not isinstance(rule, dict) or "match" not in rule or "effect" not in rule:
         raise _RuleError("rule needs 'match' and 'effect'")
@@ -201,6 +307,17 @@ def _match_rule(rule: dict, req: PolicyDecisionRequest) -> bool:
             if not any(_glob_any(c, patterns) for c in candidates):
                 return False
 
+    # command: structural match against the parsed shell command.
+    if "command" in match:
+        if parse_error:
+            # A command string was given but could not be analysed → fail closed.
+            raise _RuleError(f"command not analysable: {parse_error}")
+        if parsed_cmd is None:
+            # No `command` argument on this call — nothing for this rule to match.
+            return False
+        if not _match_command_spec(match["command"], parsed_cmd):
+            return False
+
     return True
 
 
@@ -236,10 +353,28 @@ def evaluate(
             fail_closed=True,
         )
 
+    # Parse the shell command once if any rule needs structural matching.
+    parsed_cmd = None
+    parse_error: str | None = None
+    if any(
+        isinstance(r, dict)
+        and isinstance(r.get("match"), dict)
+        and "command" in r["match"]
+        for r in ruleset
+    ):
+        raw_cmd = (req.args or {}).get("command")
+        if raw_cmd is not None:
+            try:
+                from services.command_parser import parse_command
+
+                parsed_cmd = parse_command(str(raw_cmd))
+            except Exception as e:  # noqa: BLE001 — any parse failure → fail closed
+                parse_error = str(e)
+
     winner: dict | None = None
     for rule in ruleset:
         try:
-            if _match_rule(rule, req):
+            if _match_rule(rule, req, parsed_cmd, parse_error):
                 winner = rule
         except _RuleError as e:
             return PolicyDecision(
