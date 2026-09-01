@@ -323,6 +323,29 @@ class TaskRequest(SQLModel, table=True):
 # ── Audit Log ─────────────────────────────────────────────────────────────────
 
 
+class AuditEvent(SQLModel, table=True):
+    """
+    Hash-chained, append-only audit record (ADR-0006). Tamper-evident: each row
+    carries `prev_hash` and a `hash` over its canonical body, so deletion or
+    modification of any row breaks the chain from that point on.
+
+    `seq` is a monotonic integer assigned by `services.audit_chain.append()`.
+    Agent and human actions are the same record type (the buzz pattern).
+    """
+
+    seq: int = Field(primary_key=True)
+    prev_hash: str
+    hash: str = Field(index=True)
+    actor_type: str  # "human" | "agent" | "system"
+    actor_id: str | None = Field(default=None, index=True)
+    company_id: str | None = Field(default=None, index=True)
+    action: str
+    target: str | None = None
+    reason: str | None = None
+    payload_json: str | None = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class AuditLog(SQLModel, table=True):
     """Immutable record of every significant platform action."""
 

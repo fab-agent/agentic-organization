@@ -349,37 +349,27 @@ def _resolve_company_id(persona_id: str | None) -> str | None:
 
 def audit_decision(req: PolicyDecisionRequest, decision: PolicyDecision) -> None:
     """
-    Best-effort audit of one policy decision (ADR-0005). Recorded in every mode,
-    so `dry_run` shows operators what *would* be blocked before they flip to
-    `enforce`. TODO(ADR-0006): route through services.audit_chain.
+    Audit one policy decision into the tamper-evident chain (ADR-0005/0006).
+    Recorded in every mode, so `dry_run` shows operators what *would* be blocked
+    before they flip to `enforce`. Best-effort — never crashes the caller.
     """
     try:
-        from datetime import datetime
+        from services import audit_chain
 
-        from database import get_session
-        from models import AuditLog
-
-        with get_session() as session:
-            session.add(
-                AuditLog(
-                    company_id=req.company_id,
-                    action="policy_decision",
-                    entity_type="persona",
-                    entity_id=req.persona_id,
-                    entity_name=req.tool,
-                    details_json=json.dumps(
-                        {
-                            **decision.as_dict(),
-                            "source": req.source,
-                            "provenance": req.provenance,
-                            "session_ref": req.session_ref,
-                        },
-                        ensure_ascii=False,
-                    ),
-                    created_at=datetime.utcnow(),
-                )
-            )
-            session.commit()
+        audit_chain.record(
+            actor_type="agent" if req.source == "workstation" else "system",
+            actor_id=req.persona_id,
+            company_id=req.company_id,
+            action="policy_decision",
+            target=req.tool,
+            reason=f"{decision.effect} ({decision.mode})",
+            payload={
+                **decision.as_dict(),
+                "source": req.source,
+                "provenance": req.provenance,
+                "session_ref": req.session_ref,
+            },
+        )
     except Exception:
         pass
 

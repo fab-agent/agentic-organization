@@ -66,8 +66,14 @@ basic injection defense.
       `POST /policy/decide` (gateway) for the plugin; plugin `tool.execute.before`
       calls it and throws on an enforced `deny`/`ask`. Decisions audited.
 - [x] CI: `.github/workflows/policy-engine.yml` (fail-closed + baseline golden set).
-- [ ] `backend/services/audit_chain.py` (ADR-0006): hash chain, `POST /audit/ingest`,
-      `audit verify`.
+- [x] `backend/services/audit_chain.py` (ADR-0006): `AuditEvent` model +
+      migration; `append()` (sha256 chain, `prev_hash` → `hash`), `record()`
+      (chain + mirror a legacy `AuditLog` row), `verify()` (finds the first
+      break), `ingest_batch()`. Endpoints `POST /audit/ingest` (persona token,
+      one-way) and `GET /audit/chain/verify` (manager). Gateway calls, policy
+      decisions, and tool events now all flow through it.
+      `backend/tests/test_audit_chain.py` (12 — tamper detection for modified /
+      deleted rows).
 - [ ] `3pa`: stop opencode if the gateway/audit is unreachable (fail-closed).
 - [ ] Provenance separation (ADR-0010): `web_search` / file / A2A output tagged
       `untrusted`; egress allowlist (sandbox network layer).

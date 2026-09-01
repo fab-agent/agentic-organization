@@ -22,7 +22,6 @@ opencode side (managed config, ADR-0011):
 import hashlib
 import json
 import time
-from datetime import datetime
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -34,7 +33,8 @@ from api.auth import require_manager
 from api.deps import get_persona_gateway
 from core.security import decrypt
 from database import get_session
-from models import AgentConfig, AuditLog, Personnel, ProviderKey, User
+from models import AgentConfig, Personnel, ProviderKey, User
+from services import audit_chain
 from services.agent_runtime import detect_provider
 from services.gateway_auth import PersonaPrincipal, create_persona_token
 from services.policy_engine import PolicyDecisionRequest, audit_decision, decide
@@ -103,37 +103,27 @@ def _audit_gateway_call(
     latency_ms: int,
     streamed: bool,
 ) -> None:
-    """
-    Faz 0: write a plain AuditLog row.
-    TODO(ADR-0006): route through services.audit_chain for hash-chained,
-    tamper-evident records and the append-only /audit/ingest path.
-    """
+    """Record the call into the tamper-evident audit chain (ADR-0006)."""
     messages = body.get("messages") or []
     prompt_text = json.dumps(messages, ensure_ascii=False)
-    details = {
-        "model": model,
-        "streamed": streamed,
-        "upstream_status": status,
-        "tokens_in": tokens_in,
-        "tokens_out": tokens_out,
-        "latency_ms": latency_ms,
-        "prompt_sha256": hashlib.sha256(prompt_text.encode()).hexdigest(),
-        "prompt_preview": prompt_text[:_STORE_PROMPT_PREVIEW_CHARS],
-    }
-    with get_session() as session:
-        session.add(
-            AuditLog(
-                company_id=principal.company_id,
-                user_id=None,
-                action="gateway_call",
-                entity_type="persona",
-                entity_id=principal.persona_id,
-                entity_name=model,
-                details_json=json.dumps(details, ensure_ascii=False),
-                created_at=datetime.utcnow(),
-            )
-        )
-        session.commit()
+    audit_chain.record(
+        actor_type="agent",
+        actor_id=principal.persona_id,
+        company_id=principal.company_id,
+        action="gateway_call",
+        target=model,
+        reason=f"upstream {status}",
+        payload={
+            "model": model,
+            "streamed": streamed,
+            "upstream_status": status,
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "latency_ms": latency_ms,
+            "prompt_sha256": hashlib.sha256(prompt_text.encode()).hexdigest(),
+            "prompt_preview": prompt_text[:_STORE_PROMPT_PREVIEW_CHARS],
+        },
+    )
 
 
 # ── OpenAI-compatible surface ─────────────────────────────────────────────────
