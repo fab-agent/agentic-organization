@@ -47,10 +47,13 @@ be tampered with" claim:
 
 ## Decided direction
 
-- **Per-tenant chain** (one chain per company) — done **together with the
-  Postgres move** (Phase 2). Postgres gives a real cross-process write lock
-  (advisory lock / `SELECT … FOR UPDATE`), which the current in-process
-  `threading.Lock` cannot provide across uvicorn workers or the scheduler process.
+- **Per-tenant chain** — **done.** `AuditEvent` is keyed `(chain_key, seq)`;
+  `chain_key` is the company id or `__global__`. The hash covers `chain_key`, so
+  rows cannot be moved between chains. `append()` takes a PostgreSQL
+  transaction-scoped advisory lock keyed by the chain (no-op on SQLite, where the
+  in-process `threading.Lock` + the DB's own write serialisation cover the
+  single-process case). The full cross-process guarantee lands with the Postgres
+  move.
 - **Severity triage** on top of the chain: see ADR-0013 (an LLM scores recent
   events via the gateway; high risk → inbox / Telegram).
 

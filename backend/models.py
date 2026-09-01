@@ -326,13 +326,17 @@ class TaskRequest(SQLModel, table=True):
 class AuditEvent(SQLModel, table=True):
     """
     Hash-chained, append-only audit record (ADR-0006). Tamper-evident: each row
-    carries `prev_hash` and a `hash` over its canonical body, so deletion or
-    modification of any row breaks the chain from that point on.
+    carries `prev_hash` and a `hash` over its canonical body (incl. `chain_key`
+    and `seq`), so deletion or modification of any row breaks its chain from that
+    point on, and rows cannot be moved between chains.
 
-    `seq` is a monotonic integer assigned by `services.audit_chain.append()`.
-    Agent and human actions are the same record type (the buzz pattern).
+    One chain per tenant: `chain_key` is the company id, or "__global__" for
+    events with no company. `seq` is monotonic *within a chain*, assigned by
+    `services.audit_chain.append()`. Agent and human actions are the same record
+    type (the buzz pattern).
     """
 
+    chain_key: str = Field(primary_key=True)
     seq: int = Field(primary_key=True)
     prev_hash: str
     hash: str = Field(index=True)

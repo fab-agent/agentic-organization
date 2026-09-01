@@ -93,6 +93,11 @@ def ingest_audit_batch(
 
 
 @router.get("/audit/chain/verify")
-def verify_chain(_: User = Depends(require_manager)):
-    """Walk the whole audit chain and report the first break, if any."""
-    return audit_chain.verify()
+def verify_chain(company_id: str | None = None, _: User = Depends(require_manager)):
+    """
+    Verify the tamper-evident audit chain(s) and report the first break, if any.
+    With `company_id` → just that tenant's chain; without → every chain.
+    """
+    if company_id:
+        return audit_chain.verify(company_id)
+    return audit_chain.verify_all()

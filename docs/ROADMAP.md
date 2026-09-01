@@ -89,11 +89,16 @@ basic injection defense.
 
 ## Phase 2 — Identity, managed config, Postgres
 
-- [ ] **Postgres — full migration** (decided): compose service, `database.py`
-      fresh-DB detection (drop the `sqlite_master` check), pgvector for RAG
-      (replaces `sqlite-vec`), cross-process write lock for the audit chain.
-- [ ] **Per-tenant audit chain** — one chain per company, done together with the
-      Postgres move (ADR-0006).
+- [x] **Per-tenant audit chain** (ADR-0006): `AuditEvent` now keyed
+      `(chain_key, seq)` — one chain per company, `__global__` for company-less
+      events. Hash covers `chain_key` so rows can't be spliced between chains.
+      `verify(company_id)` / `verify_all()`; `GET /audit/chain/verify?company_id=`.
+      `append()` takes a PG transaction advisory lock (no-op on SQLite).
+      Migration `d9b2f4c6a8e0` (rebuilds the table — dev-only, no prod data).
+- [x] `database.py` fresh-DB detection is now dialect-agnostic (inspector, not
+      `sqlite_master`).
+- [ ] **Postgres — full migration** (decided): compose service, pgvector for RAG
+      (replaces `sqlite-vec`), verify the Alembic chain on a real PG, CI job.
 - [x] **`bash` AST parsing** (`bashlex`) for the Policy Engine —
       `services/command_parser.py` + a `command` rule matcher (`program` /
       `args_all_of` / `args_any_of` / `any_program` / `pipes_into`). Baseline

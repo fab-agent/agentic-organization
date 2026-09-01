@@ -15,18 +15,12 @@ engine = create_engine(
 
 def _is_fresh_db() -> bool:
     """Return True if the database has no alembic_version table (brand-new install)."""
-    from sqlalchemy import text
+    from sqlalchemy import inspect
 
-    with engine.connect() as conn:
-        try:
-            result = conn.execute(
-                text(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='alembic_version'"
-                )
-            )
-            return result.fetchone() is None
-        except Exception:
-            return True
+    try:
+        return not inspect(engine).has_table("alembic_version")
+    except Exception:
+        return True
 
 
 def init_db() -> None:
