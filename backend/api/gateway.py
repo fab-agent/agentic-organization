@@ -27,6 +27,7 @@ from datetime import datetime
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from sqlmodel import select
 
 from api.auth import require_manager
@@ -36,6 +37,7 @@ from database import get_session
 from models import AgentConfig, AuditLog, Personnel, ProviderKey, User
 from services.agent_runtime import detect_provider
 from services.gateway_auth import PersonaPrincipal, create_persona_token
+from services.policy_engine import PolicyDecisionRequest, audit_decision, decide
 from services.provider_service import get_provider_models
 
 router = APIRouter(tags=["gateway"])
@@ -223,6 +225,39 @@ def list_models(principal: PersonaPrincipal = Depends(get_persona_gateway)):
                 # TODO(ADR-0005): filter by this persona/company model allow-list.
                 out.append({"id": m["id"], "object": "model", "owned_by": row.provider})
     return {"object": "list", "data": out}
+
+
+# ── Policy decision (workstation plugin → here, ADR-0005) ────────────────────
+
+
+class PolicyQuery(BaseModel):
+    tool: str
+    args: dict = Field(default_factory=dict)
+    provenance: str = "trusted"  # "trusted" | "untrusted" (ADR-0010)
+    session_ref: str | None = None
+
+
+@router.post("/policy/decide")
+def policy_decide(
+    query: PolicyQuery, principal: PersonaPrincipal = Depends(get_persona_gateway)
+):
+    """
+    Called by the opencode org plugin in `tool.execute.before`. Returns
+    `{effect, reason, enforced, mode}`. The plugin blocks the call only when
+    `enforced` is true. The decision is written to the audit either way.
+    """
+    req = PolicyDecisionRequest(
+        tool=query.tool,
+        args=query.args,
+        provenance=query.provenance,
+        source="workstation",
+        persona_id=principal.persona_id,
+        company_id=principal.company_id,
+        session_ref=query.session_ref,
+    )
+    decision = decide(req)
+    audit_decision(req, decision)
+    return decision.as_dict()
 
 
 # ── Persona token minting (Faz 0 — manager only) ─────────────────────────────

@@ -10,8 +10,8 @@ ADR-0001 / ADR-0005 / ADR-0006.
 
 | Phase | Behaviour |
 |-------|-----------|
-| **0 (now)** | Observe only. Every tool-call lifecycle event (`tool.execute.before` / `.after`, `permission.asked`) is POSTed to `POST /workstation/tool-event` for audit. Nothing is blocked. |
-| 1 (ADR-0005) | `tool.execute.before` also calls the gateway `/policy/decide`; `deny` throws to abort the call, `ask` becomes an approval prompt. |
+| **0** | Observe. Every tool-call lifecycle event (`tool.execute.before` / `.after`, `permission.asked`) is POSTed to `POST /workstation/tool-event` for audit. |
+| **1 (now)** | `tool.execute.before` also calls the gateway `POST /policy/decide` (ADR-0005). When the decision is `enforced` and the effect is `deny`/`ask`, the call is aborted (opencode has no "return ask" hook, so an enforced `ask` is a conservative block). Decisions are audited server-side. Rollout is gated by `policy.mode` on the backend — `dry_run` by default, so nothing blocks until an operator flips it to `enforce`. |
 | 1 (ADR-0006) | With `FABAGENT_FAIL_CLOSED=1`, an unreachable audit/policy sink aborts the tool call. |
 
 ## Configuration (environment)

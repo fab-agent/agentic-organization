@@ -1,0 +1,58 @@
+name: Policy Engine
+
+# Policy Engine (ADR-0005). The critical checks: fail-closed on bad rules /
+# malformed requests, and the baseline "must be denied / asked" golden set.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/services/policy_engine.py"
+      - "backend/tests/test_policy_engine.py"
+      - ".github/workflows/policy-engine.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/services/policy_engine.py"
+      - "backend/tests/test_policy_engine.py"
+      - ".github/workflows/policy-engine.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: policy-engine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  policy-engine:
+    name: Policy Engine (lint + tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Ruff
+        run: pip install ruff>=0.4
+
+      - name: Lint
+        run: |
+          ruff check backend/services/policy_engine.py backend/tests/test_policy_engine.py
+          ruff format --check backend/services/policy_engine.py backend/tests/test_policy_engine.py
+
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+        working-directory: backend
+
+      - name: Run policy engine tests
+        run: pytest tests/test_policy_engine.py -v --tb=short
+        working-directory: backend
+        env:
+          JWT_SECRET: ci-test-secret-not-for-production
+          ENCRYPTION_KEY: ""

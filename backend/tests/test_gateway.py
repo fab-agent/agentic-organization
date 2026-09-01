@@ -4,7 +4,9 @@ import json
 from unittest.mock import patch
 
 import pytest
+from sqlmodel import select
 
+from models import AuditLog
 from services.gateway_auth import (
     AUD_AUDIT,
     AUD_GATEWAY,
@@ -185,10 +187,6 @@ def test_chat_completions_forwards_and_audits(auth_client, agent_persona, db_ses
     )
 
     # an audit row was written for this call
-    from sqlmodel import select
-
-    from models import AuditLog
-
     rows = db_session.exec(
         select(AuditLog).where(AuditLog.action == "gateway_call")
     ).all()
@@ -198,3 +196,49 @@ def test_chat_completions_forwards_and_audits(auth_client, agent_persona, db_ses
     assert details["tokens_in"] == 11
     assert details["tokens_out"] == 3
     assert "prompt_sha256" in details
+
+
+# ── /policy/decide (ADR-0005) ────────────────────────────────────────────────
+
+
+def test_policy_decide_needs_persona_token(client):
+    r = client.post("/policy/decide", json={"tool": "bash", "args": {"command": "ls"}})
+    assert r.status_code == 401
+
+
+def test_policy_decide_dry_run_reports_without_enforcing(
+    auth_client, agent_persona, db_session
+):
+    _, token = agent_persona
+    r = auth_client.post(
+        "/policy/decide",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"tool": "bash", "args": {"command": "rm -rf /"}},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["effect"] == "deny"  # baseline safety rule
+    assert body["mode"] == "dry_run"
+    assert body["enforced"] is False
+
+    rows = db_session.exec(
+        select(AuditLog).where(AuditLog.action == "policy_decision")
+    ).all()
+    assert len(rows) == 1
+    assert rows[0].entity_name == "bash"
+
+
+def test_policy_decide_enforce_mode(auth_client, agent_persona, db_session):
+    from models import AppConfig
+
+    db_session.add(AppConfig(key="policy.mode", value="enforce"))
+    db_session.commit()
+    _, token = agent_persona
+    r = auth_client.post(
+        "/policy/decide",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"tool": "bash", "args": {"command": "rm -rf /"}},
+    )
+    body = r.json()
+    assert body["effect"] == "deny"
+    assert body["enforced"] is True

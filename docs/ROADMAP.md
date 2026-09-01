@@ -56,17 +56,23 @@ boots opencode headless with the plugin.
 **Goal:** policy is now actually enforced; the audit is tamper-evident; there is
 basic injection defense.
 
-- [ ] `backend/services/policy_engine.py` (ADR-0005): `PolicyDecisionRequest`,
-      ordered rules, a fail-closed evaluator.
-- [ ] `agent_runtime.execute_skill` + plugin `tool.execute.before` → policy
-      engine; `deny` → the call is blocked.
+- [x] `backend/services/policy_engine.py` (ADR-0005): pure `evaluate()` (ordered
+      rules, last-match-wins, fail-closed on bad rule / bad request / bad default)
+      + DB-backed `decide()` with a rollout mode (`off` / `dry_run` / `enforce`,
+      default `dry_run`). Baseline catastrophic-command safety rules. Org rules
+      parsed from fenced ```policy blocks in `Policy` markdown.
+      `backend/tests/test_policy_engine.py` (32).
+- [x] `agent_runtime.execute_skill` calls `decide()` before every tool call;
+      `POST /policy/decide` (gateway) for the plugin; plugin `tool.execute.before`
+      calls it and throws on an enforced `deny`/`ask`. Decisions audited.
+- [x] CI: `.github/workflows/policy-engine.yml` (fail-closed + baseline golden set).
 - [ ] `backend/services/audit_chain.py` (ADR-0006): hash chain, `POST /audit/ingest`,
       `audit verify`.
 - [ ] `3pa`: stop opencode if the gateway/audit is unreachable (fail-closed).
 - [ ] Provenance separation (ADR-0010): `web_search` / file / A2A output tagged
       `untrusted`; egress allowlist (sandbox network layer).
-- [ ] CI: `policy-engine.yml` (fail-closed + a "must be denied" golden set),
-      `adr-guard.yml`.
+- [ ] `bash` command AST parsing instead of glob patterns (ADR-0005).
+- [ ] Rule authoring UI; per-company mode (today `policy.mode` is a global `AppConfig`).
 
 ---
 
