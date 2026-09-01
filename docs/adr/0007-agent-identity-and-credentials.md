@@ -39,10 +39,18 @@ addition:
 - The agent's permissions are derived from the `CompanyMember` role/scope; which
   skill/MCP tool it can access is bounded by `AgentSkillLink` + policy.
 
+## Direction (2026-09-01)
+
+Platform-local identity is the **baseline** and always works (`3pa login` against
+the platform, persona selection from the agents the user owns). Bringing your own
+IdP is **opt-in** per organisation: `3pa login --oidc <issuer>` (or an org config
+flag), where `3pa` runs a standard OIDC/device-code flow and the backend
+validates the resulting assertion before minting the persona token. Orgs without
+their own OAuth are never forced to set one up.
+
 ## Open questions
 
-- SSO provider(s): is the org's own IdP mandatory, or is platform-local identity
-  enough?
+- OIDC claim → persona mapping (email match, or an explicit link table?).
 - Which principal do unattended executions (cron flows, A2A) run as?
 - Does `3pa` need device registration (device code flow) on first setup?
 

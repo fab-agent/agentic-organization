@@ -36,14 +36,30 @@ be tampered with" claim:
 - **Verification:** an `audit verify` command checks the chain end to end;
   `e2e-nightly.yml` asserts it.
 
+## Implementation status (2026-09-01)
+
+- `append()` / `record()` (chain + legacy `AuditLog` mirror) / `verify()` /
+  `ingest_batch()` shipped in `services/audit_chain.py`; `AuditEvent` model +
+  migration `b7c1e0f4a2d9`. Endpoints `POST /audit/ingest`, `GET
+  /audit/chain/verify`. Gateway calls, policy decisions, and tool events all
+  route through `record()`.
+- Current version: **single global chain**, in-process write lock only, SQLite.
+
+## Decided direction
+
+- **Per-tenant chain** (one chain per company) — done **together with the
+  Postgres move** (Phase 2). Postgres gives a real cross-process write lock
+  (advisory lock / `SELECT … FOR UPDATE`), which the current in-process
+  `threading.Lock` cannot provide across uvicorn workers or the scheduler process.
+- **Severity triage** on top of the chain: see ADR-0013 (an LLM scores recent
+  events via the gateway; high risk → inbox / Telegram).
+
 ## Open questions
 
 - Retention period and PII redaction (raw prompt/response — an ADR-0004 open
   question).
 - Chain anchoring target: the org's git repo, S3 Object Lock, or an external
-  notary?
-- SQLite write bottleneck — at what audit volume does Postgres become mandatory?
-- One chain per company (tenant), or a single global chain?
+  notary? (Deferred — verification is local-only until then.)
 
 ## Consequences
 

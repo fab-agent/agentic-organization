@@ -7,15 +7,21 @@ Two layers:
      evaluation error, or a malformed request, resolves to `deny` (the buzz
      `PermissionDecision` pattern: anything that is not a clean allow is a deny).
 
-  2. `decide(...)` — loads the effective ruleset (baseline safety rules + the
-     org's rules parsed from `Policy` markdown) and the rollout mode, evaluates
-     with the configured `default_effect` fallback, and reports whether the
-     effect is actually `enforced`.
+  2. `decide(...)` — for a given persona, resolves scope (company → department →
+     agent), the applicable `Policy` bodies (same gathering as
+     `agent_runtime.run_session`: company-scoped + DepartmentPolicyLink +
+     AgentPolicyLink), and the rollout mode, then evaluates.
 
-Rollout mode (AppConfig `policy.mode`, default `dry_run`):
+Rollout mode — resolved most-specific-wins from `PolicyConfig`
+(agent → department → company), then global AppConfig `policy.mode`, default
+`dry_run`:
   - `off`      — engine not consulted (decide() short-circuits to allow)
-  - `dry_run`  — effect computed and audited, but never applied (`enforced=False`)
-  - `enforce`  — a `deny`/`ask` effect is applied (`enforced=True`)
+  - `dry_run`  — a clean matched deny/ask is audited but NOT applied
+  - `enforce`  — a clean matched deny/ask is applied
+
+A **fail-closed** verdict (bad rule / malformed request / bad default_effect)
+is `enforced` in every mode, `dry_run` included — a broken policy config must
+never silently pass.
 
 Callers:
   - backend: `services.agent_runtime.execute_skill` (before every tool call)
@@ -45,7 +51,10 @@ class PolicyDecisionRequest:
     # "backend" | "workstation" — where the call originates.
     source: str = "backend"
     persona_id: str | None = None
+    # Scope — resolved from persona_id by decide() when not supplied.
     company_id: str | None = None
+    department_id: str | None = None
+    agent_config_id: str | None = None
     session_ref: str | None = None
 
 
@@ -55,9 +64,13 @@ class PolicyDecision:
     reason: str
     matched_rule: str | None
     mode: str
-    # True when `mode == "enforce"` and the effect is not "allow" — i.e. the
-    # caller must actually block / prompt.
+    # True when the caller must actually block / prompt. This is the case when
+    # `mode == "enforce"` and the effect is not "allow", OR whenever `fail_closed`
+    # is set — a broken policy config blocks in every mode, dry_run included.
     enforced: bool
+    # True when this decision came from a fail-closed path (bad rule, malformed
+    # request, bad default_effect). Operators should be alerted.
+    fail_closed: bool = False
 
     def as_dict(self) -> dict:
         return {
@@ -66,6 +79,7 @@ class PolicyDecision:
             "matched_rule": self.matched_rule,
             "mode": self.mode,
             "enforced": self.enforced,
+            "fail_closed": self.fail_closed,
         }
 
 
@@ -205,7 +219,12 @@ def evaluate(
     """
     if not isinstance(getattr(req, "tool", None), str) or not req.tool:
         return PolicyDecision(
-            "deny", "Malformed request: missing tool", None, "raw", True
+            "deny",
+            "Malformed request: missing tool",
+            None,
+            "raw",
+            True,
+            fail_closed=True,
         )
     if default_effect not in VALID_EFFECTS:
         return PolicyDecision(
@@ -214,6 +233,7 @@ def evaluate(
             None,
             "raw",
             True,
+            fail_closed=True,
         )
 
     winner: dict | None = None
@@ -228,10 +248,16 @@ def evaluate(
                 None,
                 "raw",
                 True,
+                fail_closed=True,
             )
         except Exception as e:  # noqa: BLE001 — fail closed on anything unexpected
             return PolicyDecision(
-                "deny", f"Fail-closed: rule evaluation error: {e}", None, "raw", True
+                "deny",
+                f"Fail-closed: rule evaluation error: {e}",
+                None,
+                "raw",
+                True,
+                fail_closed=True,
             )
 
     if winner is None:
@@ -317,34 +343,156 @@ def _config(key: str, fallback: str) -> str:
         return fallback
 
 
-def _active_policy_contents(company_id: str | None) -> list[str]:
+VALID_MODES = ("off", "dry_run", "enforce")
+
+
+def resolve_scope(persona_id: str | None) -> tuple[str | None, str | None, str | None]:
+    """persona_id → (company_id, department_id, agent_config_id)."""
+    if not persona_id:
+        return None, None, None
     try:
         from sqlmodel import select
 
         from database import get_session
-        from models import Policy
+        from models import AgentConfig, Personnel
 
         with get_session() as session:
-            q = select(Policy).where(Policy.is_active == True)  # noqa: E712
-            if company_id:
-                q = q.where(Policy.company_id == company_id)
-            return [p.content for p in session.exec(q).all() if p.content]
+            person = session.get(Personnel, persona_id)
+            if not person:
+                return None, None, None
+            cfg = session.exec(
+                select(AgentConfig).where(AgentConfig.personnel_id == persona_id)
+            ).first()
+            return (
+                person.company_id,
+                person.department_id,
+                cfg.id if cfg else None,
+            )
+    except Exception:
+        return None, None, None
+
+
+def applicable_policy_contents(
+    company_id: str | None,
+    department_id: str | None,
+    agent_config_id: str | None,
+) -> list[str]:
+    """
+    The policy bodies that apply to one agent, gathered the same way
+    `agent_runtime.run_session` gathers policy names: company-scoped policies +
+    department-linked (DepartmentPolicyLink) + agent-linked (AgentPolicyLink),
+    active only, de-duplicated.
+    """
+    if not company_id:
+        return []
+    try:
+        from sqlmodel import select
+
+        from database import get_session
+        from models import AgentPolicyLink, DepartmentPolicyLink, Policy
+
+        contents: list[str] = []
+        seen: set[str] = set()
+
+        def _add(rows):
+            for p in rows:
+                if p.id not in seen and p.is_active and p.content:
+                    seen.add(p.id)
+                    contents.append(p.content)
+
+        with get_session() as session:
+            _add(
+                session.exec(
+                    select(Policy).where(
+                        Policy.company_id == company_id,
+                        Policy.scope == "company",
+                        Policy.is_active == True,  # noqa: E712
+                    )
+                ).all()
+            )
+            if department_id:
+                _add(
+                    session.exec(
+                        select(Policy)
+                        .join(
+                            DepartmentPolicyLink,
+                            DepartmentPolicyLink.policy_id == Policy.id,
+                        )
+                        .where(DepartmentPolicyLink.department_id == department_id)
+                        .where(Policy.is_active == True)  # noqa: E712
+                    ).all()
+                )
+            if agent_config_id:
+                _add(
+                    session.exec(
+                        select(Policy)
+                        .join(AgentPolicyLink, AgentPolicyLink.policy_id == Policy.id)
+                        .where(AgentPolicyLink.agent_config_id == agent_config_id)
+                        .where(Policy.is_active == True)  # noqa: E712
+                    ).all()
+                )
+        return contents
     except Exception:
         return []
 
 
-def _resolve_company_id(persona_id: str | None) -> str | None:
-    if not persona_id:
-        return None
-    try:
-        from database import get_session
-        from models import Personnel
+def resolve_mode(
+    company_id: str | None,
+    department_id: str | None,
+    agent_config_id: str | None,
+) -> tuple[str, Effect]:
+    """
+    (mode, default_effect), most-specific-wins:
+    agent PolicyConfig → department PolicyConfig → company PolicyConfig →
+    global AppConfig (policy.mode / policy.default_effect) → hardcoded defaults.
+    A null field on a PolicyConfig row inherits from the next level.
+    """
+    mode: str | None = None
+    default_effect: str | None = None
 
+    try:
+        from sqlmodel import select
+
+        from database import get_session
+        from models import PolicyConfig
+
+        chain: list[tuple[str, str | None]] = [
+            ("agent", agent_config_id),
+            ("department", department_id),
+            ("company", None),
+        ]
         with get_session() as session:
-            person = session.get(Personnel, persona_id)
-            return person.company_id if person else None
+            for scope, scope_id in chain:
+                if scope != "company" and not scope_id:
+                    continue
+                q = select(PolicyConfig).where(
+                    PolicyConfig.scope == scope,
+                    PolicyConfig.company_id == company_id,
+                )
+                q = (
+                    q.where(PolicyConfig.scope_id == scope_id)
+                    if scope != "company"
+                    else q.where(PolicyConfig.scope_id.is_(None))
+                )
+                row = session.exec(q).first()
+                if row:
+                    if mode is None and row.mode:
+                        mode = row.mode
+                    if default_effect is None and row.default_effect:
+                        default_effect = row.default_effect
+                if mode and default_effect:
+                    break
     except Exception:
-        return None
+        pass
+
+    if mode is None:
+        mode = _config("policy.mode", DEFAULT_MODE)
+    if default_effect is None:
+        default_effect = _config("policy.default_effect", DEFAULT_EFFECT)
+
+    if mode not in VALID_MODES:
+        mode = DEFAULT_MODE
+    return mode, default_effect
 
 
 def audit_decision(req: PolicyDecisionRequest, decision: PolicyDecision) -> None:
@@ -375,26 +523,43 @@ def audit_decision(req: PolicyDecisionRequest, decision: PolicyDecision) -> None
 
 
 def decide(req: PolicyDecisionRequest) -> PolicyDecision:
-    """Load the effective ruleset + mode, evaluate, and set the real enforcement."""
-    mode = _config("policy.mode", DEFAULT_MODE)
-    if mode not in ("off", "dry_run", "enforce"):
-        mode = DEFAULT_MODE
+    """
+    Resolve scope + mode + the applicable ruleset for this persona, evaluate, and
+    set real enforcement.
+
+    A fail-closed verdict (bad rule / malformed request / bad default_effect)
+    blocks in every mode, `dry_run` included. A clean matched deny/ask is only
+    applied in `enforce`.
+    """
+    # Fill scope from the persona when the caller did not supply it.
+    if req.persona_id and not (
+        req.company_id and req.department_id and req.agent_config_id
+    ):
+        c, d, a = resolve_scope(req.persona_id)
+        req.company_id = req.company_id or c
+        req.department_id = req.department_id or d
+        req.agent_config_id = req.agent_config_id or a
+
+    mode, default_effect = resolve_mode(
+        req.company_id, req.department_id, req.agent_config_id
+    )
 
     if mode == "off":
         return PolicyDecision("allow", "Policy engine off", None, "off", False)
 
-    if not req.company_id:
-        req.company_id = _resolve_company_id(req.persona_id)
-
-    default_effect = _config("policy.default_effect", DEFAULT_EFFECT)
-    ruleset = load_ruleset(_active_policy_contents(req.company_id))
+    ruleset = load_ruleset(
+        applicable_policy_contents(
+            req.company_id, req.department_id, req.agent_config_id
+        )
+    )
 
     raw = evaluate(req, ruleset, default_effect=default_effect)
-    enforced = mode == "enforce" and raw.effect != "allow"
+    enforced = raw.fail_closed or (mode == "enforce" and raw.effect != "allow")
     return PolicyDecision(
         effect=raw.effect,
         reason=raw.reason,
         matched_rule=raw.matched_rule,
         mode=mode,
         enforced=enforced,
+        fail_closed=raw.fail_closed,
     )

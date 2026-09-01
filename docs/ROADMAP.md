@@ -74,22 +74,38 @@ basic injection defense.
       decisions, and tool events now all flow through it.
       `backend/tests/test_audit_chain.py` (12 — tamper detection for modified /
       deleted rows).
+- [x] **Scoped enforcement** (company → department → agent): `decide()` resolves
+      scope from the persona and gathers the applicable `Policy` bodies the same
+      way `run_session` gathers names (company-scoped + `DepartmentPolicyLink` +
+      `AgentPolicyLink`). New `PolicyConfig` table (migration `c3d5f7a9e1b2`) for
+      per-scope `mode` / `default_effect`, most-specific-wins. `GET`/`PUT
+      /policies/config`. **Fail-closed verdicts block in every mode**, only a
+      clean matched deny/ask waits for `enforce`.
 - [ ] `3pa`: stop opencode if the gateway/audit is unreachable (fail-closed).
 - [ ] Provenance separation (ADR-0010): `web_search` / file / A2A output tagged
       `untrusted`; egress allowlist (sandbox network layer).
-- [ ] `bash` command AST parsing instead of glob patterns (ADR-0005).
-- [ ] Rule authoring UI; per-company mode (today `policy.mode` is a global `AppConfig`).
 
 ---
 
-## Phase 2 — Identity and managed config
+## Phase 2 — Identity, managed config, Postgres
 
-- [ ] `3pa login` + short-lived persona token (ADR-0007).
+- [ ] **Postgres — full migration** (decided): compose service, `database.py`
+      fresh-DB detection (drop the `sqlite_master` check), pgvector for RAG
+      (replaces `sqlite-vec`), cross-process write lock for the audit chain.
+- [ ] **Per-tenant audit chain** — one chain per company, done together with the
+      Postgres move (ADR-0006).
+- [ ] **`bash` AST parsing** (`bashlex`) for the Policy Engine — before `enforce`
+      is meaningful for shell (ADR-0005).
+- [ ] `3pa login` — platform-local identity as the baseline; pluggable OIDC for
+      orgs that bring their own IdP (`3pa login --oidc <issuer>`) (ADR-0007).
 - [ ] `api/well_known.py` — `/.well-known/opencode`, signed org config (ADR-0011).
 - [ ] Managed config in the container image; `3pa` signature verification.
 - [ ] Backend MCP server (`api/mcp_server.py`): skills / A2A / inbox / policies
       exposed to opencode as tools.
 - [ ] Gateway: model allowlist + per-persona quota + rate limit.
+- [ ] **LLM severity check** (ADR-0013): background job scores recent audit
+      events via an OpenAI-compatible endpoint; high risk → inbox / Telegram alert.
+- [ ] Rule authoring UI.
 
 ---
 

@@ -23,6 +23,8 @@ export interface PolicyDecision {
   mode: string;
   /** True → the caller must actually block/prompt. */
   enforced: boolean;
+  /** True → verdict came from a fail-closed path (broken policy config). */
+  fail_closed?: boolean;
 }
 
 type FetchFn = typeof fetch;

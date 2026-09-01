@@ -250,3 +250,141 @@ def test_decide_enforce_allows_ordinary(client, db_session):
     d = decide(_req("bash", {"command": "git status"}))
     assert d.effect == "allow"
     assert d.enforced is False
+
+
+# ── fail-closed blocks in every mode ────────────────────────────────────────
+
+
+def test_fail_closed_verdict_sets_flag():
+    d = evaluate(
+        _req("bash", {"command": "ls"}), [{"id": "x", "match": {}, "effect": "z"}]
+    )
+    assert d.effect == "deny"
+    assert d.fail_closed is True
+
+
+def test_decide_fail_closed_blocks_in_dry_run(client, db_session):
+    from models import Company, Policy
+
+    co = Company(name="C", slug="c")
+    db_session.add(co)
+    db_session.flush()
+    # A broken org rule (bad effect value).
+    db_session.add(
+        Policy(
+            company_id=co.id,
+            scope="company",
+            name="broken",
+            slug="broken",
+            content='```policy\n[{"id":"bad","match":{"tool":"*"},"effect":"kaboom"}]\n```',
+        )
+    )
+    db_session.commit()
+
+    # dry_run (default) — a clean deny would NOT be enforced, but a broken policy
+    # config must block regardless.
+    d = decide(_req("bash", {"command": "ls"}, company_id=co.id))
+    assert d.mode == "dry_run"
+    assert d.effect == "deny"
+    assert d.fail_closed is True
+    assert d.enforced is True
+
+
+# ── scope resolution (company → department → agent) ─────────────────────────
+
+
+def _org(db_session):
+    from models import AgentConfig, Company, Department, Personnel
+
+    co = Company(name="Fab", slug="fab")
+    db_session.add(co)
+    db_session.flush()
+    dept = Department(company_id=co.id, name="Eng", slug="eng")
+    db_session.add(dept)
+    db_session.flush()
+    person = Personnel(
+        company_id=co.id,
+        department_id=dept.id,
+        name="iOS Bot",
+        slug="ios-bot",
+        type="agent",
+    )
+    db_session.add(person)
+    db_session.flush()
+    cfg = AgentConfig(personnel_id=person.id, model="qwen-turbo", status="active")
+    db_session.add(cfg)
+    db_session.flush()
+    return co, dept, person, cfg
+
+
+def test_resolve_scope_from_persona(client, db_session):
+    from services.policy_engine import resolve_scope
+
+    co, dept, person, cfg = _org(db_session)
+    db_session.commit()
+    c, d, a = resolve_scope(person.id)
+    assert (c, d, a) == (co.id, dept.id, cfg.id)
+
+
+def test_mode_resolves_most_specific_wins(client, db_session):
+    from models import PolicyConfig
+    from services.policy_engine import resolve_mode
+
+    co, dept, person, cfg = _org(db_session)
+    db_session.add(PolicyConfig(company_id=co.id, scope="company", mode="dry_run"))
+    db_session.add(
+        PolicyConfig(company_id=co.id, scope="agent", scope_id=cfg.id, mode="enforce")
+    )
+    db_session.commit()
+
+    assert resolve_mode(co.id, dept.id, cfg.id)[0] == "enforce"  # agent wins
+    assert resolve_mode(co.id, dept.id, None)[0] == "dry_run"  # falls to company
+
+
+def test_agent_specific_policy_only_applies_to_that_agent(client, db_session):
+    from models import AgentPolicyLink, Policy
+    from services.policy_engine import applicable_policy_contents
+
+    co, dept, person, cfg = _org(db_session)
+    p = Policy(
+        company_id=co.id,
+        scope="agent",
+        name="ios-no-bash",
+        slug="ios-no-bash",
+        content='```policy\n[{"id":"no-bash","match":{"tool":"bash"},"effect":"deny","reason":"iOS agent: no shell"}]\n```',
+    )
+    db_session.add(p)
+    db_session.flush()
+    db_session.add(AgentPolicyLink(agent_config_id=cfg.id, policy_id=p.id))
+    db_session.commit()
+
+    mine = applicable_policy_contents(co.id, dept.id, cfg.id)
+    assert any("no-bash" in c for c in mine)
+    # a different agent (no link) does not get it
+    other = applicable_policy_contents(co.id, dept.id, "other-cfg-id")
+    assert not any("no-bash" in c for c in other)
+
+
+def test_decide_uses_agent_scoped_policy_and_mode(client, db_session):
+    from models import AgentPolicyLink, Policy, PolicyConfig
+
+    co, dept, person, cfg = _org(db_session)
+    p = Policy(
+        company_id=co.id,
+        scope="agent",
+        name="ios-no-bash",
+        slug="ios-no-bash",
+        content='```policy\n[{"id":"no-bash","match":{"tool":"bash"},"effect":"deny","reason":"no shell for iOS agent"}]\n```',
+    )
+    db_session.add(p)
+    db_session.flush()
+    db_session.add(AgentPolicyLink(agent_config_id=cfg.id, policy_id=p.id))
+    db_session.add(
+        PolicyConfig(company_id=co.id, scope="agent", scope_id=cfg.id, mode="enforce")
+    )
+    db_session.commit()
+
+    d = decide(_req("bash", {"command": "ls"}, persona_id=person.id))
+    assert d.effect == "deny"
+    assert d.enforced is True
+    assert "iOS" in d.reason or "no shell" in d.reason

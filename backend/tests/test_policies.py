@@ -161,3 +161,47 @@ def test_delete_policy(auth_client):
 def test_delete_policy_not_found(auth_client):
     r = auth_client.delete("/policies/bad-id")
     assert r.status_code == 404
+
+
+# ── Policy Engine config (ADR-0005) ──────────────────────────────────────────
+
+
+def test_policy_config_default_is_dry_run_allow(auth_client):
+    co = auth_client._test_company
+    r = auth_client.get("/policies/config", params={"company_id": co.id})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["rows"] == []
+    assert body["effective"] == {"mode": "dry_run", "default_effect": "allow"}
+
+
+def test_set_and_resolve_policy_config(auth_client):
+    co = auth_client._test_company
+    r = auth_client.put(
+        "/policies/config",
+        json={"company_id": co.id, "scope": "company", "mode": "enforce"},
+    )
+    assert r.status_code == 200
+    r2 = auth_client.get("/policies/config", params={"company_id": co.id})
+    assert r2.json()["effective"]["mode"] == "enforce"
+
+
+def test_set_policy_config_validates(auth_client):
+    co = auth_client._test_company
+    assert (
+        auth_client.put(
+            "/policies/config", json={"company_id": co.id, "mode": "loud"}
+        ).status_code
+        == 422
+    )
+    assert (
+        auth_client.put(
+            "/policies/config",
+            json={"company_id": co.id, "scope": "agent"},
+        ).status_code
+        == 422
+    )  # scope_id required
+
+
+def test_set_policy_config_requires_manager(client):
+    assert client.put("/policies/config", json={"company_id": "x"}).status_code == 401

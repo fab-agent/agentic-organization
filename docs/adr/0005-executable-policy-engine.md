@@ -47,6 +47,23 @@ engine.
 - **Every decision** is written to the audit (ADR-0006): request, matched rule,
   effect.
 
+## Implementation status (2026-09-01)
+
+- `evaluate()` (pure) + `decide()` (DB-backed) shipped. Rules are parsed from
+  fenced ```policy blocks in the existing `Policy` markdown.
+- **Scoping** matches the rest of the org: `decide()` resolves company →
+  department → agent from the persona, and gathers the applicable `Policy`
+  bodies exactly as `agent_runtime.run_session` gathers policy names
+  (company-scoped + `DepartmentPolicyLink` + `AgentPolicyLink`). So an iOS agent
+  and a backend agent in the same company get different rulesets.
+- **Rollout mode** lives in a new `PolicyConfig` table, resolved
+  most-specific-wins (agent → department → company → global `AppConfig` →
+  `dry_run`). Managed via `GET`/`PUT /policies/config`.
+- **`dry_run` refinement (decided):** a fail-closed verdict blocks in every mode;
+  only a *clean matched* deny/ask waits for `enforce`.
+- **Still glob-based** for `bash` — AST parsing (`bashlex`) is the next task
+  before `enforce` is meaningful for shell.
+
 ## Open questions
 
 - Rule authoring: a UI form, YAML, or both? Should automatic rule extraction from
@@ -54,6 +71,8 @@ engine.
 - What does an `ask` decision map to on the laptop (an opencode approval prompt)
   and in the backend?
 - The relationship with policy versioning + signing (ADR-0011).
+- Parent-department policy inheritance (`Department.parent_id`) — `run_session`
+  does not walk it today; the engine matches that.
 
 ## Consequences
 

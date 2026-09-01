@@ -445,6 +445,26 @@ class Policy(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class PolicyConfig(SQLModel, table=True):
+    """
+    Policy Engine enforcement settings, scoped like everything else in the org
+    (ADR-0005). Resolution is most-specific-wins:
+    agent → department → company → global AppConfig → hardcoded default.
+    A null field means "inherit from the next level up".
+    """
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    company_id: str = Field(foreign_key="company.id", index=True)
+    # "company" | "department" | "agent"
+    scope: str = Field(default="company")
+    # department.id or agentconfig.id; null for company scope
+    scope_id: str | None = Field(default=None, index=True)
+    mode: str | None = None  # "off" | "dry_run" | "enforce"
+    default_effect: str | None = None  # "allow" | "ask" | "deny"
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class DatabaseConnection(SQLModel, table=True):
     """External database connection with semantic annotations."""
 
