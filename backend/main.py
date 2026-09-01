@@ -37,6 +37,7 @@ from api.database import router as database_router
 from api.demo_auth import router as demo_auth_router
 from api.departments import router as dept_router
 from api.flows import router as flows_router
+from api.gateway import router as gateway_router
 from api.git_sync import router as git_router
 from api.inbox import router as inbox_router
 from api.journal import router as journal_router
@@ -53,6 +54,7 @@ from api.telegram_bot import router as telegram_bot_router
 from api.telegram_config import router as telegram_router
 from api.tenant import router as tenant_router
 from api.users import router as users_router
+from api.workstation import router as workstation_router
 from database import get_session, init_db
 from seed import run_seed, seed_company_skills
 
@@ -101,6 +103,8 @@ app.include_router(companies_router)
 app.include_router(dept_router)
 app.include_router(personnel_router)
 app.include_router(providers_router)
+app.include_router(gateway_router)
+app.include_router(workstation_router)
 app.include_router(git_router)
 app.include_router(sessions_router)
 app.include_router(a2a_router)

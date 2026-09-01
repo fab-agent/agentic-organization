@@ -25,8 +25,18 @@ package-lock.json
 # Data
 data/
 
-# Internal planning docs
-docs/
+# Internal planning docs (scratch) — but keep tracked engineering docs below
+docs/*
+!docs/adr/
+!docs/architecture/
+!docs/ROADMAP.md
 plan.md
 TODO.md
-prototype.htmlbackend/logs/
+prototype.html
+
+# Logs (runtime artifacts — existing tracked files under backend/logs/ predate this)
+logs/
+backend/logs/
+
+# Virtualenvs
+.venv/
