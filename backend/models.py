@@ -521,6 +521,34 @@ class GatewayUsage(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class RevokedToken(SQLModel, table=True):
+    """
+    Server-side revocation for persona tokens (ADR-0007). A persona token whose
+    `jti` has a row here is rejected by the workstation auth deps even though its
+    signature is still valid. Written by refresh-token rotation (the spent
+    refresh jti) and by an explicit single-token revoke.
+    """
+
+    jti: str = Field(primary_key=True)
+    persona_id: str = Field(index=True)
+    company_id: str | None = Field(default=None, index=True)
+    reason: str | None = None
+    revoked_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PersonaTokenState(SQLModel, table=True):
+    """
+    Per-persona "revoke everything issued before now" marker (ADR-0007) — the
+    "laptop lost" button. Any persona token (access or refresh) whose `iat` is
+    before `not_before` is rejected, without needing to know its `jti`.
+    """
+
+    persona_id: str = Field(primary_key=True)
+    company_id: str | None = Field(default=None, index=True)
+    not_before: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class EmbeddingRecord(SQLModel, table=True):
     """
     One indexed text chunk for semantic search (RAG). Lives in the main DB now

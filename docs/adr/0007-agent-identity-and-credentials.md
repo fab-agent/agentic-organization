@@ -1,7 +1,7 @@
 # ADR-0007: Agent identity and short-lived credentials
 
-- **Status:** proposed
-- **Date:** 2026-09-01
+- **Status:** accepted (platform-local identity + refresh + revocation done; device registration pending)
+- **Date:** 2026-09-01 (accepted 2026-09-02)
 - **Related:** ADR-0004, ADR-0006; block/buzz `crates/buzz-auth/`, `buzz-agent/src/auth.rs`
 
 ## Context and problem
@@ -63,7 +63,30 @@ their own OAuth are never forced to set one up.
 - `3pa login` (`packages/cli`) — password or `--oidc <id_token>` → pick persona →
   store `~/.config/3pa/session.json` (0600); `sandbox/run.sh` reads it.
 
-Still open: token refresh + a server-side revocation list; device registration.
+### Token refresh + revocation (2026-09-02)
+
+- **Two token types** (`services/gateway_auth.py`): an **access** token
+  (`typ=persona`, `aud=[gateway,audit]`, `PERSONA_TOKEN_TTL_MINUTES`, default 60)
+  and a **refresh** token (`typ=persona_refresh`, `aud=refresh`,
+  `PERSONA_REFRESH_TTL_HOURS`, default 12). Every token carries a `jti`.
+- `POST /workstation/persona-token` now returns `{token, refresh_token,
+  expires_in}`.
+- `POST /workstation/persona-token/refresh` — refresh token → fresh pair; the
+  presented refresh token is **rotated** (old `jti` blacklisted, cannot replay).
+- `POST /workstation/persona-token/revoke` — kills every token for a persona (the
+  "laptop lost" button). Auth: the persona's platform owner **or** a still-valid
+  token for that same persona (self-revoke, `3pa logout --revoke`).
+- **Revocation** (`services/persona_revocation.py`, checked in `api/deps.py`,
+  fail-closed): per-`jti` blacklist (`RevokedToken`) + a per-persona `not_before`
+  marker (`PersonaTokenState`) that kills everything issued earlier without
+  needing the jti. Migration `b7d1e93a4c25`.
+- `3pa`: `login` stores the refresh token + expiry; `run` / `doctor` call
+  `ensureFreshToken` (refresh within 2 min of expiry) and `run` retries once via
+  refresh on a 401; `3pa refresh` forces it; `3pa logout [--revoke]`.
+- The heartbeat now probes the **unauthenticated** `/health` for liveness, not
+  `/v1/models` — see the open item below.
+
+Still open: device registration; auto-revoke on plugin-heartbeat loss.
 
 ## Open questions
 
@@ -71,10 +94,16 @@ Still open: token refresh + a server-side revocation list; device registration.
   user still picks in `3pa login`).
 - Which principal do unattended executions (cron flows, A2A) run as?
 - Does `3pa` need device registration (device code flow) on first setup?
+- **In-sandbox token rotation.** The access token is injected into the container
+  env at launch, so a session longer than the access TTL (60 min) outlives its
+  token — the plugin's gateway calls start 401ing. Fix options: `3pa` writes a
+  rotating token to a file the container reads; or the plugin refreshes itself.
+  Until then a long run is bounded by `PERSONA_TOKEN_TTL_MINUTES`.
 
 ## Consequences
 
 - **Positive:** A leaked token dies within minutes; per-persona revocation is
   possible; the audit binds to a clear actor identity.
 - **Negative / cost:** Token refresh infrastructure, clock-skew tolerance, and an
-  offline working window all need to be designed.
+  offline working window all need to be designed. The refresh + revocation tables
+  grow unbounded — a periodic prune of expired `RevokedToken` rows is a follow-up.

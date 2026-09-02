@@ -16,7 +16,13 @@ def _persona_from_header(authorization: str | None, audience: str) -> PersonaPri
     except Exception:
         raise HTTPException(status_code=401, detail="Geçersiz persona token")
 
-    # TODO(ADR-0007): check the server-side revocation list here.
+    # Server-side revocation (ADR-0007): spent/blacklisted jti, or a token issued
+    # before the persona's "revoke everything" marker.
+    from services.persona_revocation import is_revoked
+
+    if is_revoked(principal.jti, principal.persona_id, principal.issued_at):
+        raise HTTPException(status_code=401, detail="Persona token iptal edilmiş")
+
     with get_session() as session:
         person = session.get(Personnel, principal.persona_id)
         if not person or person.company_id != principal.company_id:

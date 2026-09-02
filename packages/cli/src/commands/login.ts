@@ -1,6 +1,6 @@
-import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import * as p from '@clack/prompts'
 import chalk from 'chalk'
 
@@ -12,15 +12,25 @@ import chalk from 'chalk'
  *   3pa login                 email + password
  *   3pa login --oidc <token>  exchange an OIDC id_token from your org IdP
  *
- * Session file: ~/.config/3pa/session.json  (mode 600)
+ * Session file: ~/.config/3pa/session.json  (mode 600).
+ * `THREEPA_SESSION_FILE` overrides the path (tests, CI).
  */
 
-const SESSION_DIR = join(homedir(), '.config', '3pa')
-export const SESSION_FILE = join(SESSION_DIR, 'session.json')
+/** Resolved per call so `THREEPA_SESSION_FILE` / `HOME` changes take effect. */
+export function sessionFile(): string {
+  return (
+    process.env.THREEPA_SESSION_FILE ||
+    join(homedir(), '.config', '3pa', 'session.json')
+  )
+}
 
 export interface Session {
   base_url: string
   token: string
+  /** Persona refresh token (ADR-0007). Exchanged at /workstation/persona-token/refresh. */
+  refresh_token?: string
+  /** ISO time the access token expires — `3pa` refreshes ahead of this. */
+  token_expires_at?: string
   persona_id: string
   persona_name: string
   persona_model?: string
@@ -31,15 +41,25 @@ export interface Session {
 
 export function loadSession(): Session | null {
   try {
-    return JSON.parse(readFileSync(SESSION_FILE, 'utf8')) as Session
+    return JSON.parse(readFileSync(sessionFile(), 'utf8')) as Session
   } catch {
     return null
   }
 }
 
 export function saveSession(s: Session): void {
-  mkdirSync(SESSION_DIR, { recursive: true })
-  writeFileSync(SESSION_FILE, JSON.stringify(s, null, 2), { mode: 0o600 })
+  const file = sessionFile()
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, JSON.stringify(s, null, 2), { mode: 0o600 })
+}
+
+export function clearSession(): boolean {
+  try {
+    rmSync(sessionFile())
+    return true
+  } catch {
+    return false
+  }
 }
 
 async function api(base: string, path: string, init?: RequestInit): Promise<any> {
@@ -114,6 +134,10 @@ export async function login(args: string[]): Promise<void> {
   saveSession({
     base_url: base,
     token: tok.token,
+    refresh_token: tok.refresh_token,
+    token_expires_at: tok.expires_in
+      ? new Date(Date.now() + tok.expires_in * 1000).toISOString()
+      : undefined,
     persona_id: persona.personnel_id,
     persona_name: persona.name,
     persona_model: persona.model,
@@ -122,6 +146,6 @@ export async function login(args: string[]): Promise<void> {
 
   p.outro(
     chalk.green(`Logged in as ${chalk.bold(persona.name)}.`) +
-      chalk.dim(`  (${SESSION_FILE})`),
+      chalk.dim(`  (${sessionFile()})`),
   )
 }

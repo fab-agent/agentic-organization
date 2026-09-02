@@ -23,7 +23,7 @@ Format: a [MADR](https://adr.github.io/madr/) derivative — see [`0000-template
 | [0004](0004-central-llm-gateway.md) | Central LLM Gateway (OpenAI-compatible proxy, BYO upstream) | accepted |
 | [0005](0005-executable-policy-engine.md) | Executable Policy Engine (fail-closed broker) | proposed |
 | [0006](0006-tamper-evident-audit.md) | Tamper-evident audit (hash-chained, one-way stream) | proposed |
-| [0007](0007-agent-identity-and-credentials.md) | Agent identity and short-lived credentials | proposed |
+| [0007](0007-agent-identity-and-credentials.md) | Agent identity and short-lived credentials | accepted |
 | [0008](0008-tui-strategy.md) | TUI strategy (opencode's TUI for now, Bubble Tea later) | accepted |
 | [0009](0009-workstation-wrapper-cli.md) | Workstation wrapper CLI (`3pa`) responsibilities and distribution | accepted |
 | [0010](0010-injection-defense-strategy.md) | Injection defense strategy (provenance, egress allowlist) | accepted |

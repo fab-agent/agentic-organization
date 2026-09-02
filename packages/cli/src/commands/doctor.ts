@@ -9,6 +9,7 @@ import chalk from 'chalk'
 import { execa } from 'execa'
 
 import { findSandboxDir } from '../utils/sandbox.js'
+import { ensureFreshToken } from '../utils/token.js'
 import { fetchAndVerifyWellKnown } from '../utils/wellknown.js'
 import { loadSession } from './login.js'
 
@@ -60,15 +61,18 @@ function checkSandbox(): Result {
 export async function doctor(): Promise<void> {
   p.intro(chalk.bold('3pa doctor'))
 
-  const session = loadSession()
+  let session = loadSession()
   const results: Result[] = [await checkDocker(), checkSandbox()]
 
   if (!session) {
     results.push(bad('login session', 'not logged in — run `3pa login`'))
   } else {
-    const ageDays = (Date.now() - Date.parse(session.saved_at)) / 86_400_000
+    session = await ensureFreshToken(session)
+    const tokenAge = session.token_expires_at
+      ? `access token expires ${new Date(session.token_expires_at).toLocaleTimeString()}`
+      : `saved ${((Date.now() - Date.parse(session.saved_at)) / 86_400_000).toFixed(1)}d ago`
     results.push(
-      ok('login session', `${session.persona_name} (${ageDays.toFixed(1)}d old)`),
+      ok('login session', `${session.persona_name} — ${tokenAge}`),
       await checkGateway(session.base_url, session.token),
       await checkWellKnown(session.base_url, session.wellknown_key_id ?? null),
     )

@@ -16,7 +16,7 @@ for the gateway. Identity resolution is shared via `api.deps`.
 
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
@@ -153,23 +153,141 @@ class PersonaTokenRequest(BaseModel):
     personnel_id: str
 
 
+def _issue_token_pair(persona_id: str, company_id: str) -> dict:
+    """A fresh access + refresh token pair for one persona (ADR-0007)."""
+    from services.gateway_auth import (
+        PERSONA_TOKEN_TTL_MINUTES,
+        create_persona_refresh_token,
+    )
+
+    return {
+        "token": create_persona_token(persona_id=persona_id, company_id=company_id),
+        "refresh_token": create_persona_refresh_token(
+            persona_id=persona_id, company_id=company_id
+        ),
+        "token_type": "bearer",
+        "persona_id": persona_id,
+        "expires_in": PERSONA_TOKEN_TTL_MINUTES * 60,
+    }
+
+
 @router.post("/workstation/persona-token", status_code=201)
 def mint_persona_token(
     body: PersonaTokenRequest, user: User = Depends(get_current_user)
 ):
     """
-    Mint a short-lived persona token for one of the caller's own agent personas.
-    Replaces the manager-only `/gateway/persona-token` for the `3pa login` flow.
+    Mint a persona access + refresh token for one of the caller's own agent
+    personas. Replaces the manager-only `/gateway/persona-token` for `3pa login`.
     """
     with get_session() as session:
         allowed = {p["personnel_id"] for p in _personas_for_user(session, user)}
         if body.personnel_id not in allowed:
             raise HTTPException(status_code=403, detail="Bu persona için yetkiniz yok")
         person = session.get(Personnel, body.personnel_id)
-    token = create_persona_token(
-        persona_id=person.id, company_id=person.company_id, scope=None
-    )
-    return {"token": token, "token_type": "bearer", "persona_id": person.id}
+    return _issue_token_pair(person.id, person.company_id)
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+@router.post("/workstation/persona-token/refresh", status_code=201)
+def refresh_persona_token(body: RefreshRequest):
+    """
+    Exchange a valid refresh token for a fresh access + refresh pair (ADR-0007).
+    The presented refresh token is rotated — its `jti` is revoked, so it cannot
+    be replayed. Auth is the refresh token itself; no web session needed.
+    """
+    from services.gateway_auth import decode_persona_refresh_token
+    from services.persona_revocation import is_revoked, revoke_jti
+
+    try:
+        principal = decode_persona_refresh_token(body.refresh_token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Geçersiz refresh token")
+
+    if is_revoked(principal.jti, principal.persona_id, principal.issued_at):
+        raise HTTPException(status_code=401, detail="Refresh token iptal edilmiş")
+
+    with get_session() as session:
+        person = session.get(Personnel, principal.persona_id)
+        if not person or person.type != "agent":
+            raise HTTPException(status_code=401, detail="Persona bulunamadı")
+
+    if principal.jti:
+        revoke_jti(principal.jti, principal.persona_id, principal.company_id, "rotated")
+    return _issue_token_pair(person.id, person.company_id)
+
+
+class RevokeRequest(BaseModel):
+    personnel_id: str
+
+
+@router.post("/workstation/persona-token/revoke", status_code=202)
+def revoke_persona_tokens(
+    body: RevokeRequest,
+    authorization: str | None = Header(None),
+):
+    """
+    Revoke **every** persona token (access + refresh) for one agent persona — the
+    "laptop lost" button (ADR-0007). A subsequent `3pa login` mints a fresh token
+    that is unaffected.
+
+    Auth: either the platform owner of the persona (web session), or a still-valid
+    persona token for that same persona (a laptop revoking itself, e.g.
+    `3pa logout --revoke`).
+    """
+    from services.persona_revocation import revoke_all
+
+    actor = _revoke_authorised(authorization, body.personnel_id)
+
+    with get_session() as session:
+        person = session.get(Personnel, body.personnel_id)
+        if not person:
+            raise HTTPException(status_code=404, detail="Persona bulunamadı")
+        company_id = person.company_id
+
+    not_before = revoke_all(body.personnel_id, company_id, f"revoked by {actor}")
+    return {
+        "revoked": True,
+        "persona_id": body.personnel_id,
+        "not_before": not_before.isoformat(),
+    }
+
+
+def _revoke_authorised(authorization: str | None, personnel_id: str) -> str:
+    """Return an actor label, or raise 401/403. Owner web session OR self-token."""
+    from services.auth import decode_token
+    from services.gateway_auth import AUD_GATEWAY, decode_persona_token
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Yetkilendirme gerekli")
+    token = authorization.split(" ", 1)[1]
+
+    # 1. A persona token that IS this persona (self-revoke).
+    try:
+        principal = decode_persona_token(token, expected_audience=AUD_GATEWAY)
+        if principal.persona_id == personnel_id:
+            return f"persona:{personnel_id}"
+        raise HTTPException(status_code=403, detail="Başka persona iptal edilemez")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+    # 2. A web session for a user who owns this persona.
+    try:
+        user_id = decode_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Geçersiz token")
+    with get_session() as session:
+        user = session.get(User, user_id)
+        if not user:
+            raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı")
+        allowed = {p["personnel_id"] for p in _personas_for_user(session, user)}
+    if personnel_id not in allowed:
+        raise HTTPException(status_code=403, detail="Bu persona için yetkiniz yok")
+    return f"user:{user_id}"
 
 
 class OIDCExchange(BaseModel):

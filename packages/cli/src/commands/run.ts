@@ -21,8 +21,9 @@ import chalk from 'chalk'
 import { execa, type ExecaError } from 'execa'
 
 import { findSandboxDir } from '../utils/sandbox.js'
+import { ensureFreshToken, refreshNow } from '../utils/token.js'
 import { fetchAndVerifyWellKnown } from '../utils/wellknown.js'
-import { loadSession, saveSession, SESSION_FILE } from './login.js'
+import { loadSession, saveSession, sessionFile } from './login.js'
 
 interface RunOpts {
   projectDir: string
@@ -58,12 +59,23 @@ export function parseRunArgs(args: string[]): RunOpts {
   return opts
 }
 
-async function gatewayAlive(base: string, token: string): Promise<boolean> {
+/** Authenticated — does the persona token still work on the gateway. */
+async function tokenValid(base: string, token: string): Promise<boolean> {
   try {
     const r = await fetch(`${base}/v1/models`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(5_000),
     })
+    return r.ok
+  } catch {
+    return false
+  }
+}
+
+/** Unauthenticated liveness — is the gateway reachable at all (heartbeat). */
+async function gatewayHealthy(base: string): Promise<boolean> {
+  try {
+    const r = await fetch(`${base}/health`, { signal: AbortSignal.timeout(5_000) })
     return r.ok
   } catch {
     return false
@@ -85,7 +97,7 @@ export async function run(args: string[]): Promise<void> {
     process.exit(2)
   }
 
-  const session = loadSession()
+  let session = loadSession()
   if (!session) {
     p.cancel('Not logged in. Run `3pa login` first.')
     process.exit(1)
@@ -93,12 +105,25 @@ export async function run(args: string[]): Promise<void> {
 
   const spin = p.spinner()
 
-  // 1. Gateway + token.
+  // 1. Gateway + token — refresh ahead of expiry, and once more on a 401.
   spin.start('Checking the gateway and persona token')
-  if (!(await gatewayAlive(session.base_url, session.token))) {
-    spin.stop(chalk.red('gateway unreachable or persona token invalid'))
-    p.log.info(`token: ${chalk.dim(SESSION_FILE)} — re-run \`3pa login\` if it expired`)
+  if (!(await gatewayHealthy(session.base_url))) {
+    spin.stop(chalk.red(`gateway unreachable — ${session.base_url}`))
     process.exit(1)
+  }
+  session = await ensureFreshToken(session)
+  if (!(await tokenValid(session.base_url, session.token))) {
+    try {
+      session = await refreshNow(session)
+    } catch {
+      spin.stop(chalk.red('persona token invalid'))
+      p.log.info(`re-run \`3pa login\` — token: ${chalk.dim(sessionFile())}`)
+      process.exit(1)
+    }
+    if (!(await tokenValid(session.base_url, session.token))) {
+      spin.stop(chalk.red('persona token invalid even after refresh — run `3pa login`'))
+      process.exit(1)
+    }
   }
   spin.stop(chalk.green('gateway and token OK'))
 
@@ -163,8 +188,9 @@ export async function run(args: string[]): Promise<void> {
     child = execa('docker', composeArgs, { stdio: 'inherit', env })
   }
 
-  // 4. Heartbeat while the sandbox runs.
-  const heartbeat = startHeartbeat(session.base_url, session.token, failClosed, child)
+  // 4. Heartbeat while the sandbox runs (liveness only — the in-container token
+  //    cannot be rotated after launch, so a long session is bounded by its TTL).
+  const heartbeat = startHeartbeat(session.base_url, failClosed, child)
 
   const cleanup = async (): Promise<void> => {
     clearInterval(heartbeat)
@@ -191,13 +217,12 @@ export async function run(args: string[]): Promise<void> {
 
 function startHeartbeat(
   base: string,
-  token: string,
   failClosed: boolean,
   child: ReturnType<typeof execa>,
 ): NodeJS.Timeout {
   let misses = 0
   const timer = setInterval(async () => {
-    if (await gatewayAlive(base, token)) {
+    if (await gatewayHealthy(base)) {
       misses = 0
       return
     }
