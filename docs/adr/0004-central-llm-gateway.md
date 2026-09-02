@@ -44,8 +44,9 @@ OpenRouter, local models). In addition:
   token_out, latency, upstream_status}` is written to the audit chain. Raw
   prompt/response retention policy is configurable (default: retain, the company
   can turn it off).
-- **Streaming:** SSE passthrough; token counting is finalized at the end of the
-  stream.
+- **Streaming:** SSE passthrough; the gateway injects `stream_options.include_usage`
+  when the client did not, tees the raw chunks through a line buffer, and reads
+  the final `usage` chunk for the audit + quota counters.
 - opencode side: in the managed config, a `provider` block with
   `@ai-sdk/openai-compatible` + `options.baseURL = https://<server>/v1` +
   `apiKey = {env:FABAGENT_TOKEN}`.
@@ -75,5 +76,9 @@ OpenRouter, local models). In addition:
   daily/monthly token quota (`gateway.*_token_limit`, `GatewayUsage` table).
   `preflight()` before forwarding, `record_usage()` after. All default
   permissive.
-- Still open: parsing the final `usage` chunk of a streamed response for exact
-  token accounting; a shared rate-limit store (Redis) for multi-worker.
+- Streamed calls now meter tokens: `stream_options.include_usage` is injected
+  when absent, and `_sse_usage()` pulls the `usage` object out of the SSE stream
+  for `_audit_gateway_call` + `gateway_limits.record_usage` (`api/gateway.py`).
+- Still open: a shared rate-limit + usage store (Redis) for multi-worker
+  deployments; propagating a non-200 upstream status on the streaming path
+  (today the client always sees 200, the real status is only in the audit).

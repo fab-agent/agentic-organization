@@ -128,6 +128,28 @@ def _audit_gateway_call(
 # ── OpenAI-compatible surface ─────────────────────────────────────────────────
 
 
+def _sse_usage(line: bytes) -> dict | None:
+    """
+    Pull an OpenAI-style `usage` object out of one SSE `data:` line, or None.
+    Providers put it on the last chunk (choices == []) once `stream_options`
+    asks for it; some repeat it on every chunk — the caller keeps the last.
+    """
+    s = line.strip()
+    if not s.startswith(b"data:"):
+        return None
+    payload = s[5:].strip()
+    if not payload or payload == b"[DONE]":
+        return None
+    try:
+        obj = json.loads(payload)
+    except (ValueError, TypeError):
+        return None
+    usage = obj.get("usage") if isinstance(obj, dict) else None
+    if isinstance(usage, dict) and usage.get("total_tokens") is not None:
+        return usage
+    return None
+
+
 @router.post("/v1/chat/completions")
 async def chat_completions(
     request: Request, principal: PersonaPrincipal = Depends(get_persona_gateway)
@@ -186,30 +208,55 @@ async def chat_completions(
         )
         return data
 
-    # Streaming passthrough. Token usage is only known at the end of the SSE
-    # stream (if the upstream includes a usage chunk); Faz 1 will parse it.
+    # Streaming passthrough. Token usage is only in the SSE stream's final chunk,
+    # and only when the upstream is asked for it — inject `stream_options` when
+    # the client did not (the extra usage-only chunk flows through to the client,
+    # which openai-compatible SDKs expect). We tee the raw chunks through a line
+    # buffer and pull `usage` out for the audit + quota counters (ADR-0004).
+    upstream_body = body
+    if "stream_options" not in body:
+        upstream_body = {**body, "stream_options": {"include_usage": True}}
+
     # Long read window for slow token streams; connect/write stay bounded.
     stream_timeout = httpx.Timeout(connect=10.0, read=900.0, write=30.0, pool=10.0)
 
     async def _proxy_stream():
+        usage: dict = {}
+        line_buf = b""
+        upstream_status = 200
         async with httpx.AsyncClient(timeout=stream_timeout) as client:
             async with client.stream(
-                "POST", url, json=body, headers=headers
+                "POST", url, json=upstream_body, headers=headers
             ) as upstream:
+                upstream_status = upstream.status_code
                 async for chunk in upstream.aiter_raw():
                     yield chunk
+                    line_buf += chunk
+                    while b"\n" in line_buf:
+                        line, line_buf = line_buf.split(b"\n", 1)
+                        found = _sse_usage(line)
+                        if found:
+                            usage = found
+        found = _sse_usage(line_buf)
+        if found:
+            usage = found
+
         latency_ms = round((time.monotonic() - t0) * 1000)
+        tokens_in = usage.get("prompt_tokens")
+        tokens_out = usage.get("completion_tokens")
         _audit_gateway_call(
             principal,
             model,
             body,
-            status=200,
-            tokens_in=None,
-            tokens_out=None,  # TODO: parse the final usage chunk of the SSE stream
+            status=upstream_status,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
             latency_ms=latency_ms,
             streamed=True,
         )
-        gateway_limits.record_usage(principal.persona_id, principal.company_id, 0, 0)
+        gateway_limits.record_usage(
+            principal.persona_id, principal.company_id, tokens_in, tokens_out
+        )
 
     return StreamingResponse(_proxy_stream(), media_type="text/event-stream")
 

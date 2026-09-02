@@ -90,10 +90,35 @@ class _FakeResponse:
         return self._payload
 
 
+class _FakeStreamCtx:
+    """Stand-in for httpx.AsyncClient.stream()'s async context manager."""
+
+    def __init__(self, chunks: list[bytes], status_code: int = 200):
+        self._chunks = chunks
+        self.status_code = status_code
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def aiter_raw(self):
+        for c in self._chunks:
+            yield c
+
+
 class _FakeAsyncClient:
-    """Stand-in for httpx.AsyncClient in the non-streaming path."""
+    """Stand-in for httpx.AsyncClient (non-streaming `post` + streaming `stream`)."""
 
     last_call: dict = {}
+    stream_chunks: list[bytes] = [
+        b'data: {"choices":[{"delta":{"content":"he"}}]}\n\n',
+        b'data: {"choices":[{"delta":{"content":"llo"}}]}\n\n',
+        b'data: {"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":5,'
+        b'"total_tokens":12}}\n\n',
+        b"data: [DONE]\n\n",
+    ]
 
     def __init__(self, *a, **kw):
         pass
@@ -113,6 +138,15 @@ class _FakeAsyncClient:
                 "usage": {"prompt_tokens": 11, "completion_tokens": 3},
             }
         )
+
+    def stream(self, method, url, json=None, headers=None):
+        _FakeAsyncClient.last_call = {
+            "method": method,
+            "url": url,
+            "json": json,
+            "headers": headers,
+        }
+        return _FakeStreamCtx(list(_FakeAsyncClient.stream_chunks))
 
 
 @pytest.fixture()
@@ -196,6 +230,79 @@ def test_chat_completions_forwards_and_audits(auth_client, agent_persona, db_ses
     assert details["tokens_in"] == 11
     assert details["tokens_out"] == 3
     assert "prompt_sha256" in details
+
+
+# ── streaming: parse the usage chunk (ADR-0004) ──────────────────────────────
+
+
+def test_sse_usage_helper():
+    from api.gateway import _sse_usage
+
+    assert _sse_usage(
+        b'data: {"usage":{"prompt_tokens":2,"completion_tokens":3,"total_tokens":5}}'
+    ) == {"prompt_tokens": 2, "completion_tokens": 3, "total_tokens": 5}
+    assert _sse_usage(b"data: [DONE]") is None
+    assert _sse_usage(b": keep-alive comment") is None
+    assert _sse_usage(b'data: {"choices":[{"delta":{"content":"x"}}]}') is None
+    assert _sse_usage(b"data: not-json") is None
+    assert _sse_usage(b'data:  {"usage":{"total_tokens":9}}\r') == {"total_tokens": 9}
+
+
+def test_streaming_parses_usage_and_meters(auth_client, agent_persona, db_session):
+    from models import GatewayUsage
+
+    person, token = agent_persona
+    make_provider_key(db_session, provider="qwen", plain_key="sk-upstream")
+    db_session.commit()
+
+    with patch("api.gateway.httpx.AsyncClient", _FakeAsyncClient):
+        r = auth_client.post(
+            "/v1/chat/completions",
+            json={**_chat_body(), "stream": True},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert r.status_code == 200
+    assert b"[DONE]" in r.content  # raw passthrough intact
+
+    # the client sent no stream_options -> the gateway asked the upstream for usage
+    assert _FakeAsyncClient.last_call["json"]["stream_options"] == {
+        "include_usage": True
+    }
+
+    row = db_session.exec(
+        select(AuditLog).where(AuditLog.action == "gateway_call")
+    ).all()[-1]
+    d = json.loads(row.details_json)
+    assert d["streamed"] is True
+    assert d["tokens_in"] == 7
+    assert d["tokens_out"] == 5
+
+    usage = db_session.exec(
+        select(GatewayUsage).where(GatewayUsage.persona_id == person.id)
+    ).all()
+    assert usage and all(u.tokens_in == 7 and u.tokens_out == 5 for u in usage)
+
+
+def test_streaming_keeps_client_supplied_stream_options(
+    auth_client, agent_persona, db_session
+):
+    _, token = agent_persona
+    make_provider_key(db_session, provider="qwen", plain_key="sk-upstream")
+    db_session.commit()
+
+    with patch("api.gateway.httpx.AsyncClient", _FakeAsyncClient):
+        auth_client.post(
+            "/v1/chat/completions",
+            json={
+                **_chat_body(),
+                "stream": True,
+                "stream_options": {"include_usage": False},
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert _FakeAsyncClient.last_call["json"]["stream_options"] == {
+        "include_usage": False
+    }
 
 
 # ── /policy/decide (ADR-0005) ────────────────────────────────────────────────
