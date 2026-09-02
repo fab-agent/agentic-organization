@@ -47,7 +47,16 @@ in ADR-0012.
 | `3pa login` | done (ADR-0007) |
 | `3pa run [project]` | **done** — `packages/cli/src/commands/run.ts`. Preflight: gateway + persona-token check (fail-closed), then fetch + Ed25519-verify `/.well-known/opencode` (`src/utils/wellknown.ts`), TOFU-pin the key id in the session, read `x-fabagent.fail_closed`. Launch: `docker compose -f sandbox/compose.yaml run --rm sandbox` (`src/utils/sandbox.ts` locates the assets; `FABAGENT_SANDBOX_DIR` overrides) with the token / model / project / `EGRESS_ALLOWLIST` injected only into the container env. A 30 s gateway heartbeat warns, and in enforce mode stops the sandbox, when the gateway goes unreachable. `--no-egress` falls back to `sandbox/run.sh`. |
 | `3pa doctor` | **done** — `src/commands/doctor.ts`: container runtime, sandbox assets, session, gateway + token, signed config. |
-| `3pa policy` / `audit verify` / `update` | not started |
+| `3pa policy` | **done** — `src/commands/policy.ts` → `GET /workstation/policy`: the persona's effective ruleset (baseline + org) + rollout mode. `--json`. |
+| `3pa audit verify` | **done** — `src/commands/audit.ts` → `GET /workstation/audit/verify`: persona-scoped tamper-evident chain check (ok / count / head, or the first break). `--json`. |
+| `3pa refresh` / `3pa logout` | done (ADR-0007) |
+| `3pa update` | not started (needs a release channel — ADR-0012) |
+
+**Heartbeat:** `3pa run` now POSTs `/workstation/heartbeat` every 30 s (persona
+token). The backend upserts `PersonaHeartbeat` (migration `c8e2f04b1d37`) and
+returns the live `policy_mode` so a mid-session flip to `enforce` is surfaced
+without re-fetching `.well-known`. Auto-revoke on heartbeat loss (ADR-0007) is
+the follow-up — the row is there, a job to act on it is not.
 
 **Resolved:** extend the existing TS CLI (not a new Go binary yet) — it already
 has `login`; a Go rewrite waits for the ADR-0008 TUI. Sandbox asset bundling and
@@ -58,8 +67,8 @@ a signed release are ADR-0012.
 - `3pa` writing the verified config into `/etc/opencode/` **inside the container**
   (today the image bakes a static `managed-settings.json`; `run` only verifies
   the served bundle, it does not yet inject it — ADR-0011).
-- A dedicated `/workstation/heartbeat` endpoint (liveness + sandbox digest into
-  the audit) vs. the current `/v1/models` probe — feeds ADR-0007 auto-revoke.
+- Auto-revoke a persona's tokens when `PersonaHeartbeat` goes stale with
+  unfinished work (ADR-0007) — needs a background job.
 - Should `3pa` manage the container runtime dependency (install Podman itself)?
 - Windows support (is WSL2 mandatory)?
 

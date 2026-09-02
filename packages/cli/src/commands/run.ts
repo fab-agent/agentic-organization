@@ -23,7 +23,7 @@ import { execa, type ExecaError } from 'execa'
 import { findSandboxDir } from '../utils/sandbox.js'
 import { ensureFreshToken, refreshNow } from '../utils/token.js'
 import { fetchAndVerifyWellKnown } from '../utils/wellknown.js'
-import { loadSession, saveSession, sessionFile } from './login.js'
+import { loadSession, saveSession, sessionFile, type Session } from './login.js'
 
 interface RunOpts {
   projectDir: string
@@ -188,9 +188,9 @@ export async function run(args: string[]): Promise<void> {
     child = execa('docker', composeArgs, { stdio: 'inherit', env })
   }
 
-  // 4. Heartbeat while the sandbox runs (liveness only — the in-container token
-  //    cannot be rotated after launch, so a long session is bounded by its TTL).
-  const heartbeat = startHeartbeat(session.base_url, failClosed, child)
+  // 4. Heartbeat while the sandbox runs — POST /workstation/heartbeat every 30s
+  //    (records liveness for ADR-0007 auto-revoke; returns the live policy mode).
+  const heartbeat = startHeartbeat(session, failClosed, child)
 
   const cleanup = async (): Promise<void> => {
     clearInterval(heartbeat)
@@ -216,17 +216,36 @@ export async function run(args: string[]): Promise<void> {
 }
 
 function startHeartbeat(
-  base: string,
+  session: Session,
   failClosed: boolean,
   child: ReturnType<typeof execa>,
 ): NodeJS.Timeout {
   let misses = 0
+  let mode = 'unknown'
   const timer = setInterval(async () => {
-    if (await gatewayHealthy(base)) {
+    try {
+      const r = await fetch(`${session.base_url}/workstation/heartbeat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({ session_ref: session.persona_id }),
+        signal: AbortSignal.timeout(5_000),
+      })
+      if (!r.ok) throw new Error(String(r.status))
       misses = 0
+      const body = (await r.json().catch(() => ({}))) as { policy_mode?: string }
+      if (body.policy_mode && body.policy_mode !== mode) {
+        if (mode !== 'unknown') {
+          p.log.warn(chalk.yellow(`policy mode changed: ${mode} → ${body.policy_mode}`))
+        }
+        mode = body.policy_mode
+      }
       return
+    } catch {
+      misses += 1
     }
-    misses += 1
     if (misses === 2) {
       p.log.warn(chalk.yellow('gateway heartbeat failing — audit/policy may not be recording'))
     }

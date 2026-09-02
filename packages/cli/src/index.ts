@@ -1,8 +1,10 @@
 import chalk from 'chalk'
+import { audit   } from './commands/audit.js'
 import { doctor  } from './commands/doctor.js'
 import { init    } from './commands/init.js'
 import { login   } from './commands/login.js'
 import { logout  } from './commands/logout.js'
+import { policy  } from './commands/policy.js'
 import { refresh } from './commands/refresh.js'
 import { run     } from './commands/run.js'
 import { start   } from './commands/start.js'
@@ -29,6 +31,14 @@ switch (cmd) {
 
   case 'run':
     await run(args)
+    break
+
+  case 'policy':
+    await policy(args)
+    break
+
+  case 'audit':
+    await audit(args)
     break
 
   case 'doctor':
@@ -60,6 +70,8 @@ switch (cmd) {
     console.log('  ' + chalk.cyan('3pa logout') + '   Yerel oturumu kapat (--revoke: sunucuda da iptal et)')
     console.log('  ' + chalk.cyan('3pa refresh') + '  Persona access token\'ı yenile')
     console.log('  ' + chalk.cyan('3pa run   ') + '   opencode\'u yönetilen sandbox içinde başlat')
+    console.log('  ' + chalk.cyan('3pa policy') + '   Persona için etkin policy kurallarını göster')
+    console.log('  ' + chalk.cyan('3pa audit verify') + ' Sunucudaki audit zincirini doğrula')
     console.log('  ' + chalk.cyan('3pa doctor') + '   Sandbox ön koşullarını kontrol et')
     console.log('  ' + chalk.cyan('3pa start ') + '   Platformu Docker ile başlat')
     console.log('  ' + chalk.cyan('3pa status') + '   Platform durumunu göster')

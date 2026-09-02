@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from sqlmodel import select
 
 from api.auth import get_current_user, require_manager
-from api.deps import get_persona_audit
+from api.deps import get_persona_audit, get_persona_gateway
 from database import get_session
 from models import AgentConfig, CompanyMember, Personnel, User
 from services import audit_chain
@@ -95,6 +95,85 @@ def ingest_audit_batch(
         company_id=principal.company_id,
     )
     return {"accepted": n}
+
+
+# ── 3pa run: heartbeat / policy / audit verify (ADR-0009) ───────────────────
+
+
+class Heartbeat(BaseModel):
+    session_ref: str | None = None
+    sandbox_digest: str | None = None
+    opencode_version: str | None = None
+
+
+@router.post("/workstation/heartbeat", status_code=202)
+def heartbeat(
+    body: Heartbeat, principal: PersonaPrincipal = Depends(get_persona_audit)
+):
+    """
+    Liveness ping from a running `3pa run` session (ADR-0009). Upserts
+    `PersonaHeartbeat` and returns the current policy mode so `3pa` can react to
+    an operator flipping `enforce` mid-session without re-fetching `.well-known`.
+    """
+    from datetime import datetime
+
+    from models import PersonaHeartbeat
+    from services.policy_engine import resolve_mode, resolve_scope
+
+    now = datetime.utcnow()
+    with get_session() as session:
+        row = session.get(PersonaHeartbeat, principal.persona_id)
+        if row is None:
+            row = PersonaHeartbeat(persona_id=principal.persona_id)
+            session.add(row)
+        row.company_id = principal.company_id
+        row.last_seen = now
+        row.session_ref = body.session_ref
+        row.sandbox_digest = body.sandbox_digest
+        row.opencode_version = body.opencode_version
+        session.commit()
+
+    company_id, department_id, agent_config_id = resolve_scope(principal.persona_id)
+    mode, default_effect = resolve_mode(
+        company_id or principal.company_id, department_id, agent_config_id
+    )
+    return {
+        "ok": True,
+        "policy_mode": mode,
+        "default_effect": default_effect,
+        "fail_closed": mode == "enforce",
+    }
+
+
+@router.get("/workstation/policy")
+def workstation_policy(principal: PersonaPrincipal = Depends(get_persona_gateway)):
+    """The effective Policy Engine ruleset + mode for the calling persona (ADR-0009)."""
+    from services.policy_engine import (
+        applicable_policy_contents,
+        load_ruleset,
+        resolve_mode,
+        resolve_scope,
+    )
+
+    company_id, department_id, agent_config_id = resolve_scope(principal.persona_id)
+    company_id = company_id or principal.company_id
+    mode, default_effect = resolve_mode(company_id, department_id, agent_config_id)
+    contents = applicable_policy_contents(company_id, department_id, agent_config_id)
+    ruleset = load_ruleset(contents)
+    return {
+        "mode": mode,
+        "default_effect": default_effect,
+        "org_policy_count": len(contents),
+        "rules": ruleset,
+    }
+
+
+@router.get("/workstation/audit/verify")
+def workstation_audit_verify(
+    principal: PersonaPrincipal = Depends(get_persona_audit),
+):
+    """Verify this persona's company audit chain (ADR-0006/0009) — persona-scoped."""
+    return audit_chain.verify(principal.company_id)
 
 
 # ── 3pa login: persona selection + token (ADR-0007) ─────────────────────────
