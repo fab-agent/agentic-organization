@@ -20,6 +20,15 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def patch_engine():
+    """
+    Override conftest's autouse SQLite engine patch — this module must run
+    against the real Postgres engine built from DATABASE_URL.
+    """
+    yield
+
+
 @pytest.fixture(scope="module")
 def pg():
     """Fresh schema via the real init_db() path + RAG pgvector setup."""
