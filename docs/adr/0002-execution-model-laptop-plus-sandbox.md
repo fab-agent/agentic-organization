@@ -58,6 +58,7 @@ opencode inside a managed sandbox:
 - **Accepted residual risk:** The container is not `--privileged`, but container
   escapes and misconfigured mounts are possible. A determined user can bypass
   `3pa` and run opencode by hand — ADR-0003 addresses this.
-- **Follow-ups:** `sandbox/` image + egress-proxy config; a `fabctl.yml` CI smoke
-  test for "the sandbox comes up, egress is blocked, it does not start outside the
-  sandbox".
+- **Follow-ups:** ~~`sandbox/` image + egress-proxy config~~ (done — `sandbox/egress/`
+  + `sandbox/compose.yaml`, internal-only network + `FilterDefaultDeny` proxy);
+  isolation hardening (drop caps, scrub `OPENCODE_*`), the "starts only inside the
+  sandbox" check, macOS VM, devcontainer.

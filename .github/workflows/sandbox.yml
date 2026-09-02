@@ -1,0 +1,74 @@
+name: Sandbox
+
+# Workstation sandbox + egress proxy (ADR-0002 / ADR-0010 layer 3).
+# Validates the compose file, the egress allowlist renderer, and that the egress
+# image builds and refuses a host that is not on the allowlist.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "sandbox/**"
+      - ".github/workflows/sandbox.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "sandbox/**"
+      - ".github/workflows/sandbox.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sandbox-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sandbox:
+    name: Sandbox (compose + egress)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Lint shell
+        run: shellcheck sandbox/run.sh sandbox/egress/render-filter.sh sandbox/egress/entrypoint.sh
+
+      - name: Validate compose file
+        run: docker compose -f sandbox/compose.yaml config -q
+
+      - name: Egress allowlist renderer tests
+        run: |
+          pip install pytest
+          python -m pytest sandbox/egress/test_render_filter.py -v
+
+      - name: Build egress image
+        run: docker build -t egress-ci sandbox/egress
+
+      - name: Egress refuses a non-allowlisted host
+        run: |
+          set -eux
+          net=egress-ci-net
+          docker network create "$net"
+          docker run -d --name egress-ci --network "$net" \
+            -e EGRESS_ALLOWLIST=example.com egress-ci
+          sleep 3
+          docker logs egress-ci
+          # allowed host → 200
+          allowed=$(docker run --rm --network "$net" curlimages/curl:8.11.1 \
+            -sS -o /dev/null -w '%{http_code}' --max-time 15 \
+            -x http://egress-ci:8888 https://example.com/)
+          # blocked host → CONNECT refused (curl exit 56/7, code 000)
+          blocked=$(docker run --rm --network "$net" curlimages/curl:8.11.1 \
+            -s -o /dev/null -w '%{http_code}' --max-time 15 \
+            -x http://egress-ci:8888 https://neverssl.com/ || true)
+          echo "allowed=$allowed blocked=$blocked"
+          test "$allowed" = "200"
+          test "$blocked" != "200"
+          docker rm -f egress-ci
+          docker network rm "$net"

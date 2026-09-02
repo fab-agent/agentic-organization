@@ -1,0 +1,21 @@
+# Base egress allowlist for the workstation sandbox (ADR-0002 / ADR-0010 layer 3).
+#
+# One host per line. Matching is by suffix: "github.com" also allows any
+# subdomain (api.github.com, …) but not "evilgithub.com". A leading "*." or "."
+# is ignored. Blank lines and "#" comments are skipped.
+#
+# Extend per deployment with $EGRESS_ALLOWLIST (comma/space/newline separated),
+# which `3pa run` (ADR-0009) will populate from managed config — do not edit
+# this file for a single project. The LLM gateway host is added automatically
+# from $FABAGENT_BASE_URL.
+
+# ── Source control ──────────────────────────────────────────────────────────
+github.com
+codeload.github.com
+objects.githubusercontent.com
+raw.githubusercontent.com
+
+# ── Package registries ─────────────────────────────────────────────────────
+registry.npmjs.org
+pypi.org
+files.pythonhosted.org

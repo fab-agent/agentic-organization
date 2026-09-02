@@ -1,11 +1,14 @@
 # Workstation sandbox image (ADR-0002).
 #
 # opencode runs INSIDE this container: the project worktree is bind-mounted at
-# /work, the host filesystem / SSH keys / cloud credentials are not. Network
-# egress is meant to go through an egress-proxy (ADR-0010) — not configured in
-# this v0 image, see sandbox/README.md.
+# /work, the host filesystem / SSH keys / cloud credentials are not.
 #
-# Phase 0: roughest form. `sandbox/run.sh` is a stand-in for `3pa run` (ADR-0009).
+# Network egress: `sandbox/compose.yaml` puts this container on an internal-only
+# network with the `egress` proxy as its only way out (ADR-0002 / ADR-0010). The
+# bare `sandbox/run.sh` path has no such restriction — use compose for isolation.
+#
+# Phase 0: roughest form. `sandbox/run.sh` / `compose.yaml` stand in for `3pa
+# run` (ADR-0009).
 
 FROM node:22-bookworm-slim
 
