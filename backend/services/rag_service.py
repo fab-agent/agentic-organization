@@ -62,6 +62,11 @@ def _is_postgres() -> bool:
         return False
 
 
+def _vec_literal(vec: np.ndarray) -> str:
+    """pgvector text literal, e.g. '[0.1,0.2,...]' — cast with ::vector in SQL."""
+    return "[" + ",".join(f"{x:.7f}" for x in vec.tolist()) + "]"
+
+
 def init_rag_db() -> None:
     """
     Ensure the embedding tables exist. On an existing DB the Alembic migration
@@ -166,8 +171,8 @@ def _insert_one(
 
         session.exec(
             text(
-                "UPDATE embeddingrecord SET embedding_vec = :v WHERE id = :id"
-            ).bindparams(v=vec.tolist(), id=rec.id)
+                "UPDATE embeddingrecord SET embedding_vec = (:v)::vector WHERE id = :id"
+            ).bindparams(v=_vec_literal(vec), id=rec.id)
         )
     return True
 
@@ -287,7 +292,7 @@ def _search_pg(session, q_vec: np.ndarray, company_id, personnel_id, k: int):
     from sqlalchemy import text
 
     clauses = ["embedding_vec IS NOT NULL"]
-    params = {"q": q_vec.tolist(), "k": k}
+    params = {"q": _vec_literal(q_vec), "k": k}
     if company_id:
         clauses.append("(company_id = :cid OR company_id IS NULL)")
         params["cid"] = company_id
@@ -296,9 +301,9 @@ def _search_pg(session, q_vec: np.ndarray, company_id, personnel_id, k: int):
         params["pid"] = personnel_id
     sql = (
         "SELECT source_type, source_id, chunk_text, created_at, "
-        "1 - (embedding_vec <=> :q) AS score "
+        "1 - (embedding_vec <=> (:q)::vector) AS score "
         f"FROM embeddingrecord WHERE {' AND '.join(clauses)} "
-        "ORDER BY embedding_vec <=> :q LIMIT :k"
+        "ORDER BY embedding_vec <=> (:q)::vector LIMIT :k"
     )
     return session.exec(text(sql).bindparams(**params)).all()
 
