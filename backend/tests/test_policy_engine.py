@@ -201,6 +201,46 @@ Agents must not exfiltrate.
     assert d.effect == "deny"
 
 
+# ── baseline: untrusted-turn high-risk tools (ADR-0010) ──────────────────────
+
+
+@pytest.mark.parametrize(
+    "tool", ["bash", "webfetch", "fetch", "write", "edit", "patch"]
+)
+def test_baseline_untrusted_high_risk_asks(tool):
+    ruleset = load_ruleset([])
+    d = evaluate(_req(tool, {"command": "ls"}, provenance="untrusted"), ruleset)
+    assert d.effect == "ask"
+    assert d.matched_rule == "baseline:untrusted-high-risk"
+
+
+def test_baseline_untrusted_rule_inert_on_trusted_turn():
+    ruleset = load_ruleset([])
+    assert evaluate(_req("bash", {"command": "ls"}), ruleset).effect == "allow"
+
+
+def test_baseline_untrusted_does_not_downgrade_catastrophic_deny():
+    # An untrusted `rm -rf /` must still be denied, not softened to `ask`.
+    ruleset = load_ruleset([])
+    d = evaluate(_req("bash", {"command": "rm -rf /"}, provenance="untrusted"), ruleset)
+    assert d.effect == "deny"
+
+
+def test_baseline_untrusted_low_risk_tool_unaffected():
+    ruleset = load_ruleset([])
+    d = evaluate(_req("read", {"path": "README.md"}, provenance="untrusted"), ruleset)
+    assert d.effect == "allow"
+
+
+def test_org_rule_can_tighten_untrusted_to_deny():
+    org = [
+        '```policy\n[{"id":"no-untrusted-webfetch","match":{"tool":"webfetch","provenance":"untrusted"},"effect":"deny","reason":"exfil risk"}]\n```'
+    ]
+    ruleset = load_ruleset(org)
+    d = evaluate(_req("webfetch", {"url": "http://x"}, provenance="untrusted"), ruleset)
+    assert d.effect == "deny"
+
+
 def test_baseline_rules_are_wellformed():
     # Every baseline rule must itself evaluate without a fail-closed error.
     for rule in BASELINE_RULES:

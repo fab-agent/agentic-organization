@@ -78,7 +78,8 @@ shell). For organisations that want hard enforcement, **server-side execution**
    is written to the audit.
 2. The model wants to call a tool (`bash`, `write`, an MCP skill…).
 3. The org plugin `tool.execute.before` → gateway `/policy/decide`
-   `{persona, tool, args, provenance}`.
+   `{persona, tool, args, provenance}`. `provenance` is `untrusted` once the
+   session has run a web-fetch/search tool (ADR-0010 taint tracking).
 4. `policy_engine` evaluates the ordered rules → `allow | ask | deny`
    (error/timeout/unknown → `deny`). The decision is written to the audit.
 5. `allow` → opencode runs the tool **inside the sandbox**. `ask` → a TUI approval

@@ -46,7 +46,9 @@ VALID_EFFECTS = ("allow", "ask", "deny")
 class PolicyDecisionRequest:
     tool: str
     args: dict[str, Any] = field(default_factory=dict)
-    # "trusted" | "untrusted" — set once provenance tracking lands (ADR-0010).
+    # "trusted" | "untrusted" (ADR-0010). The opencode plugin marks a session
+    # "untrusted" once it has run a tool whose output is attacker-controllable
+    # (web fetch / search); the backend runtime can set it per-argument.
     provenance: str = "trusted"
     # "backend" | "workstation" — where the call originates.
     source: str = "backend"
@@ -119,6 +121,21 @@ _ROOT_TARGETS = (
 )
 
 BASELINE_RULES: list[dict] = [
+    {
+        # ADR-0010 layer 4: a high-risk tool on a turn that has ingested
+        # untrusted content (web fetch / search results, uploaded files, A2A
+        # output) is the main injection-driven exfil / unauthorised-action
+        # channel. Downgrade it to `ask`. Placed first so the catastrophic
+        # `deny` rules below still win under last-match-wins, and so an org rule
+        # can still relax or tighten it.
+        "id": "baseline:untrusted-high-risk",
+        "match": {
+            "tool": ["bash", "webfetch", "fetch", "write", "edit", "patch"],
+            "provenance": "untrusted",
+        },
+        "effect": "ask",
+        "reason": "High-risk tool on a turn that ingested untrusted content (ADR-0010)",
+    },
     {
         "id": "baseline:rm-rf-root",
         # AST-based: program `rm`, a recursive flag, targeting a top-level path.

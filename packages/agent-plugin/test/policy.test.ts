@@ -9,6 +9,7 @@ const cfg = {
   timeoutMs: 1000,
   failClosed: false,
   debug: false,
+  taintSources: null,
 };
 
 test("decide() posts the query and returns the decision", async () => {

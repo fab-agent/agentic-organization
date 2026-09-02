@@ -41,6 +41,7 @@ class ToolEvent(BaseModel):
     args_preview: dict | str | None = None
     result_preview: str | None = None
     decision: str | None = None  # "allow" | "ask" | "deny" (ADR-0005)
+    provenance: str | None = None  # "trusted" | "untrusted" (ADR-0010)
     error: str | None = None
     client_ts: str | None = None
     extra: dict = Field(default_factory=dict)
@@ -62,6 +63,7 @@ def ingest_tool_event(
         "args_preview": args_preview,
         "result_preview": (event.result_preview or "")[:_PREVIEW_CHARS] or None,
         "decision": event.decision,
+        "provenance": event.provenance,
         "error": event.error,
         "client_ts": event.client_ts,
         **({"extra": event.extra} if event.extra else {}),

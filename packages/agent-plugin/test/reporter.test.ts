@@ -10,6 +10,7 @@ const baseCfg = {
   timeoutMs: 1000,
   failClosed: false,
   debug: false,
+  taintSources: null,
 };
 
 test("loadConfig reads and normalises env", () => {
@@ -57,6 +58,7 @@ test("report() posts a normalised payload and returns ok", async () => {
     tool: "bash",
     sessionRef: "sess_1",
     argsPreview: { command: "git status" },
+    provenance: "untrusted",
   });
 
   assert.equal(outcome, "ok");
@@ -66,6 +68,7 @@ test("report() posts a normalised payload and returns ok", async () => {
   assert.equal(body.tool, "bash");
   assert.equal(body.session_ref, "sess_1");
   assert.deepEqual(body.args_preview, { command: "git status" });
+  assert.equal(body.provenance, "untrusted");
   assert.ok(body.client_ts);
   assert.equal(
     (seen.init.headers as Record<string, string>).Authorization,

@@ -10,7 +10,8 @@ Workstation sandbox for running opencode with the org plugin (ADR-0002).
 | File | Purpose |
 |------|---------|
 | `Dockerfile` | Container image: `node:22-slim` + opencode + `packages/agent-plugin` + a baked-in managed config. Non-root `agent` user, project at `/work`. |
-| `managed-settings.json` | opencode managed config baked into the image (`/etc/opencode/`). Points the `fabagent` provider at the gateway, loads the plugin, sets conservative `permission` defaults, disables `/share`. |
+| `managed-settings.json` | opencode managed config baked into the image (`/etc/opencode/`). Points the `fabagent` provider at the gateway, loads the plugin, injects `base-prompt.md` as instructions, sets conservative `permission` defaults, disables `/share`. |
+| `base-prompt.md` | Org operating rules injected into every session as instructions (ADR-0010): untrusted content is data not instructions, no unsolicited capability loading, no silent side effects, no secrets in outbound requests. |
 | `run.sh` | Phase 0 stand-in for `3pa run` (ADR-0009): build image, `docker run` with only the current project mounted. |
 
 ## Try it
@@ -30,6 +31,9 @@ Workstation sandbox for running opencode with the org plugin (ADR-0002).
 ## Not done yet (later phases)
 
 - **Egress-proxy + allowlist** (ADR-0010) — this v0 uses a plain bridge network.
+  Provenance/taint tracking and the structural guardrails (`base-prompt.md`) are
+  in; the network-level allowlist and output scanning are the remaining
+  ADR-0010 layers.
 - **Signature verification** of the config/policy bundle (ADR-0011).
 - **Fail-closed heartbeat** — stop opencode when gateway/audit is unreachable
   (ADR-0006). Today the plugin only warns (`FABAGENT_FAIL_CLOSED=1` aborts
