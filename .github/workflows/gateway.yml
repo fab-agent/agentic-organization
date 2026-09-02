@@ -1,0 +1,62 @@
+name: Gateway
+
+# Focused fast feedback for the workstation LLM gateway (ADR-0004).
+# The broad backend lint/test lives in ci.yml; this job runs only the gateway
+# surface on changes to it, and is where OpenAI-compatible contract tests and
+# the audit-assertion checks will grow (Faz 1+).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/api/gateway.py"
+      - "backend/services/gateway_auth.py"
+      - "backend/tests/test_gateway.py"
+      - ".github/workflows/gateway.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/api/gateway.py"
+      - "backend/services/gateway_auth.py"
+      - "backend/tests/test_gateway.py"
+      - ".github/workflows/gateway.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gateway-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gateway:
+    name: Gateway (lint + tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Ruff
+        run: pip install ruff>=0.4
+
+      - name: Lint gateway surface
+        run: |
+          ruff check backend/api/gateway.py backend/services/gateway_auth.py backend/tests/test_gateway.py
+          ruff format --check backend/api/gateway.py backend/services/gateway_auth.py backend/tests/test_gateway.py
+
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+        working-directory: backend
+
+      - name: Run gateway tests
+        run: pytest tests/test_gateway.py -v --tb=short
+        working-directory: backend
+        env:
+          JWT_SECRET: ci-test-secret-not-for-production
+          ENCRYPTION_KEY: ""

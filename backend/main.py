@@ -37,9 +37,11 @@ from api.database import router as database_router
 from api.demo_auth import router as demo_auth_router
 from api.departments import router as dept_router
 from api.flows import router as flows_router
+from api.gateway import router as gateway_router
 from api.git_sync import router as git_router
 from api.inbox import router as inbox_router
 from api.journal import router as journal_router
+from api.mcp_server import router as mcp_router
 from api.onboarding import router as onboarding_router
 from api.personnel import router as personnel_router
 from api.policies import router as policies_router
@@ -53,6 +55,8 @@ from api.telegram_bot import router as telegram_bot_router
 from api.telegram_config import router as telegram_router
 from api.tenant import router as tenant_router
 from api.users import router as users_router
+from api.well_known import router as well_known_router
+from api.workstation import router as workstation_router
 from database import get_session, init_db
 from seed import run_seed, seed_company_skills
 
@@ -101,6 +105,10 @@ app.include_router(companies_router)
 app.include_router(dept_router)
 app.include_router(personnel_router)
 app.include_router(providers_router)
+app.include_router(gateway_router)
+app.include_router(workstation_router)
+app.include_router(mcp_router)
+app.include_router(well_known_router)
 app.include_router(git_router)
 app.include_router(sessions_router)
 app.include_router(a2a_router)
@@ -188,6 +196,20 @@ def on_startup():
         )
     except Exception as e:
         logger.warning("RAG init failed", extra={"extra": {"error": str(e)}})
+
+    # Audit severity scoring (ADR-0013) — no-ops unless severity.enabled=true.
+    try:
+        from services.audit_severity import score_recent_events
+
+        _scheduler.add_job(
+            score_recent_events,
+            "interval",
+            minutes=10,
+            id="audit_severity",
+            replace_existing=True,
+        )
+    except Exception as e:
+        logger.warning("audit severity init failed", extra={"extra": {"error": str(e)}})
 
     _scheduler.start()
     from api.telegram_bot import start_polling

@@ -1,0 +1,48 @@
+name: ADR Guard
+
+# Nudges architecture-significant changes to carry an ADR (docs/adr/).
+# Not a hard blocker: add the label "no-adr-needed" to the PR to bypass.
+# See docs/adr/README.md.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  adr-guard:
+    name: ADR touch check
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-adr-needed') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for ADR touch on architecture-significant changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
+          echo "Changed files:"; echo "$changed" | sed 's/^/  /'
+
+          # Paths where a design decision usually belongs in an ADR.
+          significant='^(backend/api/gateway\.py|backend/api/mcp_server\.py|backend/api/well_known\.py|backend/services/policy_engine\.py|backend/services/audit_chain\.py|backend/services/gateway_auth\.py|packages/agent-plugin/|packages/workstation/|sandbox/)'
+
+          if echo "$changed" | grep -Eq "$significant"; then
+            if echo "$changed" | grep -Eq '^docs/adr/'; then
+              echo "OK — architecture-significant change is accompanied by an ADR touch."
+            else
+              echo "::error::Architecture-significant files changed but no docs/adr/ file was touched."
+              echo "Add or update an ADR (see docs/adr/README.md), or label the PR 'no-adr-needed'."
+              exit 1
+            fi
+          else
+            echo "OK — no architecture-significant paths changed."
+          fi

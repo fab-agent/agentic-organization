@@ -323,6 +323,33 @@ class TaskRequest(SQLModel, table=True):
 # ── Audit Log ─────────────────────────────────────────────────────────────────
 
 
+class AuditEvent(SQLModel, table=True):
+    """
+    Hash-chained, append-only audit record (ADR-0006). Tamper-evident: each row
+    carries `prev_hash` and a `hash` over its canonical body (incl. `chain_key`
+    and `seq`), so deletion or modification of any row breaks its chain from that
+    point on, and rows cannot be moved between chains.
+
+    One chain per tenant: `chain_key` is the company id, or "__global__" for
+    events with no company. `seq` is monotonic *within a chain*, assigned by
+    `services.audit_chain.append()`. Agent and human actions are the same record
+    type (the buzz pattern).
+    """
+
+    chain_key: str = Field(primary_key=True)
+    seq: int = Field(primary_key=True)
+    prev_hash: str
+    hash: str = Field(index=True)
+    actor_type: str  # "human" | "agent" | "system"
+    actor_id: str | None = Field(default=None, index=True)
+    company_id: str | None = Field(default=None, index=True)
+    action: str
+    target: str | None = None
+    reason: str | None = None
+    payload_json: str | None = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class AuditLog(SQLModel, table=True):
     """Immutable record of every significant platform action."""
 
@@ -422,6 +449,26 @@ class Policy(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class PolicyConfig(SQLModel, table=True):
+    """
+    Policy Engine enforcement settings, scoped like everything else in the org
+    (ADR-0005). Resolution is most-specific-wins:
+    agent → department → company → global AppConfig → hardcoded default.
+    A null field means "inherit from the next level up".
+    """
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    company_id: str = Field(foreign_key="company.id", index=True)
+    # "company" | "department" | "agent"
+    scope: str = Field(default="company")
+    # department.id or agentconfig.id; null for company scope
+    scope_id: str | None = Field(default=None, index=True)
+    mode: str | None = None  # "off" | "dry_run" | "enforce"
+    default_effect: str | None = None  # "allow" | "ask" | "deny"
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class DatabaseConnection(SQLModel, table=True):
     """External database connection with semantic annotations."""
 
@@ -438,6 +485,66 @@ class DatabaseConnection(SQLModel, table=True):
     status: str = Field(default="unchecked")  # "ok" | "error" | "unchecked"
     last_checked: datetime | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AuditSeverity(SQLModel, table=True):
+    """
+    LLM risk score for one audit event (ADR-0013). The audit chain itself stays
+    immutable — scores live here, keyed to (chain_key, seq).
+    """
+
+    chain_key: str = Field(primary_key=True)
+    seq: int = Field(primary_key=True)
+    company_id: str | None = Field(default=None, index=True)
+    severity: int = Field(default=1)  # 1 (benign) … 5 (critical)
+    category: str | None = (
+        None  # data-exfil | destructive | policy-evasion | privilege | other
+    )
+    reason: str | None = None
+    confidence: float | None = None
+    alerted: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class GatewayUsage(SQLModel, table=True):
+    """
+    Per-persona LLM gateway usage counters (ADR-0004). One row per
+    (persona, period) — period is a day ("2026-09-02") or a month ("2026-09").
+    """
+
+    persona_id: str = Field(primary_key=True)
+    period: str = Field(primary_key=True)
+    company_id: str | None = Field(default=None, index=True)
+    requests: int = Field(default=0)
+    tokens_in: int = Field(default=0)
+    tokens_out: int = Field(default=0)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class EmbeddingRecord(SQLModel, table=True):
+    """
+    One indexed text chunk for semantic search (RAG). Lives in the main DB now
+    (no more separate sqlite-vec file). The `embedding` bytes are the portable
+    source of truth; on PostgreSQL a shadow `embedding_vec vector(384)` column +
+    an HNSW index are added by migration for fast search (see services.rag_service).
+    """
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    source_type: str = Field(index=True)  # session_message | task_result | agent_memory
+    source_id: str = Field(unique=True, index=True)
+    personnel_id: str | None = Field(default=None, index=True)
+    company_id: str | None = Field(default=None, index=True)
+    chunk_text: str
+    embedding: bytes  # float32[dim].tobytes()
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class RagIndexState(SQLModel, table=True):
+    """Incremental-indexer cursor per source type."""
+
+    source_type: str = Field(primary_key=True)
+    last_indexed_at: str = Field(default="1970-01-01T00:00:00")
+    total_count: int = Field(default=0)
 
 
 class DemoOtp(SQLModel, table=True):

@@ -347,6 +347,33 @@ async def execute_skill(
     if not skill:
         return f"[Tool '{tool_name}' not found]"
 
+    # Policy Engine (ADR-0005). Every decision is audited; in enforce mode a
+    # deny/ask blocks the call here, in dry_run it is recorded only.
+    try:
+        from services.policy_engine import (
+            PolicyDecisionRequest,
+            audit_decision,
+            decide,
+        )
+
+        _req = PolicyDecisionRequest(
+            tool=normalized,
+            args={k: v for k, v in (args or {}).items() if not k.startswith("_")},
+            source="backend",
+            persona_id=agent_id,
+            session_ref=session_id,
+        )
+        _decision = decide(_req)
+        audit_decision(_req, _decision)
+        if _decision.enforced and _decision.effect in ("deny", "ask"):
+            verb = "denied" if _decision.effect == "deny" else "requires approval"
+            return f"[Policy {verb}: {_decision.reason}]"
+    except Exception:  # noqa: BLE001
+        # decide() is internally fail-closed; this only catches an import/wiring
+        # error. TODO(ADR-0005): in enforce mode a total engine failure should
+        # itself block rather than fall through.
+        pass
+
     cfg = json.loads(skill.config_json) if skill.config_json else {}
 
     try:

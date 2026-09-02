@@ -1,0 +1,27 @@
+{
+  "name": "@3rdpartyagent/agent-plugin",
+  "version": "0.1.0",
+  "description": "opencode org plugin — streams tool-call events to the agentic-organization backend for audit and (Phase 1+) policy enforcement.",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": ["src"],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types \"test/*.test.ts\""
+  },
+  "keywords": ["opencode", "opencode-plugin", "audit", "policy"],
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "*"
+  },
+  "peerDependenciesMeta": {
+    "@opencode-ai/plugin": { "optional": true }
+  }
+}

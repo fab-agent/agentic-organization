@@ -1,5 +1,6 @@
 import chalk from 'chalk'
 import { init   } from './commands/init.js'
+import { login  } from './commands/login.js'
 import { start  } from './commands/start.js'
 import { status } from './commands/status.js'
 
@@ -8,6 +9,10 @@ const [, , cmd, ...args] = process.argv
 switch (cmd) {
   case 'init':
     await init()
+    break
+
+  case 'login':
+    await login(args)
     break
 
   case 'start':
@@ -31,6 +36,7 @@ switch (cmd) {
     console.log('  ' + chalk.bold('Kullanım:') + '  3pa <komut>')
     console.log()
     console.log('  ' + chalk.cyan('3pa init  ') + '   Kurulum sihirbazını başlat')
+    console.log('  ' + chalk.cyan('3pa login ') + '   Persona seç ve workstation token al')
     console.log('  ' + chalk.cyan('3pa start ') + '   Platformu Docker ile başlat')
     console.log('  ' + chalk.cyan('3pa status') + '   Platform durumunu göster')
     console.log()

@@ -1,0 +1,51 @@
+name: Agent Plugin
+
+# opencode org plugin (packages/agent-plugin) — typecheck + unit tests.
+# See ADR-0001. Phase 1 will add an integration job that boots opencode headless
+# with the plugin against a mock backend.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/agent-plugin/**"
+      - ".github/workflows/agent-plugin.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/agent-plugin/**"
+      - ".github/workflows/agent-plugin.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-plugin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plugin:
+    name: Plugin (typecheck + tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: packages/agent-plugin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: packages/agent-plugin/package-lock.json
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test

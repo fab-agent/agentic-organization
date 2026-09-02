@@ -1,0 +1,24 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": ["/opt/agent-plugin/src/index.ts"],
+  "share": "disabled",
+  "provider": {
+    "fabagent": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Agentic Organization Gateway",
+      "options": {
+        "baseURL": "{env:FABAGENT_BASE_URL}/v1",
+        "apiKey": "{env:FABAGENT_TOKEN}"
+      }
+    }
+  },
+  "permission": {
+    "webfetch": "ask",
+    "bash": {
+      "git *": "allow",
+      "npm *": "allow",
+      "rm *": "ask",
+      "*": "ask"
+    }
+  }
+}
