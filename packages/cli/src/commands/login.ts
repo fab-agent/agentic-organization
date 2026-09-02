@@ -16,13 +16,16 @@ import chalk from 'chalk'
  */
 
 const SESSION_DIR = join(homedir(), '.config', '3pa')
-const SESSION_FILE = join(SESSION_DIR, 'session.json')
+export const SESSION_FILE = join(SESSION_DIR, 'session.json')
 
 export interface Session {
   base_url: string
   token: string
   persona_id: string
   persona_name: string
+  persona_model?: string
+  /** Ed25519 key id pinned from /.well-known/opencode/pubkey (ADR-0011 TOFU). */
+  wellknown_key_id?: string
   saved_at: string
 }
 
@@ -34,7 +37,7 @@ export function loadSession(): Session | null {
   }
 }
 
-function saveSession(s: Session): void {
+export function saveSession(s: Session): void {
   mkdirSync(SESSION_DIR, { recursive: true })
   writeFileSync(SESSION_FILE, JSON.stringify(s, null, 2), { mode: 0o600 })
 }
@@ -113,6 +116,7 @@ export async function login(args: string[]): Promise<void> {
     token: tok.token,
     persona_id: persona.personnel_id,
     persona_name: persona.name,
+    persona_model: persona.model,
     saved_at: new Date().toISOString(),
   })
 

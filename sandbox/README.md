@@ -18,6 +18,17 @@ Workstation sandbox for running opencode with the org plugin (ADR-0002).
 
 ## Try it
 
+The normal entry point is **`3pa run`** (`packages/cli`, ADR-0009), which does
+the login-token + signed-config-verify + launch in one step:
+
+```sh
+3pa login
+3pa run ~/code/my-project          # compose + egress by default
+3pa run --no-egress ~/code/my-project
+```
+
+`3pa run` shells out to exactly the files below. To drive them directly:
+
 1. Configure the org's upstream in the backend (Settings → AI Providers), or seed
    a `ProviderKey` with `base_url` set to your OpenAI-compatible endpoint.
 2. Mint a persona token:
@@ -44,10 +55,13 @@ Workstation sandbox for running opencode with the org plugin (ADR-0002).
   (internal network + `FilterDefaultDeny` proxy); the bare `run.sh` does not.
   Still open: per-company vs per-project allowlist scoping, and output scanning
   (layer 6).
-- **Signature verification** of the config/policy bundle (ADR-0011).
-- **Fail-closed heartbeat** — stop opencode when gateway/audit is unreachable
-  (ADR-0006). Today the plugin only warns (`FABAGENT_FAIL_CLOSED=1` aborts
-  individual tool calls but nothing supervises the session).
+- **Signature verification** of the served config bundle — `3pa run` now verifies
+  it (ADR-0011), but the image still bakes a static `managed-settings.json`
+  instead of `3pa` writing the verified config into the container.
+- **Fail-closed heartbeat** — `3pa run` polls the gateway every 30 s and stops
+  the sandbox in enforce mode (ADR-0009); `FABAGENT_FAIL_CLOSED=1` still gives
+  the plugin per-call fail-closed. A `/workstation/heartbeat` endpoint (liveness
+  + sandbox digest → audit) is still to add.
 - **Credential hygiene** — `run.sh` mounts only the project dir, but does not yet
   scrub `OPENCODE_*` override env vars or drop capabilities.
 - macOS: needs a Podman/Colima VM; `run.sh` assumes a Linux container engine.

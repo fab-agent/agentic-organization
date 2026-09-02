@@ -7,7 +7,9 @@
   "bin": { "3pa": "./bin/3pa.js" },
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test \"test/*.test.ts\""
   },
   "dependencies": {
     "@clack/prompts": "^0.8",

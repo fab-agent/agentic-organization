@@ -1,0 +1,28 @@
+{
+  "config": {
+    "b": 2,
+    "a": {
+      "z": [
+        3,
+        2,
+        1
+      ],
+      "y": "ünïcödé ✓"
+    },
+    "$schema": "x",
+    "permission": {
+      "webfetch": "ask",
+      "bash": {
+        "git *": "allow",
+        "*": "ask"
+      }
+    },
+    "x-fabagent": {
+      "fail_closed": true,
+      "policy_mode": "enforce"
+    }
+  },
+  "public_key_b64": "DaJD7HNf1+7ilU7Q97SMbKUL5ng3LHxrQdL8eMW/ztQ=",
+  "signature": "oIyMHwt8Z8osyidoa0vgVQN1HNmPhtba3r4ucxZ8u3ihIp3m5sPglePNuBXjTytUUPO4XWDxTSt+vy/xthKDDg==",
+  "canonical": "{\"$schema\":\"x\",\"a\":{\"y\":\"ünïcödé ✓\",\"z\":[3,2,1]},\"b\":2,\"permission\":{\"bash\":{\"*\":\"ask\",\"git *\":\"allow\"},\"webfetch\":\"ask\"},\"x-fabagent\":{\"fail_closed\":true,\"policy_mode\":\"enforce\"}}"
+}

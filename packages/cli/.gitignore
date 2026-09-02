@@ -1,2 +1,5 @@
 node_modules/
 dist/
+
+# Committed — CI runs `npm ci` (root .gitignore ignores it globally).
+!package-lock.json

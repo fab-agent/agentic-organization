@@ -1,7 +1,7 @@
 # ADR-0009: Workstation wrapper CLI (`3pa`) responsibilities and distribution
 
-- **Status:** proposed
-- **Date:** 2026-09-01
+- **Status:** accepted (extend the TS CLI; `run` / `doctor` implemented, rest pending)
+- **Date:** 2026-09-01 (accepted 2026-09-02)
 - **Related:** ADR-0001, ADR-0002, ADR-0007, ADR-0011
 
 ## Context and problem
@@ -40,10 +40,26 @@ Extend `3pa` into a **workstation agent launcher** (or a separate
 Homebrew / `.deb` / direct download; can be pushed via enterprise MDM. Versioning
 in ADR-0012.
 
-## Open questions
+## Implementation status (2026-09-02)
 
-- Extend `3pa`, or a separate name/binary called `packages/workstation`?
-- Language: Go (aligned with ADR-0008) vs extending the existing TS CLI.
+| Command | State |
+|---------|-------|
+| `3pa login` | done (ADR-0007) |
+| `3pa run [project]` | **done** — `packages/cli/src/commands/run.ts`. Preflight: gateway + persona-token check (fail-closed), then fetch + Ed25519-verify `/.well-known/opencode` (`src/utils/wellknown.ts`), TOFU-pin the key id in the session, read `x-fabagent.fail_closed`. Launch: `docker compose -f sandbox/compose.yaml run --rm sandbox` (`src/utils/sandbox.ts` locates the assets; `FABAGENT_SANDBOX_DIR` overrides) with the token / model / project / `EGRESS_ALLOWLIST` injected only into the container env. A 30 s gateway heartbeat warns, and in enforce mode stops the sandbox, when the gateway goes unreachable. `--no-egress` falls back to `sandbox/run.sh`. |
+| `3pa doctor` | **done** — `src/commands/doctor.ts`: container runtime, sandbox assets, session, gateway + token, signed config. |
+| `3pa policy` / `audit verify` / `update` | not started |
+
+**Resolved:** extend the existing TS CLI (not a new Go binary yet) — it already
+has `login`; a Go rewrite waits for the ADR-0008 TUI. Sandbox asset bundling and
+a signed release are ADR-0012.
+
+**Still open:**
+
+- `3pa` writing the verified config into `/etc/opencode/` **inside the container**
+  (today the image bakes a static `managed-settings.json`; `run` only verifies
+  the served bundle, it does not yet inject it — ADR-0011).
+- A dedicated `/workstation/heartbeat` endpoint (liveness + sandbox digest into
+  the audit) vs. the current `/v1/models` probe — feeds ADR-0007 auto-revoke.
 - Should `3pa` manage the container runtime dependency (install Podman itself)?
 - Windows support (is WSL2 mandatory)?
 
