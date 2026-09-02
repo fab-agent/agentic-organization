@@ -7,6 +7,10 @@
  *   the decision is `enforced` and the effect is `deny`/`ask`, the call is
  *   aborted (opencode has no "return ask" hook, so an enforced `ask` is treated
  *   conservatively as a block with an approval message).
+ * - Provenance / taint (ADR-0010): once a session runs a tool whose output is
+ *   attacker-controllable (web fetch / search — see `taint.ts`), every later
+ *   tool call in that session is reported with `provenance: "untrusted"`, which
+ *   the Policy Engine's `baseline:untrusted-high-risk` rule turns into an `ask`.
  * - `FABAGENT_FAIL_CLOSED=1` (ADR-0006): an unreachable audit/policy sink aborts
  *   the tool call. Default is fail-open so a developer is never blocked by an
  *   outage while the system is still being rolled out.
@@ -18,6 +22,7 @@
 import { isConfigured, loadConfig } from "./config.ts";
 import { PolicyClient } from "./policy.ts";
 import { Reporter, type ToolEvent } from "./reporter.ts";
+import { SessionTaint } from "./taint.ts";
 
 // Loose typing: we do not want a hard dependency on @opencode-ai/plugin's
 // evolving type surface for a plugin this small.
@@ -29,6 +34,7 @@ export const AgentOrgPlugin = async (
   const cfg = loadConfig();
   const reporter = new Reporter(cfg);
   const policy = new PolicyClient(cfg);
+  const taint = new SessionTaint(cfg.taintSources ?? undefined);
 
   if (!isConfigured(cfg)) {
     process.stderr.write(
@@ -50,15 +56,17 @@ export const AgentOrgPlugin = async (
       const tool = toolName(input);
       const args = input?.args ?? input?.arguments ?? null;
       const session = sessionRef(input);
+      const provenance = taint.provenanceFor(session);
 
       const decision = await policy.decide({
         tool,
         args: args ?? undefined,
+        provenance,
         sessionRef: session,
       });
 
       if (decision === "unreachable") {
-        await report({ phase: "before", tool, sessionRef: session, argsPreview: args });
+        await report({ phase: "before", tool, sessionRef: session, argsPreview: args, provenance });
         if (cfg.failClosed) {
           throw new Error(
             "[agent-plugin] policy engine unreachable and FABAGENT_FAIL_CLOSED is set — aborting tool call.",
@@ -73,6 +81,7 @@ export const AgentOrgPlugin = async (
         sessionRef: session,
         argsPreview: args,
         decision: decision.effect,
+        provenance,
       });
 
       if (decision.enforced && (decision.effect === "deny" || decision.effect === "ask")) {
@@ -82,11 +91,23 @@ export const AgentOrgPlugin = async (
     },
 
     "tool.execute.after": async (input: any, output: any) => {
+      const tool = toolName(input);
+      const session = sessionRef(input);
+      // Mark the session tainted BEFORE reporting, so this event already
+      // reflects that untrusted content has entered the context (ADR-0010).
+      const wasClean = !taint.isTainted(session);
+      if (!output?.error) taint.observe(session, tool);
+      if (wasClean && taint.isTainted(session) && cfg.debug) {
+        process.stderr.write(
+          `[agent-plugin] session ${session ?? "(none)"} tainted by ${tool} — later tool calls report provenance=untrusted\n`,
+        );
+      }
       await report({
         phase: "after",
-        tool: toolName(input),
-        sessionRef: sessionRef(input),
+        tool,
+        sessionRef: session,
         resultPreview: previewOf(output),
+        provenance: taint.provenanceFor(session),
         error: output?.error ? String(output.error) : null,
       });
     },

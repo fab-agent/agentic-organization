@@ -60,6 +60,25 @@ def test_tool_event_written_to_audit(auth_client, db_session):
     assert "git status" in details["args_preview"]
 
 
+def test_tool_event_records_provenance(auth_client, db_session):
+    person = _persona(db_session, auth_client._test_company)
+    token = create_persona_token(person.id, auth_client._test_company.id)
+
+    r = auth_client.post(
+        "/workstation/tool-event",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "phase": "before",
+            "tool": "bash",
+            "provenance": "untrusted",
+        },
+    )
+    assert r.status_code == 202
+
+    row = db_session.exec(select(AuditLog).where(AuditLog.action == "tool_event")).one()
+    assert json.loads(row.details_json)["provenance"] == "untrusted"
+
+
 def test_tool_event_audit_only_audience_also_works(auth_client, db_session):
     person = _persona(db_session, auth_client._test_company)
     token = create_persona_token(

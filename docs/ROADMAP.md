@@ -27,13 +27,13 @@ Postgres cutover (pgvector), `3pa login` + pluggable OIDC, Ed25519-signed
 | 0007 | token refresh + server-side revocation list; device registration; auto-revoke on plugin-heartbeat loss |
 | 0008 | own Bubble Tea TUI (deferred until an "operations panel" need is concrete) |
 | 0009 | **`3pa run`** (sandbox launch + config + token inject + heartbeat), `3pa policy` / `audit verify` / `doctor` / `update`; distribution + signing |
-| 0010 | **provenance / taint separation** (the `provenance` field exists, unfilled), egress allowlist, structural prompt guardrails, output scanning |
+| 0010 | ~~provenance / taint separation~~, ~~structural prompt guardrails~~, ~~untrusted-turn → `ask`~~ done; **egress allowlist** (needs ADR-0002 network layer), signed command channel, output scanning still pending |
 | 0011 | `3pa` fetch + verify + bake `.well-known` into the in-container managed config; signing-key rotation |
 | 0012 | `release-*.yml` (container push, `3pa` binary matrix + signing, plugin publish); version compat matrix |
 | 0013 | Telegram wiring; per-company opt-in; feed high scores back into the Policy Engine |
 
-**Suggested next work:** (1) ADR-0010 provenance + egress allowlist, (2) ADR-0009
-`3pa run`, (3) ADR-0007 token refresh + revocation.
+**Suggested next work:** (1) ADR-0010 egress allowlist (with the ADR-0002 sandbox
+network layer), (2) ADR-0009 `3pa run`, (3) ADR-0007 token refresh + revocation.
 
 ## Fixed principles
 

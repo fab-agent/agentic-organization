@@ -19,6 +19,12 @@ export interface PluginConfig {
   failClosed: boolean;
   /** When true, print a line per reported event to stderr. */
   debug: boolean;
+  /**
+   * Tools whose output is treated as untrusted content for provenance / taint
+   * tracking (ADR-0010). `null` → the plugin default set. Overridable via
+   * `FABAGENT_TAINT_SOURCES` (comma-separated).
+   */
+  taintSources: string[] | null;
 }
 
 function envInt(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
@@ -34,6 +40,16 @@ function envBool(env: NodeJS.ProcessEnv, name: string, fallback: boolean): boole
   return raw === "1" || raw.toLowerCase() === "true";
 }
 
+function envList(env: NodeJS.ProcessEnv, name: string): string[] | null {
+  const raw = env[name];
+  if (!raw) return null;
+  const items = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return items.length ? items : null;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): PluginConfig {
   const baseUrl = (env.FABAGENT_BASE_URL || "").replace(/\/+$/, "") || null;
   return {
@@ -42,6 +58,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PluginConfig {
     timeoutMs: envInt(env, "FABAGENT_REPORT_TIMEOUT_MS", 3000),
     failClosed: envBool(env, "FABAGENT_FAIL_CLOSED", false),
     debug: envBool(env, "FABAGENT_DEBUG", false),
+    taintSources: envList(env, "FABAGENT_TAINT_SOURCES"),
   };
 }
 

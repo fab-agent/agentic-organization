@@ -25,9 +25,11 @@ RUN npm install -g "opencode-ai@${OPENCODE_VERSION}" \
 COPY packages/agent-plugin /opt/agent-plugin
 RUN cd /opt/agent-plugin && npm install --omit=dev --no-audit --no-fund
 
-# Managed opencode config. On a host where the user is root this still cannot be
-# edited, because it lives inside the image (ADR-0011).
+# Managed opencode config + the org operating rules it injects as instructions
+# (ADR-0010). On a host where the user is root these still cannot be edited,
+# because they live inside the image (ADR-0011).
 COPY sandbox/managed-settings.json /etc/opencode/managed-settings.json
+COPY sandbox/base-prompt.md /etc/opencode/base-prompt.md
 
 # Non-root. The agent's blast radius is this user inside this container.
 RUN useradd --create-home --uid 10001 agent \

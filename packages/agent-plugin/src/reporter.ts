@@ -19,6 +19,8 @@ export interface ToolEvent {
   resultPreview?: string | null;
   /** Set from Phase 1 once the policy engine returns a decision (ADR-0005). */
   decision?: "allow" | "ask" | "deny" | null;
+  /** Provenance of this turn's context — "untrusted" once tainted (ADR-0010). */
+  provenance?: "trusted" | "untrusted";
   error?: string | null;
 }
 
@@ -52,6 +54,7 @@ export class Reporter {
       args_preview: normalisePreview(event.argsPreview),
       result_preview: event.resultPreview ?? null,
       decision: event.decision ?? null,
+      provenance: event.provenance ?? null,
       error: event.error ?? null,
       client_ts: new Date().toISOString(),
     };
