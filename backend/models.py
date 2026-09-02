@@ -487,6 +487,40 @@ class DatabaseConnection(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class AuditSeverity(SQLModel, table=True):
+    """
+    LLM risk score for one audit event (ADR-0013). The audit chain itself stays
+    immutable — scores live here, keyed to (chain_key, seq).
+    """
+
+    chain_key: str = Field(primary_key=True)
+    seq: int = Field(primary_key=True)
+    company_id: str | None = Field(default=None, index=True)
+    severity: int = Field(default=1)  # 1 (benign) … 5 (critical)
+    category: str | None = (
+        None  # data-exfil | destructive | policy-evasion | privilege | other
+    )
+    reason: str | None = None
+    confidence: float | None = None
+    alerted: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class GatewayUsage(SQLModel, table=True):
+    """
+    Per-persona LLM gateway usage counters (ADR-0004). One row per
+    (persona, period) — period is a day ("2026-09-02") or a month ("2026-09").
+    """
+
+    persona_id: str = Field(primary_key=True)
+    period: str = Field(primary_key=True)
+    company_id: str | None = Field(default=None, index=True)
+    requests: int = Field(default=0)
+    tokens_in: int = Field(default=0)
+    tokens_out: int = Field(default=0)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class EmbeddingRecord(SQLModel, table=True):
     """
     One indexed text chunk for semantic search (RAG). Lives in the main DB now

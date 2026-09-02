@@ -4,11 +4,10 @@ Workstation LLM Gateway — OpenAI-compatible proxy (ADR-0004).
 All model traffic from workstation agents (`3pa` → opencode) goes through here so
 that, regardless of what the client does:
   - the organisation's own OpenAI-compatible upstream is used (BYO endpoint),
-  - every call is written to the audit log (ADR-0006),
-  - model allow-lists / per-persona quota / rate limits are enforced (Faz 2).
-
-Status: Faz 0 skeleton. Working passthrough + audit. TODOs mark where later
-phases plug in (policy decisions, quota, hash-chained audit, revocation).
+  - every call is written to the tamper-evident audit chain (ADR-0006),
+  - the model allow-list / per-persona rate limit / token quota are enforced
+    (`services.gateway_limits`, ADR-0004).
+  - `POST /policy/decide` serves the workstation plugin (ADR-0005).
 
 opencode side (managed config, ADR-0011):
     "provider": {
@@ -34,7 +33,7 @@ from api.deps import get_persona_gateway
 from core.security import decrypt
 from database import get_session
 from models import AgentConfig, Personnel, ProviderKey, User
-from services import audit_chain
+from services import audit_chain, gateway_limits
 from services.agent_runtime import detect_provider
 from services.gateway_auth import PersonaPrincipal, create_persona_token
 from services.policy_engine import PolicyDecisionRequest, audit_decision, decide
@@ -142,8 +141,17 @@ async def chat_completions(
     if not model:
         raise HTTPException(status_code=422, detail="'model' alanı gerekli")
 
-    # TODO(ADR-0005): model allow-list check for this persona/company.
-    # TODO(Faz 2): per-persona token quota + rate limit.
+    # Guardrails (ADR-0004): model allow-list, per-persona rate limit + token quota.
+    with get_session() as session:
+        agent_cfg = session.exec(
+            select(AgentConfig).where(AgentConfig.personnel_id == principal.persona_id)
+        ).first()
+    gateway_limits.preflight(
+        principal.persona_id,
+        principal.company_id,
+        model,
+        agent_cfg.model if agent_cfg else None,
+    )
 
     base_url, api_key = _resolve_upstream(model)
     url = f"{base_url}/chat/completions"
@@ -170,6 +178,12 @@ async def chat_completions(
             latency_ms=latency_ms,
             streamed=False,
         )
+        gateway_limits.record_usage(
+            principal.persona_id,
+            principal.company_id,
+            usage.get("prompt_tokens"),
+            usage.get("completion_tokens"),
+        )
         return data
 
     # Streaming passthrough. Token usage is only known at the end of the SSE
@@ -191,10 +205,11 @@ async def chat_completions(
             body,
             status=200,
             tokens_in=None,
-            tokens_out=None,  # TODO(Faz 1): parse final usage chunk
+            tokens_out=None,  # TODO: parse the final usage chunk of the SSE stream
             latency_ms=latency_ms,
             streamed=True,
         )
+        gateway_limits.record_usage(principal.persona_id, principal.company_id, 0, 0)
 
     return StreamingResponse(_proxy_stream(), media_type="text/event-stream")
 
@@ -248,6 +263,44 @@ def policy_decide(
     decision = decide(req)
     audit_decision(req, decision)
     return decision.as_dict()
+
+
+@router.get("/gateway/usage")
+def gateway_usage(personnel_id: str, _: User = Depends(require_manager)):
+    """Today + this-month token/request counters for one persona (ADR-0004)."""
+    from datetime import datetime
+
+    from models import GatewayUsage
+
+    day = datetime.utcnow().strftime("%Y-%m-%d")
+    month = datetime.utcnow().strftime("%Y-%m")
+    with get_session() as session:
+        rows = {
+            r.period: r
+            for r in session.exec(
+                select(GatewayUsage).where(
+                    GatewayUsage.persona_id == personnel_id,
+                    GatewayUsage.period.in_([day, month]),
+                )
+            ).all()
+        }
+
+    def _fmt(r):
+        return (
+            {
+                "requests": r.requests,
+                "tokens_in": r.tokens_in,
+                "tokens_out": r.tokens_out,
+            }
+            if r
+            else {"requests": 0, "tokens_in": 0, "tokens_out": 0}
+        )
+
+    return {
+        "persona_id": personnel_id,
+        "day": _fmt(rows.get(day)),
+        "month": _fmt(rows.get(month)),
+    }
 
 
 # ── Persona token minting (Faz 0 — manager only) ─────────────────────────────

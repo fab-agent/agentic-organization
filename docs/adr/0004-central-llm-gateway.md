@@ -62,3 +62,18 @@ OpenRouter, local models). In addition:
   work (deliberate — it prevents offline bypass, ADR-0003).
 - **Follow-ups:** `api/gateway.py` skeleton; `gateway.yml` CI (OpenAI-compatible
   schema contract tests + audit assertion); Postgres migration plan.
+
+## Implementation status (2026-09-02)
+
+- `POST /v1/chat/completions` (stream + non-stream), `GET /v1/models`,
+  `POST /policy/decide`, `GET /gateway/usage`.
+- Upstream resolved from the company's active `ProviderKey` (`base_url` + key).
+- Every call → the tamper-evident audit chain (ADR-0006).
+- Guardrails in `services/gateway_limits.py`: model allow-list (comma globs,
+  `gateway.model_allow[:company]`; the persona's own model is always allowed),
+  per-persona rate limit (`gateway.rpm_limit`, in-process sliding window),
+  daily/monthly token quota (`gateway.*_token_limit`, `GatewayUsage` table).
+  `preflight()` before forwarding, `record_usage()` after. All default
+  permissive.
+- Still open: parsing the final `usage` chunk of a streamed response for exact
+  token accounting; a shared rate-limit store (Redis) for multi-worker.

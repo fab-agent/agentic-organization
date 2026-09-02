@@ -124,12 +124,34 @@ basic injection defense.
       config (`services/wellknown_sign.py`), `+ /pubkey` for pinning (ADR-0011).
 - [ ] `3pa` fetches + verifies `/.well-known/opencode` and bakes it into the
       sandbox managed config; signing-key rotation.
-- [ ] Backend MCP server (`api/mcp_server.py`): skills / A2A / inbox / policies
-      exposed to opencode as tools.
-- [ ] Gateway: model allowlist + per-persona quota + rate limit.
-- [ ] **LLM severity check** (ADR-0013): background job scores recent audit
-      events via an OpenAI-compatible endpoint; high risk → inbox / Telegram alert.
-- [ ] Rule authoring UI.
+- [x] Backend MCP server (`api/mcp_server.py`): JSON-RPC 2.0 `POST /mcp`
+      (persona-token auth) — `initialize` / `tools/list` / `tools/call`. Exposes
+      the persona's linked skills (reusing `build_tool_definitions` +
+      `execute_skill`, so A2A / journal / db_query come for free) plus an
+      `org_policies` read tool. Advertised in `/.well-known/opencode`.
+- [x] Gateway guardrails (`services/gateway_limits.py`, migration
+      `f2b8d1e4c690`): model allow-list (comma globs, company override, the
+      persona's own model always allowed), per-persona rate limit (in-process
+      sliding window), daily/monthly token quota (`GatewayUsage` table).
+      `preflight()` before forwarding, `record_usage()` after. `GET
+      /gateway/usage`. All limits default permissive (`dry_run` philosophy).
+- [x] **LLM severity check** (ADR-0013): `services/audit_severity.py` — a 10-min
+      APScheduler job (off unless `severity.enabled`); scores recent audit events
+      via the org's OpenAI-compatible upstream, writes `AuditSeverity` (side
+      table, chain untouched), score ≥ threshold → `InboxMessage` to the
+      responsible human. Migration `a4e6c8b02d17`.
+- [ ] Rule authoring UI; Telegram wiring for severity alerts; parse streamed
+      `usage` chunks for exact token accounting.
+
+---
+
+## Phase 2 — done. Remaining glue for a full workstation demo
+
+- [ ] `3pa run`: fetch + verify `/.well-known/opencode`, bake it into the
+      in-container managed config, inject the persona token, heartbeat.
+- [ ] Sandbox egress-proxy + allowlist (ADR-0010), fail-closed heartbeat (ADR-0006).
+- [ ] SQLite → Postgres data-migration guide for existing deployments.
+- [ ] Redis-backed rate limit + audit-chain lock for multi-worker.
 
 ---
 
