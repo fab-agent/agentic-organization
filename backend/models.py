@@ -536,6 +536,21 @@ class RevokedToken(SQLModel, table=True):
     revoked_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class PersonaHeartbeat(SQLModel, table=True):
+    """
+    Last liveness ping from a running workstation session (ADR-0009). `3pa run`
+    posts here every ~30s; a future job can auto-revoke tokens (ADR-0007) when a
+    persona goes silent with unfinished work.
+    """
+
+    persona_id: str = Field(primary_key=True)
+    company_id: str | None = Field(default=None, index=True)
+    last_seen: datetime = Field(default_factory=datetime.utcnow)
+    session_ref: str | None = None
+    sandbox_digest: str | None = None
+    opencode_version: str | None = None
+
+
 class PersonaTokenState(SQLModel, table=True):
     """
     Per-persona "revoke everything issued before now" marker (ADR-0007) — the

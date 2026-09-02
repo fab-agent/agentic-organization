@@ -41,15 +41,15 @@ auto-refreshes near expiry.
 | 0006 | external chain anchoring (git / S3 Object Lock); Redis cross-process lock |
 | 0007 | ~~token refresh + server-side revocation~~ done; in-sandbox token rotation (long-run TTL limit); device registration; auto-revoke on plugin-heartbeat loss; prune expired revocation rows |
 | 0008 | own Bubble Tea TUI (deferred until an "operations panel" need is concrete) |
-| 0009 | ~~`3pa run`~~ (launch + signed-config verify + token/model inject + heartbeat), ~~`3pa doctor`~~ done; `3pa policy` / `audit verify` / `update`; in-container config injection; distribution + signing |
+| 0009 | ~~`3pa run`~~, ~~`3pa doctor`~~, ~~`3pa policy`~~, ~~`3pa audit verify`~~, ~~`/workstation/heartbeat`~~ done; `3pa update`; in-container config injection; distribution + signing |
 | 0010 | ~~provenance / taint separation~~, ~~structural prompt guardrails~~, ~~untrusted-turn → `ask`~~, ~~egress allowlist~~ done; signed command channel, output scanning still pending |
 | 0011 | ~~`3pa` fetch + verify `.well-known`~~ done (verify + TOFU-pin); still: bake it into the in-container managed config; signing-key rotation |
 | 0012 | `release-*.yml` (container push, `3pa` binary matrix + signing, plugin publish); version compat matrix |
 | 0013 | Telegram wiring; per-company opt-in; feed high scores back into the Policy Engine |
 
 **Suggested next work:** (1) ADR-0011 in-container config injection + key
-rotation, (2) ADR-0002 sandbox isolation hardening, (3) ADR-0009
-`/workstation/heartbeat` endpoint + in-sandbox token rotation.
+rotation, (2) ADR-0002 sandbox isolation hardening, (3) ADR-0012 release
+workflows.
 
 ## Fixed principles
 
