@@ -106,17 +106,19 @@ def test_pgvector_search(pg, monkeypatch):
     from datetime import datetime
 
     from database import get_session
-    from models import Company, TaskRequest
+    from models import Company, TaskRequest, User
 
     with get_session() as s:
         co = Company(name="PG Co", slug="pg-co")
+        u = User(email="pg@smoke.test", name="PG", is_active=True)
         s.add(co)
+        s.add(u)
         s.flush()
         for i in range(rs.MIN_RECORDS_FOR_SEARCH + 2):
             s.add(
                 TaskRequest(
                     company_id=co.id,
-                    requester_user_id="u1",
+                    requester_user_id=u.id,
                     title=f"T{i}",
                     body="b",
                     status="completed",
