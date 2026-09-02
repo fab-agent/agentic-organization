@@ -34,9 +34,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["company_id"], ["company.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        "ix_policyconfig_company_id", "policyconfig", ["company_id"]
-    )
+    op.create_index("ix_policyconfig_company_id", "policyconfig", ["company_id"])
     op.create_index("ix_policyconfig_scope_id", "policyconfig", ["scope_id"])
 
 
