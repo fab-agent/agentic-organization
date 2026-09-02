@@ -21,25 +21,29 @@ tracking, `baseline:untrusted-high-risk` policy rule, `sandbox/base-prompt.md`
 structural guardrails, and a `FilterDefaultDeny` egress proxy on an internal-only
 sandbox network (`sandbox/egress/` + `sandbox/compose.yaml`).
 
+**ADR-0009 `3pa run` / `3pa doctor`**: launch opencode in the sandbox with a
+fail-closed gateway/token preflight, Ed25519 verification + TOFU-pin of the
+served org config (ADR-0011), token/model injection, and a gateway heartbeat.
+
 ### Remaining, by ADR
 
 | ADR | Left to do |
 |-----|------------|
-| 0002 | ~~egress-proxy + allowlist~~ done; sandbox isolation hardening (drop caps, scrub `OPENCODE_*`), fail-closed heartbeat, devcontainer/macOS |
+| 0002 | ~~egress-proxy + allowlist~~ done; sandbox isolation hardening (drop caps, scrub `OPENCODE_*`), devcontainer/macOS |
 | 0004 | parse the streamed `usage` chunk; Redis rate-limit for multi-worker |
 | 0005 | rule-authoring UI; parent-department policy inheritance |
 | 0006 | external chain anchoring (git / S3 Object Lock); Redis cross-process lock |
 | 0007 | token refresh + server-side revocation list; device registration; auto-revoke on plugin-heartbeat loss |
 | 0008 | own Bubble Tea TUI (deferred until an "operations panel" need is concrete) |
-| 0009 | **`3pa run`** (sandbox launch + config + token inject + heartbeat), `3pa policy` / `audit verify` / `doctor` / `update`; distribution + signing |
+| 0009 | ~~`3pa run`~~ (launch + signed-config verify + token/model inject + heartbeat), ~~`3pa doctor`~~ done; `3pa policy` / `audit verify` / `update`; in-container config injection; distribution + signing |
 | 0010 | ~~provenance / taint separation~~, ~~structural prompt guardrails~~, ~~untrusted-turn → `ask`~~, ~~egress allowlist~~ done; signed command channel, output scanning still pending |
-| 0011 | `3pa` fetch + verify + bake `.well-known` into the in-container managed config; signing-key rotation |
+| 0011 | ~~`3pa` fetch + verify `.well-known`~~ done (verify + TOFU-pin); still: bake it into the in-container managed config; signing-key rotation |
 | 0012 | `release-*.yml` (container push, `3pa` binary matrix + signing, plugin publish); version compat matrix |
 | 0013 | Telegram wiring; per-company opt-in; feed high scores back into the Policy Engine |
 
-**Suggested next work:** (1) ADR-0009 `3pa run` (wire the sandbox + egress +
-managed config + token together), (2) ADR-0007 token refresh + revocation,
-(3) ADR-0002 sandbox isolation hardening.
+**Suggested next work:** (1) ADR-0007 token refresh + server-side revocation,
+(2) ADR-0011 in-container config injection + key rotation, (3) ADR-0002 sandbox
+isolation hardening.
 
 ## Fixed principles
 

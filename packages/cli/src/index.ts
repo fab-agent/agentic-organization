@@ -1,6 +1,8 @@
 import chalk from 'chalk'
+import { doctor } from './commands/doctor.js'
 import { init   } from './commands/init.js'
 import { login  } from './commands/login.js'
+import { run    } from './commands/run.js'
 import { start  } from './commands/start.js'
 import { status } from './commands/status.js'
 
@@ -13,6 +15,14 @@ switch (cmd) {
 
   case 'login':
     await login(args)
+    break
+
+  case 'run':
+    await run(args)
+    break
+
+  case 'doctor':
+    await doctor()
     break
 
   case 'start':
@@ -37,6 +47,8 @@ switch (cmd) {
     console.log()
     console.log('  ' + chalk.cyan('3pa init  ') + '   Kurulum sihirbazını başlat')
     console.log('  ' + chalk.cyan('3pa login ') + '   Persona seç ve workstation token al')
+    console.log('  ' + chalk.cyan('3pa run   ') + '   opencode\'u yönetilen sandbox içinde başlat')
+    console.log('  ' + chalk.cyan('3pa doctor') + '   Sandbox ön koşullarını kontrol et')
     console.log('  ' + chalk.cyan('3pa start ') + '   Platformu Docker ile başlat')
     console.log('  ' + chalk.cyan('3pa status') + '   Platform durumunu göster')
     console.log()

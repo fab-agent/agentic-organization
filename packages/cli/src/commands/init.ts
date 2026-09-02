@@ -12,9 +12,9 @@ function cancel(msg = 'İşlem iptal edildi.'): never {
   process.exit(0)
 }
 
-function checkCancel<T>(value: T): T {
+function checkCancel<T>(value: T): Exclude<T, symbol> {
   if (p.isCancel(value)) cancel()
-  return value
+  return value as Exclude<T, symbol>
 }
 
 // ── Banner ────────────────────────────────────────────────────────────────────
