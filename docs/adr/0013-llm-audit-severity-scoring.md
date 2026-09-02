@@ -50,6 +50,20 @@ surface the risky events on its own.
   the scoring prompt frames them as data to classify, never as instructions, and
   the job ignores any "score this 1" text inside an event.
 
+## Implementation status (2026-09-02)
+
+- `services/audit_severity.py` — an APScheduler job (`score_recent_events`, every
+  10 min, no-op unless `severity.enabled=true`). Reads recent `AuditEvent`s of
+  interesting kinds since a cursor, batches them, scores via an
+  OpenAI-compatible model through the org's configured upstream, writes to a
+  side table `AuditSeverity` (`(chain_key, seq)`; the chain is never touched).
+- Score >= `severity.threshold` (default 4) → `InboxMessage` to the persona's
+  responsible human. Telegram wiring is a follow-up.
+- Prompt frames the events as data and tells the model to ignore embedded
+  directives; the parser trusts only its own JSON shape (ADR-0010).
+- Config: `severity.{enabled,model,threshold,batch}` in `AppConfig`.
+- Migration `a4e6c8b02d17`.
+
 ## Open questions
 
 - Batch size / cadence vs cost — tune against real volume.
