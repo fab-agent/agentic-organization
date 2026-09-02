@@ -1,0 +1,62 @@
+# Workstation sandbox + mandatory egress proxy (ADR-0002 / ADR-0010 layer 3).
+#
+# `sandbox` sits on an internal-only Docker network: no route to the internet.
+# Its only way out is `egress`, a filtering forward proxy that allows just the
+# hosts in egress/base-allowlist.txt (+ $EGRESS_ALLOWLIST + the gateway host from
+# $FABAGENT_BASE_URL). Even a tool that ignores the *_PROXY env cannot reach
+# anything — the network has no other route.
+#
+# Phase 0 stand-in for what `3pa run` (ADR-0009) will orchestrate. Usage:
+#
+#   FABAGENT_BASE_URL=https://agents.example.com \
+#   FABAGENT_TOKEN=<persona token> \
+#   PROJECT_DIR=~/code/my-project \
+#   docker compose -f sandbox/compose.yaml run --rm sandbox
+
+name: agentic-org-sandbox
+
+services:
+  egress:
+    build:
+      context: ./egress
+    environment:
+      - FABAGENT_BASE_URL
+      - EGRESS_ALLOWLIST
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - internal
+      - external
+    restart: unless-stopped
+
+  sandbox:
+    build:
+      context: ..
+      dockerfile: sandbox/Dockerfile
+    depends_on:
+      - egress
+    environment:
+      - FABAGENT_BASE_URL
+      - FABAGENT_TOKEN
+      - FABAGENT_DEBUG
+      - FABAGENT_FAIL_CLOSED
+      - FABAGENT_TAINT_SOURCES
+      - OPENCODE_MODEL=${FABAGENT_MODEL:-fabagent/qwen-turbo}
+      - HTTP_PROXY=http://egress:8888
+      - HTTPS_PROXY=http://egress:8888
+      - http_proxy=http://egress:8888
+      - https_proxy=http://egress:8888
+      - NO_PROXY=localhost,127.0.0.1,::1
+      - no_proxy=localhost,127.0.0.1,::1
+    volumes:
+      - "${PROJECT_DIR:-..}:/work"
+    networks:
+      - internal
+    stdin_open: true
+    tty: true
+
+networks:
+  # No `internal: true` gateway — the sandbox cannot route anywhere but `egress`.
+  internal:
+    internal: true
+  external: {}

@@ -2,8 +2,10 @@
 # Phase 0 stand-in for `3pa run` (ADR-0009). Builds the sandbox image and starts
 # opencode inside it, with only the current project mounted.
 #
-# NOT production: no egress-proxy, no signature verification, no fail-closed
-# heartbeat. Those arrive with the real `3pa` wrapper (ADR-0009 / ADR-0011).
+# NOT production: no egress restriction (plain bridge network), no signature
+# verification, no fail-closed heartbeat. For the egress allowlist use
+# `docker compose -f sandbox/compose.yaml run --rm sandbox` instead; the full
+# story arrives with the real `3pa` wrapper (ADR-0009 / ADR-0011).
 #
 # Usage:
 #   FABAGENT_BASE_URL=https://agents.example.com \

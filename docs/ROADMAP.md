@@ -16,24 +16,30 @@ Postgres cutover (pgvector), `3pa login` + pluggable OIDC, Ed25519-signed
 `/.well-known/opencode`, backend MCP server, LLM severity scoring. 6 migrations
 (head `a4e6c8b02d17`); CI includes a real-Postgres job (`postgres.yml`).
 
+**ADR-0010 injection defense** (layers 1–4): plugin session-level provenance/taint
+tracking, `baseline:untrusted-high-risk` policy rule, `sandbox/base-prompt.md`
+structural guardrails, and a `FilterDefaultDeny` egress proxy on an internal-only
+sandbox network (`sandbox/egress/` + `sandbox/compose.yaml`).
+
 ### Remaining, by ADR
 
 | ADR | Left to do |
 |-----|------------|
-| 0002 | egress-proxy + allowlist, sandbox isolation hardening, fail-closed heartbeat, devcontainer/macOS |
+| 0002 | ~~egress-proxy + allowlist~~ done; sandbox isolation hardening (drop caps, scrub `OPENCODE_*`), fail-closed heartbeat, devcontainer/macOS |
 | 0004 | parse the streamed `usage` chunk; Redis rate-limit for multi-worker |
 | 0005 | rule-authoring UI; parent-department policy inheritance |
 | 0006 | external chain anchoring (git / S3 Object Lock); Redis cross-process lock |
 | 0007 | token refresh + server-side revocation list; device registration; auto-revoke on plugin-heartbeat loss |
 | 0008 | own Bubble Tea TUI (deferred until an "operations panel" need is concrete) |
 | 0009 | **`3pa run`** (sandbox launch + config + token inject + heartbeat), `3pa policy` / `audit verify` / `doctor` / `update`; distribution + signing |
-| 0010 | ~~provenance / taint separation~~, ~~structural prompt guardrails~~, ~~untrusted-turn → `ask`~~ done; **egress allowlist** (needs ADR-0002 network layer), signed command channel, output scanning still pending |
+| 0010 | ~~provenance / taint separation~~, ~~structural prompt guardrails~~, ~~untrusted-turn → `ask`~~, ~~egress allowlist~~ done; signed command channel, output scanning still pending |
 | 0011 | `3pa` fetch + verify + bake `.well-known` into the in-container managed config; signing-key rotation |
 | 0012 | `release-*.yml` (container push, `3pa` binary matrix + signing, plugin publish); version compat matrix |
 | 0013 | Telegram wiring; per-company opt-in; feed high scores back into the Policy Engine |
 
-**Suggested next work:** (1) ADR-0010 egress allowlist (with the ADR-0002 sandbox
-network layer), (2) ADR-0009 `3pa run`, (3) ADR-0007 token refresh + revocation.
+**Suggested next work:** (1) ADR-0009 `3pa run` (wire the sandbox + egress +
+managed config + token together), (2) ADR-0007 token refresh + revocation,
+(3) ADR-0002 sandbox isolation hardening.
 
 ## Fixed principles
 

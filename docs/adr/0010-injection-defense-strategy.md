@@ -1,6 +1,6 @@
 # ADR-0010: Injection defense strategy
 
-- **Status:** accepted (layers 1–2, 4–5 partly implemented; 3 and 6 pending)
+- **Status:** accepted (layers 1–4 implemented; 5 partial, 6 pending)
 - **Date:** 2026-09-01 (accepted 2026-09-02)
 - **Related:** ADR-0005, ADR-0006; block/buzz `crates/buzz-acp/src/base_prompt.md`, `filter.rs`
 
@@ -41,7 +41,7 @@ does **not** provide an injection classifier — we will design this ourselves.
 |-------|-------|-------|
 | 1. Provenance / taint separation | **done (session-level)** | `packages/agent-plugin/src/taint.ts` — a session becomes `untrusted` once it runs a taint-source tool (`webfetch` / web search, overridable via `FABAGENT_TAINT_SOURCES`); sticky, per-session. The plugin sends `provenance` on `/policy/decide` and `/workstation/tool-event`; `PolicyDecisionRequest.provenance` was already matched by the engine and audited. |
 | 2. Structural prompt guardrails | **done** | `sandbox/base-prompt.md`, injected as opencode `instructions` from `sandbox/managed-settings.json`, baked into the image. |
-| 3. Egress allowlist | pending | Needs the sandbox network layer (ADR-0002) — separate change. |
+| 3. Egress allowlist | **done** | `sandbox/compose.yaml` puts the sandbox on an `internal: true` network (no internet route) with `sandbox/egress/` (tinyproxy, `FilterDefaultDeny`) as its only way out. Allowlist = `egress/base-allowlist.txt` + `$EGRESS_ALLOWLIST` + the gateway host; suffix match, HTTPS `CONNECT` filtered on the target host. Verified end-to-end (allowed host 200, blocked host + lookalike refused). |
 | 4. Untrusted-triggered high-risk tool → `ask` | **done (backend)** | `baseline:untrusted-high-risk` in `policy_engine.py` — `bash`/`webfetch`/`fetch`/`write`/`edit`/`patch` + `provenance=untrusted` → `ask`, ordered so the catastrophic `deny` rules still win and an org rule can still tighten to `deny`. Mode-respecting (audited in `dry_run`, enforced in `enforce`), consistent with the other baseline rules. |
 | 5. Separate control channel | partial | `3pa login` + signed `/.well-known` exist (ADR-0007/0011); `base-prompt.md` states the rule. A dedicated signed command channel (`shutdown`/`rotate`) is still to build. |
 | 6. Output scanning | pending | Explicitly a later phase. |
@@ -57,7 +57,9 @@ later turn, so a sticky session flag is the conservative simplification.
   second layer — the cost/latency trade-off?
 - How do we carry the provenance trail into opencode's message model (the plugin
   is limited)?
-- Is the egress allowlist managed per-company or per-project?
+- Is the egress allowlist managed per-company or per-project? (Today: one list
+  per `3pa run`, from `$EGRESS_ALLOWLIST` — scoping is deferred to `3pa` +
+  managed config, ADR-0009/0011.)
 
 ## Consequences
 
