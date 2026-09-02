@@ -36,7 +36,7 @@ auto-refreshes near expiry.
 | ADR | Left to do |
 |-----|------------|
 | 0002 | ~~egress-proxy + allowlist~~ done; sandbox isolation hardening (drop caps, scrub `OPENCODE_*`), devcontainer/macOS |
-| 0004 | parse the streamed `usage` chunk; Redis rate-limit for multi-worker |
+| 0004 | ~~parse the streamed `usage` chunk~~ done; Redis rate-limit for multi-worker; propagate non-200 upstream status on the streaming path |
 | 0005 | rule-authoring UI; parent-department policy inheritance |
 | 0006 | external chain anchoring (git / S3 Object Lock); Redis cross-process lock |
 | 0007 | ~~token refresh + server-side revocation~~ done; in-sandbox token rotation (long-run TTL limit); device registration; auto-revoke on plugin-heartbeat loss; prune expired revocation rows |
