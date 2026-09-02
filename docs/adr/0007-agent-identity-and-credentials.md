@@ -48,9 +48,27 @@ flag), where `3pa` runs a standard OIDC/device-code flow and the backend
 validates the resulting assertion before minting the persona token. Orgs without
 their own OAuth are never forced to set one up.
 
+## Implementation status (2026-09-02)
+
+- `GET /workstation/personas` — the agent personas a user may act as
+  (founder/executive → all company agents; otherwise agents they are the
+  responsible human for, or `agent_owner` for).
+- `POST /workstation/persona-token` — owner-scoped mint (replaces the
+  manager-only `/gateway/persona-token` for the login flow); issues a
+  short-lived token, `aud` = gateway + audit.
+- `POST /workstation/oidc/exchange` (`services/oidc.py`) — verifies an OIDC ID
+  token (JWKS, iss/aud/exp) against `AppConfig` `oidc.*`; maps the `email` claim
+  to an existing `User` and returns a normal web session token. **No
+  auto-provisioning.** Off unless `oidc.enabled = true`.
+- `3pa login` (`packages/cli`) — password or `--oidc <id_token>` → pick persona →
+  store `~/.config/3pa/session.json` (0600); `sandbox/run.sh` reads it.
+
+Still open: token refresh + a server-side revocation list; device registration.
+
 ## Open questions
 
-- OIDC claim → persona mapping (email match, or an explicit link table?).
+- OIDC claim → persona mapping when one email owns several personas (today: the
+  user still picks in `3pa login`).
 - Which principal do unattended executions (cron flows, A2A) run as?
 - Does `3pa` need device registration (device code flow) on first setup?
 

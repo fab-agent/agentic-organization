@@ -36,6 +36,19 @@ global < `OPENCODE_CONFIG` < project < `.opencode/` < `OPENCODE_CONFIG_CONTENT` 
 - The opencode version is **pinned** by `3pa`; an upgrade is tested and shipped in
   a new release (ADR-0012).
 
+## Implementation status (2026-09-02)
+
+- `GET /.well-known/opencode` (`api/well_known.py`) serves the org's opencode
+  config (provider → gateway, `share: disabled`, conservative `permission`
+  defaults, an `x-fabagent` block with base URL, disabled providers, and the
+  policy mode / `fail_closed` hint). Assembled from `AppConfig`.
+- **Ed25519-signed** (`services/wellknown_sign.py`): key at
+  `data/.wellknown_ed25519` (0600, generated once). The response carries
+  `signature` (over the canonical JSON), `key_id`, `algorithm`.
+  `GET /.well-known/opencode/pubkey` returns the key `3pa` pins on first setup.
+- Not yet: `3pa` fetching + verifying + writing it into the sandbox managed
+  config; key rotation; the in-container managed-settings baking.
+
 ## Open questions
 
 - On macOS, how are managed preferences guaranteed inside the VM/container?

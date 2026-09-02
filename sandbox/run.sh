@@ -17,8 +17,16 @@ PROJECT_DIR="$(cd "${1:-$PWD}" && pwd)"
 IMAGE="agentic-org-sandbox:dev"
 ENGINE="${CONTAINER_ENGINE:-docker}"
 
-: "${FABAGENT_BASE_URL:?set FABAGENT_BASE_URL}"
-: "${FABAGENT_TOKEN:?set FABAGENT_TOKEN}"
+# Fall back to the `3pa login` session if env vars aren't already set.
+SESSION="${HOME}/.config/3pa/session.json"
+if [ -z "${FABAGENT_TOKEN:-}" ] && [ -f "$SESSION" ] && command -v python3 >/dev/null; then
+  FABAGENT_BASE_URL="${FABAGENT_BASE_URL:-$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["base_url"])' "$SESSION")}"
+  FABAGENT_TOKEN="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["token"])' "$SESSION")"
+  export FABAGENT_BASE_URL FABAGENT_TOKEN
+fi
+
+: "${FABAGENT_BASE_URL:?set FABAGENT_BASE_URL or run \`3pa login\`}"
+: "${FABAGENT_TOKEN:?set FABAGENT_TOKEN or run \`3pa login\`}"
 FABAGENT_MODEL="${FABAGENT_MODEL:-fabagent/qwen-turbo}"
 
 echo ">> building $IMAGE"

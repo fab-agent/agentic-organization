@@ -54,6 +54,7 @@ from api.telegram_bot import router as telegram_bot_router
 from api.telegram_config import router as telegram_router
 from api.tenant import router as tenant_router
 from api.users import router as users_router
+from api.well_known import router as well_known_router
 from api.workstation import router as workstation_router
 from database import get_session, init_db
 from seed import run_seed, seed_company_skills
@@ -105,6 +106,7 @@ app.include_router(personnel_router)
 app.include_router(providers_router)
 app.include_router(gateway_router)
 app.include_router(workstation_router)
+app.include_router(well_known_router)
 app.include_router(git_router)
 app.include_router(sessions_router)
 app.include_router(a2a_router)

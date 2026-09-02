@@ -115,10 +115,15 @@ basic injection defense.
       rules moved to it; immune to whitespace / split flags / `sudo` / `$(...)`.
       An unparseable command with a `command` rule present → fail closed.
       `test_command_parser.py` (10) + AST bypass-resistance tests (13).
-- [ ] `3pa login` — platform-local identity as the baseline; pluggable OIDC for
-      orgs that bring their own IdP (`3pa login --oidc <issuer>`) (ADR-0007).
-- [ ] `api/well_known.py` — `/.well-known/opencode`, signed org config (ADR-0011).
-- [ ] Managed config in the container image; `3pa` signature verification.
+- [x] `3pa login` (ADR-0007): `GET /workstation/personas` (owner-scoped),
+      `POST /workstation/persona-token` (owner-scoped mint),
+      `POST /workstation/oidc/exchange` (`services/oidc.py` — JWKS verify, email→User,
+      no auto-provision, off unless `oidc.enabled`). `packages/cli` `login` command
+      → `~/.config/3pa/session.json`; `sandbox/run.sh` reads it.
+- [x] `api/well_known.py` — `GET /.well-known/opencode`, **Ed25519-signed** org
+      config (`services/wellknown_sign.py`), `+ /pubkey` for pinning (ADR-0011).
+- [ ] `3pa` fetches + verifies `/.well-known/opencode` and bakes it into the
+      sandbox managed config; signing-key rotation.
 - [ ] Backend MCP server (`api/mcp_server.py`): skills / A2A / inbox / policies
       exposed to opencode as tools.
 - [ ] Gateway: model allowlist + per-persona quota + rate limit.
