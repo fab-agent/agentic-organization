@@ -487,6 +487,32 @@ class DatabaseConnection(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class EmbeddingRecord(SQLModel, table=True):
+    """
+    One indexed text chunk for semantic search (RAG). Lives in the main DB now
+    (no more separate sqlite-vec file). The `embedding` bytes are the portable
+    source of truth; on PostgreSQL a shadow `embedding_vec vector(384)` column +
+    an HNSW index are added by migration for fast search (see services.rag_service).
+    """
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    source_type: str = Field(index=True)  # session_message | task_result | agent_memory
+    source_id: str = Field(unique=True, index=True)
+    personnel_id: str | None = Field(default=None, index=True)
+    company_id: str | None = Field(default=None, index=True)
+    chunk_text: str
+    embedding: bytes  # float32[dim].tobytes()
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class RagIndexState(SQLModel, table=True):
+    """Incremental-indexer cursor per source type."""
+
+    source_type: str = Field(primary_key=True)
+    last_indexed_at: str = Field(default="1970-01-01T00:00:00")
+    total_count: int = Field(default=0)
+
+
 class DemoOtp(SQLModel, table=True):
     """6-digit OTP for passwordless demo tenant login."""
 

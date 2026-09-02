@@ -1,0 +1,70 @@
+name: Postgres
+
+# Validates the Alembic chain and the pgvector search path against a real
+# PostgreSQL (pgvector) instance. The main test suite (ci.yml) runs on SQLite;
+# this job covers what SQLite can't exercise.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/migrations/**"
+      - "backend/models.py"
+      - "backend/database.py"
+      - "backend/services/rag_service.py"
+      - "backend/services/audit_chain.py"
+      - ".github/workflows/postgres.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/migrations/**"
+      - "backend/models.py"
+      - "backend/database.py"
+      - "backend/services/rag_service.py"
+      - "backend/services/audit_chain.py"
+      - ".github/workflows/postgres.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: postgres-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres:
+    name: Migrations + pgvector on PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      db:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: agentic
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: agentic
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agentic -d agentic"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg2://agentic:ci@localhost:5432/agentic
+      JWT_SECRET: ci-test-secret-not-for-production
+      ENCRYPTION_KEY: ""
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+        working-directory: backend
+
+      - name: Migrations + pgvector + audit-chain smoke on real Postgres
+        run: pytest tests/test_pg_smoke.py -v --tb=short
+        working-directory: backend

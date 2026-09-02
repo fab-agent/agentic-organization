@@ -1,6 +1,24 @@
 version: '3.8'
 
 services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: 3rdparty-db
+    environment:
+      - POSTGRES_USER=agentic
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-agentic-dev}
+      - POSTGRES_DB=agentic
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentic -d agentic"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -12,11 +30,14 @@ services:
       - ./data:/app/data
       - ./backend/logs:/app/logs
     environment:
-      - DATABASE_URL=sqlite:///./data/app.db
+      - DATABASE_URL=postgresql+psycopg2://agentic:${POSTGRES_PASSWORD:-agentic-dev}@db:5432/agentic
       - ENVIRONMENT=development
     env_file:
       - path: ./backend/.env
         required: false
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8000/auth/setup-status || exit 1"]
@@ -39,3 +60,4 @@ services:
 
 volumes:
   data:
+  db_data:

@@ -6,11 +6,18 @@ from sqlmodel import Session, SQLModel, create_engine
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/app.db")
 
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    echo=False,
+# `check_same_thread` is a SQLite-only pysqlite arg; PostgreSQL/MySQL reject it.
+_connect_args = (
+    {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
 )
+_engine_kwargs: dict = {"echo": False, "connect_args": _connect_args}
+if not DATABASE_URL.startswith("sqlite"):
+    # Recycle connections so a long-idle pooled connection doesn't hand back a
+    # dead socket (common behind PgBouncer / cloud Postgres).
+    _engine_kwargs["pool_pre_ping"] = True
+    _engine_kwargs["pool_recycle"] = 1800
+
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 
 
 def _is_fresh_db() -> bool:

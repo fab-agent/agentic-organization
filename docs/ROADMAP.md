@@ -96,9 +96,19 @@ basic injection defense.
       `append()` takes a PG transaction advisory lock (no-op on SQLite).
       Migration `d9b2f4c6a8e0` (rebuilds the table — dev-only, no prod data).
 - [x] `database.py` fresh-DB detection is now dialect-agnostic (inspector, not
-      `sqlite_master`).
-- [ ] **Postgres — full migration** (decided): compose service, pgvector for RAG
-      (replaces `sqlite-vec`), verify the Alembic chain on a real PG, CI job.
+      `sqlite_master`); SQLite-only `check_same_thread` guarded; pool pre-ping /
+      recycle for non-SQLite.
+- [x] **RAG moved into the main DB** (`EmbeddingRecord` / `RagIndexState`,
+      migration `e1a4c7d92f38`) — no more separate `data/rag.db`, `sqlite-vec`
+      dropped. Search: pgvector (`<=>` + HNSW) on Postgres, NumPy brute-force
+      cosine on SQLite. `test_rag.py` rewritten (13).
+- [x] **Postgres compose**: `db` service (`pgvector/pgvector:pg16`) in base /
+      prod / cloud compose; backend `DATABASE_URL` → Postgres, `depends_on`
+      healthy. `.env.example` Postgres vars. `.github/workflows/postgres.yml` +
+      `test_pg_smoke.py` (migrations → head, pgvector search, audit chain on real
+      PG).
+- [ ] SQLite→Postgres data migration guide for existing deployments (dump/load;
+      not an Alembic concern).
 - [x] **`bash` AST parsing** (`bashlex`) for the Policy Engine —
       `services/command_parser.py` + a `command` rule matcher (`program` /
       `args_all_of` / `args_any_of` / `any_program` / `pipes_into`). Baseline
