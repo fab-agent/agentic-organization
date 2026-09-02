@@ -54,6 +54,8 @@ def pg():
         "ragindexstate",
         "gatewayusage",
         "auditseverity",
+        "revokedtoken",
+        "personatokenstate",
     }
     base = [t for n, t in SQLModel.metadata.tables.items() if n not in added_since]
     SQLModel.metadata.create_all(database.engine, tables=base)

@@ -13,8 +13,8 @@ Full rationale for the decisions: [`docs/adr/`](adr/). Architecture picture:
 **Phases 0–2 are on `main`.** Gateway + guardrails, fail-closed scoped Policy
 Engine (with bash AST matching), per-tenant tamper-evident audit chain, full
 Postgres cutover (pgvector), `3pa login` + pluggable OIDC, Ed25519-signed
-`/.well-known/opencode`, backend MCP server, LLM severity scoring. 6 migrations
-(head `a4e6c8b02d17`); CI includes a real-Postgres job (`postgres.yml`).
+`/.well-known/opencode`, backend MCP server, LLM severity scoring. 7 migrations
+(head `b7d1e93a4c25`); CI includes a real-Postgres job (`postgres.yml`).
 
 **ADR-0010 injection defense** (layers 1–4): plugin session-level provenance/taint
 tracking, `baseline:untrusted-high-risk` policy rule, `sandbox/base-prompt.md`
@@ -25,6 +25,12 @@ sandbox network (`sandbox/egress/` + `sandbox/compose.yaml`).
 fail-closed gateway/token preflight, Ed25519 verification + TOFU-pin of the
 served org config (ADR-0011), token/model injection, and a gateway heartbeat.
 
+**ADR-0007 token refresh + revocation**: access + refresh persona tokens (jti,
+rotation on refresh), `POST /workstation/persona-token/refresh` + `/revoke`
+(owner or self), fail-closed per-jti + per-persona `not_before` revocation
+checked in the auth deps. `3pa refresh` / `3pa logout [--revoke]`; `3pa run`
+auto-refreshes near expiry.
+
 ### Remaining, by ADR
 
 | ADR | Left to do |
@@ -33,7 +39,7 @@ served org config (ADR-0011), token/model injection, and a gateway heartbeat.
 | 0004 | parse the streamed `usage` chunk; Redis rate-limit for multi-worker |
 | 0005 | rule-authoring UI; parent-department policy inheritance |
 | 0006 | external chain anchoring (git / S3 Object Lock); Redis cross-process lock |
-| 0007 | token refresh + server-side revocation list; device registration; auto-revoke on plugin-heartbeat loss |
+| 0007 | ~~token refresh + server-side revocation~~ done; in-sandbox token rotation (long-run TTL limit); device registration; auto-revoke on plugin-heartbeat loss; prune expired revocation rows |
 | 0008 | own Bubble Tea TUI (deferred until an "operations panel" need is concrete) |
 | 0009 | ~~`3pa run`~~ (launch + signed-config verify + token/model inject + heartbeat), ~~`3pa doctor`~~ done; `3pa policy` / `audit verify` / `update`; in-container config injection; distribution + signing |
 | 0010 | ~~provenance / taint separation~~, ~~structural prompt guardrails~~, ~~untrusted-turn → `ask`~~, ~~egress allowlist~~ done; signed command channel, output scanning still pending |
@@ -41,9 +47,9 @@ served org config (ADR-0011), token/model injection, and a gateway heartbeat.
 | 0012 | `release-*.yml` (container push, `3pa` binary matrix + signing, plugin publish); version compat matrix |
 | 0013 | Telegram wiring; per-company opt-in; feed high scores back into the Policy Engine |
 
-**Suggested next work:** (1) ADR-0007 token refresh + server-side revocation,
-(2) ADR-0011 in-container config injection + key rotation, (3) ADR-0002 sandbox
-isolation hardening.
+**Suggested next work:** (1) ADR-0011 in-container config injection + key
+rotation, (2) ADR-0002 sandbox isolation hardening, (3) ADR-0009
+`/workstation/heartbeat` endpoint + in-sandbox token rotation.
 
 ## Fixed principles
 
