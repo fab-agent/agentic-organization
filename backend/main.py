@@ -41,6 +41,7 @@ from api.gateway import router as gateway_router
 from api.git_sync import router as git_router
 from api.inbox import router as inbox_router
 from api.journal import router as journal_router
+from api.mcp_server import router as mcp_router
 from api.onboarding import router as onboarding_router
 from api.personnel import router as personnel_router
 from api.policies import router as policies_router
@@ -106,6 +107,7 @@ app.include_router(personnel_router)
 app.include_router(providers_router)
 app.include_router(gateway_router)
 app.include_router(workstation_router)
+app.include_router(mcp_router)
 app.include_router(well_known_router)
 app.include_router(git_router)
 app.include_router(sessions_router)
@@ -194,6 +196,20 @@ def on_startup():
         )
     except Exception as e:
         logger.warning("RAG init failed", extra={"extra": {"error": str(e)}})
+
+    # Audit severity scoring (ADR-0013) — no-ops unless severity.enabled=true.
+    try:
+        from services.audit_severity import score_recent_events
+
+        _scheduler.add_job(
+            score_recent_events,
+            "interval",
+            minutes=10,
+            id="audit_severity",
+            replace_existing=True,
+        )
+    except Exception as e:
+        logger.warning("audit severity init failed", extra={"extra": {"error": str(e)}})
 
     _scheduler.start()
     from api.telegram_bot import start_polling

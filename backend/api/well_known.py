@@ -56,6 +56,13 @@ def _build_config(request: Request) -> dict:
                 },
             }
         },
+        "mcp": {
+            "fabagent": {
+                "type": "remote",
+                "url": f"{base_url}/mcp",
+                "headers": {"Authorization": "Bearer {env:FABAGENT_TOKEN}"},
+            }
+        },
         "permission": {
             "webfetch": "ask",
             "bash": {"git *": "allow", "npm *": "allow", "rm *": "ask", "*": "ask"},
