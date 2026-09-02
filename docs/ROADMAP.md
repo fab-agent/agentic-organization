@@ -8,6 +8,33 @@ everything is logged tamper-evidently.
 Full rationale for the decisions: [`docs/adr/`](adr/). Architecture picture:
 [`docs/architecture/agentic-os.md`](architecture/agentic-os.md).
 
+## Current state (2026-09-02)
+
+**Phases 0–2 are on `main`.** Gateway + guardrails, fail-closed scoped Policy
+Engine (with bash AST matching), per-tenant tamper-evident audit chain, full
+Postgres cutover (pgvector), `3pa login` + pluggable OIDC, Ed25519-signed
+`/.well-known/opencode`, backend MCP server, LLM severity scoring. 6 migrations
+(head `a4e6c8b02d17`); CI includes a real-Postgres job (`postgres.yml`).
+
+### Remaining, by ADR
+
+| ADR | Left to do |
+|-----|------------|
+| 0002 | egress-proxy + allowlist, sandbox isolation hardening, fail-closed heartbeat, devcontainer/macOS |
+| 0004 | parse the streamed `usage` chunk; Redis rate-limit for multi-worker |
+| 0005 | rule-authoring UI; parent-department policy inheritance |
+| 0006 | external chain anchoring (git / S3 Object Lock); Redis cross-process lock |
+| 0007 | token refresh + server-side revocation list; device registration; auto-revoke on plugin-heartbeat loss |
+| 0008 | own Bubble Tea TUI (deferred until an "operations panel" need is concrete) |
+| 0009 | **`3pa run`** (sandbox launch + config + token inject + heartbeat), `3pa policy` / `audit verify` / `doctor` / `update`; distribution + signing |
+| 0010 | **provenance / taint separation** (the `provenance` field exists, unfilled), egress allowlist, structural prompt guardrails, output scanning |
+| 0011 | `3pa` fetch + verify + bake `.well-known` into the in-container managed config; signing-key rotation |
+| 0012 | `release-*.yml` (container push, `3pa` binary matrix + signing, plugin publish); version compat matrix |
+| 0013 | Telegram wiring; per-company opt-in; feed high scores back into the Policy Engine |
+
+**Suggested next work:** (1) ADR-0010 provenance + egress allowlist, (2) ADR-0009
+`3pa run`, (3) ADR-0007 token refresh + revocation.
+
 ## Fixed principles
 
 - **The web version stays unchanged.** The new execution model is optional;
