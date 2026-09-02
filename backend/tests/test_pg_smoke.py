@@ -35,13 +35,18 @@ def pg():
 
     cfg = Config("alembic.ini")
 
-    # Build the pre-new-migrations baseline the way the app does (create_all),
-    # then run every migration from 7ed610efc189 → head on real Postgres.
-    base = [
-        t
-        for n, t in SQLModel.metadata.tables.items()
-        if n not in ("auditevent", "policyconfig", "embeddingrecord", "ragindexstate")
-    ]
+    # Build the state at revision 7ed610efc189 (create_all, the way the app's
+    # fresh-DB path does), then run every migration after it on real Postgres.
+    # Keep this in sync with the migrations added by this branch.
+    added_since = {
+        "auditevent",
+        "policyconfig",
+        "embeddingrecord",
+        "ragindexstate",
+        "gatewayusage",
+        "auditseverity",
+    }
+    base = [t for n, t in SQLModel.metadata.tables.items() if n not in added_since]
     SQLModel.metadata.create_all(database.engine, tables=base)
     command.stamp(cfg, "7ed610efc189")
     command.upgrade(cfg, "head")
