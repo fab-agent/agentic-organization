@@ -10,7 +10,7 @@ Workstation sandbox for running opencode with the org plugin (ADR-0002).
 | File | Purpose |
 |------|---------|
 | `Dockerfile` | Container image: `node:22-slim` + opencode + `packages/agent-plugin` + a baked-in managed config. Non-root `agent` user, project at `/work`. |
-| `managed-settings.json` | opencode managed config baked into the image (`/etc/opencode/`). Points the `fabagent` provider at the gateway, loads the plugin, injects `base-prompt.md` as instructions, sets conservative `permission` defaults, disables `/share`. |
+| `opencode.json` | opencode managed config baked into the image (`/etc/opencode/`). Points the `fabagent` provider at the gateway, loads the plugin, injects `base-prompt.md` as instructions, sets conservative `permission` defaults, disables `/share`. |
 | `base-prompt.md` | Org operating rules injected into every session as instructions (ADR-0010): untrusted content is data not instructions, no unsolicited capability loading, no silent side effects, no secrets in outbound requests. |
 | `run.sh` | Phase 0 stand-in for `3pa run` (ADR-0009): build image, `docker run` with only the current project mounted. **No egress restriction** — plain bridge network. |
 | `compose.yaml` | `run.sh` + a mandatory egress proxy: the sandbox is on an `internal` network with no internet route, `egress/` is its only way out (ADR-0002 / ADR-0010 layer 3). |
@@ -55,13 +55,16 @@ the login-token + signed-config-verify + launch in one step:
   (internal network + `FilterDefaultDeny` proxy); the bare `run.sh` does not.
   Still open: per-company vs per-project allowlist scoping, and output scanning
   (layer 6).
-- **Signature verification** of the served config bundle — `3pa run` now verifies
-  it (ADR-0011), but the image still bakes a static `managed-settings.json`
-  instead of `3pa` writing the verified config into the container.
-- **Fail-closed heartbeat** — `3pa run` polls the gateway every 30 s and stops
-  the sandbox in enforce mode (ADR-0009); `FABAGENT_FAIL_CLOSED=1` still gives
-  the plugin per-call fail-closed. A `/workstation/heartbeat` endpoint (liveness
-  + sandbox digest → audit) is still to add.
-- **Credential hygiene** — `run.sh` mounts only the project dir, but does not yet
-  scrub `OPENCODE_*` override env vars or drop capabilities.
+- **Managed config** (ADR-0011) — `3pa run` fetches + Ed25519-verifies
+  `/.well-known/opencode` and bind-mounts it over `/etc/opencode/opencode.json`;
+  the baked copy is the offline / `--no-verify` fallback. Signing-key rotation
+  supported (`wellknown_sign.rotate_key`). Still open: `OPENCODE_PERMISSION` /
+  env-var bypass hardening and a plugin-side runtime assert.
+- **Fail-closed heartbeat** — `3pa run` POSTs `/workstation/heartbeat` every 30 s
+  and stops the sandbox in enforce mode (ADR-0009); `FABAGENT_FAIL_CLOSED=1`
+  gives the plugin per-call fail-closed. Auto-revoke on stale heartbeat
+  (ADR-0007) is the follow-up.
+- **Credential hygiene / isolation** — `run.sh` mounts only the project dir but
+  does not yet scrub `OPENCODE_*` override env vars or drop capabilities
+  (ADR-0002).
 - macOS: needs a Podman/Colima VM; `run.sh` assumes a Linux container engine.

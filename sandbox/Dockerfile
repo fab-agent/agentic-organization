@@ -29,9 +29,11 @@ COPY packages/agent-plugin /opt/agent-plugin
 RUN cd /opt/agent-plugin && npm install --omit=dev --no-audit --no-fund
 
 # Managed opencode config + the org operating rules it injects as instructions
-# (ADR-0010). On a host where the user is root these still cannot be edited,
-# because they live inside the image (ADR-0011).
-COPY sandbox/managed-settings.json /etc/opencode/managed-settings.json
+# (ADR-0010). The .json here is a **fallback** — `3pa run` fetches the signed
+# `/.well-known/opencode` config, verifies it, and bind-mounts it over this path
+# (ADR-0011); the baked copy is only used with `--no-verify` / offline.
+# base-prompt.md is always baked (the served config references it by path).
+COPY sandbox/opencode.json /etc/opencode/opencode.json
 COPY sandbox/base-prompt.md /etc/opencode/base-prompt.md
 
 # Non-root. The agent's blast radius is this user inside this container.

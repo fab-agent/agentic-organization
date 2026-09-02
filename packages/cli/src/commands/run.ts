@@ -15,7 +15,9 @@
  *        --accept-key-change  --no-build
  */
 
-import { resolve } from 'node:path'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import * as p from '@clack/prompts'
 import chalk from 'chalk'
 import { execa, type ExecaError } from 'execa'
@@ -127,9 +129,11 @@ export async function run(args: string[]): Promise<void> {
   }
   spin.stop(chalk.green('gateway and token OK'))
 
-  // 2. Signed org config (ADR-0011).
+  // 2. Signed org config (ADR-0011) — verify, then write it for the sandbox to
+  //    mount over the image's baked /etc/opencode/opencode.json.
   let failClosed = false
   let policyMode = 'unknown'
+  let managedConfigPath: string | null = null
   if (opts.verify) {
     spin.start('Verifying the signed org config')
     try {
@@ -146,13 +150,16 @@ export async function run(args: string[]): Promise<void> {
         saveSession({ ...session, wellknown_key_id: keyId })
         p.log.info(`pinned signing key ${chalk.cyan(keyId)}`)
       }
-      spin.stop(chalk.green(`org config verified — policy mode: ${policyMode}`))
+      const dir = mkdtempSync(join(tmpdir(), '3pa-managed-'))
+      managedConfigPath = join(dir, 'opencode.json')
+      writeFileSync(managedConfigPath, JSON.stringify(bundle.config, null, 2))
+      spin.stop(chalk.green(`org config verified + staged — policy mode: ${policyMode}`))
     } catch (e) {
       spin.stop(chalk.red(`org config: ${(e as Error).message}`))
       process.exit(1)
     }
   } else {
-    p.log.warn('signature verification skipped (--no-verify)')
+    p.log.warn('signature verification skipped (--no-verify) — using the image\'s baked config')
   }
 
   // 3. Launch.
@@ -174,9 +181,11 @@ export async function run(args: string[]): Promise<void> {
   )
 
   const composeFile = resolve(sandboxDir, 'compose.yaml')
+  const CONTAINER_CONFIG = '/etc/opencode/opencode.json' // opencode's linux managed-config path
   let child: ReturnType<typeof execa>
   if (!opts.egress) {
     p.log.warn('egress proxy OFF (--no-egress) — the sandbox has unrestricted network')
+    if (managedConfigPath) env.FABAGENT_MANAGED_CONFIG = managedConfigPath
     child = execa('bash', [resolve(sandboxDir, 'run.sh'), opts.projectDir], {
       stdio: 'inherit',
       env,
@@ -184,6 +193,9 @@ export async function run(args: string[]): Promise<void> {
   } else {
     const composeArgs = ['compose', '-f', composeFile, 'run', '--rm']
     if (opts.build) composeArgs.push('--build')
+    if (managedConfigPath) {
+      composeArgs.push('-v', `${managedConfigPath}:${CONTAINER_CONFIG}:ro`)
+    }
     composeArgs.push('sandbox')
     child = execa('docker', composeArgs, { stdio: 'inherit', env })
   }
@@ -194,6 +206,9 @@ export async function run(args: string[]): Promise<void> {
 
   const cleanup = async (): Promise<void> => {
     clearInterval(heartbeat)
+    if (managedConfigPath) {
+      rmSync(join(managedConfigPath, '..'), { recursive: true, force: true })
+    }
     if (opts.egress) {
       // Tear down the lingering `egress` service.
       await execa('docker', ['compose', '-f', composeFile, 'down'], {
