@@ -34,10 +34,19 @@ FABAGENT_MODEL="${FABAGENT_MODEL:-fabagent/qwen-turbo}"
 echo ">> building $IMAGE"
 "$ENGINE" build -f "$REPO_ROOT/sandbox/Dockerfile" -t "$IMAGE" "$REPO_ROOT"
 
+# `3pa run` (ADR-0011) writes the verified /.well-known config here and points
+# FABAGENT_MANAGED_CONFIG at it; mount it over the image's baked one.
+MANAGED_MOUNT=()
+if [ -n "${FABAGENT_MANAGED_CONFIG:-}" ] && [ -f "$FABAGENT_MANAGED_CONFIG" ]; then
+  MANAGED_MOUNT=(-v "$FABAGENT_MANAGED_CONFIG:/etc/opencode/opencode.json:ro")
+  echo ">> using verified managed config from 3pa"
+fi
+
 echo ">> starting opencode in sandbox (project: $PROJECT_DIR)"
 exec "$ENGINE" run --rm -it \
   --network bridge \
   -v "$PROJECT_DIR:/work" \
+  "${MANAGED_MOUNT[@]}" \
   -e FABAGENT_BASE_URL \
   -e FABAGENT_TOKEN \
   -e FABAGENT_DEBUG \

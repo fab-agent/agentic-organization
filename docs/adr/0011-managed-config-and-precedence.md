@@ -1,7 +1,7 @@
 # ADR-0011: Managed config and config precedence
 
-- **Status:** proposed
-- **Date:** 2026-09-01
+- **Status:** accepted (serve + verify + in-container injection + key rotation done; env-bypass hardening pending)
+- **Date:** 2026-09-01 (accepted 2026-09-03)
 - **Related:** ADR-0001, ADR-0003, ADR-0009
 
 ## Context and problem
@@ -18,11 +18,13 @@ global < `OPENCODE_CONFIG` < project < `.opencode/` < `OPENCODE_CONFIG_CONTENT` 
 `OPENCODE_PERMISSION` env var and object-merge behaviour (opencode #22292,
 #6358).
 
-## Decision (proposed)
+## Decision
 
 - **Managed config INSIDE the container.** `3pa` (ADR-0009) runs opencode inside
-  the sandbox and writes `/etc/opencode/managed-settings.json` **at container
-  image build time** — the user being root on the host does not change this.
+  the sandbox with the managed config at `/etc/opencode/opencode.json`
+  (opencode's Linux managed-config path). The image bakes a fallback copy; on
+  every `3pa run` the verified `/.well-known/opencode` bundle is bind-mounted
+  over it. The user being root on the host does not change this.
 - **`.well-known/opencode`** is served from the backend (`api/well_known.py`);
   dynamic org policy (gateway URL, MCP servers, model allowlist) is updated
   without re-provisioning the laptop.
@@ -36,18 +38,29 @@ global < `OPENCODE_CONFIG` < project < `.opencode/` < `OPENCODE_CONFIG_CONTENT` 
 - The opencode version is **pinned** by `3pa`; an upgrade is tested and shipped in
   a new release (ADR-0012).
 
-## Implementation status (2026-09-02)
+## Implementation status (2026-09-03)
 
 - `GET /.well-known/opencode` (`api/well_known.py`) serves the org's opencode
-  config (provider → gateway, `share: disabled`, conservative `permission`
-  defaults, an `x-fabagent` block with base URL, disabled providers, and the
-  policy mode / `fail_closed` hint). Assembled from `AppConfig`.
+  config — a **complete drop-in**: `plugin`, `instructions`
+  (`/etc/opencode/base-prompt.md`, ADR-0010), `provider` → gateway, `mcp`,
+  `share: disabled`, `permission` defaults, and an `x-fabagent` block (base URL,
+  disabled providers, policy mode / `fail_closed`). Assembled from `AppConfig`.
 - **Ed25519-signed** (`services/wellknown_sign.py`): key at
-  `data/.wellknown_ed25519` (0600, generated once). The response carries
-  `signature` (over the canonical JSON), `key_id`, `algorithm`.
-  `GET /.well-known/opencode/pubkey` returns the key `3pa` pins on first setup.
-- Not yet: `3pa` fetching + verifying + writing it into the sandbox managed
-  config; key rotation; the in-container managed-settings baking.
+  `data/.wellknown_ed25519` (0600). `signature` over the canonical JSON,
+  `key_id`, `algorithm`.
+- **Key rotation:** `wellknown_sign.rotate_key()` archives the current key to
+  `.wellknown_ed25519.prev` and generates a new one; `GET /pubkey` also returns
+  `previous_key_id` during the grace window. `3pa` auto-accepts + re-pins a
+  rotation it can see advertised (pinned == `previous_key_id`); an unexplained
+  key change still needs `--accept-key-change`. `drop_previous_key()` ends the
+  window.
+- **In-container injection:** `3pa run` fetches + verifies the bundle, writes
+  the config to a temp file, and bind-mounts it over
+  `/etc/opencode/opencode.json` in the sandbox (compose `-v`, or
+  `FABAGENT_MANAGED_CONFIG` for `sandbox/run.sh`). The image's baked copy is now
+  the offline / `--no-verify` fallback only.
+- Not yet: `OPENCODE_PERMISSION` / env-var bypass hardening; a runtime assert in
+  the plugin that critical settings match; an operator UI / CLI for `rotate_key`.
 
 ## Open questions
 

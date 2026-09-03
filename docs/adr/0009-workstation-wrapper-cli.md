@@ -65,7 +65,7 @@ a signed release are ADR-0012.
 **Still open:**
 
 - `3pa` writing the verified config into `/etc/opencode/` **inside the container**
-  (today the image bakes a static `managed-settings.json`; `run` only verifies
+  (today the image bakes a static config; `run` only verifies
   the served bundle, it does not yet inject it — ADR-0011).
 - Auto-revoke a persona's tokens when `PersonaHeartbeat` goes stale with
   unfinished work (ADR-0007) — needs a background job.

@@ -46,6 +46,10 @@ def _build_config(request: Request) -> dict:
         "$schema": "https://opencode.ai/config.json",
         "share": "disabled",
         "plugin": ["/opt/agent-plugin/src/index.ts"],
+        # Org operating rules (ADR-0010) — the file is baked into the sandbox
+        # image; naming it here keeps the served config a complete drop-in
+        # replacement for the baked managed-settings.json (ADR-0011).
+        "instructions": ["/etc/opencode/base-prompt.md"],
         "provider": {
             "fabagent": {
                 "npm": "@ai-sdk/openai-compatible",
@@ -93,9 +97,14 @@ def well_known_opencode(request: Request):
 
 @router.get("/.well-known/opencode/pubkey")
 def well_known_pubkey():
-    """The Ed25519 public key `3pa` pins on first setup."""
+    """
+    The Ed25519 public key `3pa` pins. During a rotation grace window
+    `previous_key_id` is also served so a client pinned to the old key accepts
+    the transition and re-pins (ADR-0011).
+    """
     return {
         "algorithm": "ed25519",
         "public_key_b64": wellknown_sign.public_key_b64(),
         "key_id": wellknown_sign.key_id(),
+        "previous_key_id": wellknown_sign.previous_key_id(),
     }

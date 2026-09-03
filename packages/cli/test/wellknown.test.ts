@@ -93,6 +93,33 @@ test('fetchAndVerifyWellKnown pins the key on first use and rejects a bad signat
   assert.equal(okChange.keyId, 'abc123')
 })
 
+test('fetchAndVerifyWellKnown auto-accepts an advertised rotation (pinned == previous_key_id)', async () => {
+  const stub = (async (url: string) => {
+    if (url.endsWith('/pubkey')) {
+      return new Response(
+        JSON.stringify({
+          public_key_b64: fx.public_key_b64,
+          key_id: 'newkey',
+          previous_key_id: 'oldkey',
+        }),
+      )
+    }
+    return new Response(
+      JSON.stringify({ config: fx.config, signature: fx.signature, key_id: 'newkey' }),
+    )
+  }) as unknown as typeof fetch
+
+  // pinned to the key the server says it just rotated away from -> no error, re-pin
+  const { keyId } = await fetchAndVerifyWellKnown('https://x', 'oldkey', { fetchImpl: stub })
+  assert.equal(keyId, 'newkey')
+
+  // pinned to some unrelated key -> still refused
+  await assert.rejects(
+    fetchAndVerifyWellKnown('https://x', 'unrelated', { fetchImpl: stub }),
+    /signing key changed/,
+  )
+})
+
 test('fetchAndVerifyWellKnown throws on a forged bundle', async () => {
   const stub = (async (url: string) => {
     if (url.endsWith('/pubkey')) {

@@ -88,7 +88,11 @@ export async function fetchAndVerifyWellKnown(
   if (!pubRes.ok) throw new Error(`/.well-known/opencode/pubkey → ${pubRes.status}`)
 
   const bundle = (await bundleRes.json()) as WellKnownBundle
-  const pub = (await pubRes.json()) as { public_key_b64: string; key_id: string }
+  const pub = (await pubRes.json()) as {
+    public_key_b64: string
+    key_id: string
+    previous_key_id?: string | null
+  }
 
   const ok = verifyConfigSignature({
     config: bundle.config,
@@ -97,11 +101,16 @@ export async function fetchAndVerifyWellKnown(
   })
   if (!ok) throw new Error('config signature does not verify — refusing to launch')
 
-  if (pinnedKeyId && pinnedKeyId !== pub.key_id && !opts.allowKeyChange) {
-    throw new Error(
-      `signing key changed (pinned ${pinnedKeyId}, server ${pub.key_id}). ` +
-        'Re-run with --accept-key-change if this rotation is expected.',
-    )
+  if (pinnedKeyId && pinnedKeyId !== pub.key_id) {
+    // A rotation the server advertises (pinned key == previous_key_id) is
+    // accepted automatically and re-pinned; anything else needs --accept-key-change.
+    const isAdvertisedRotation = pinnedKeyId === pub.previous_key_id
+    if (!isAdvertisedRotation && !opts.allowKeyChange) {
+      throw new Error(
+        `signing key changed (pinned ${pinnedKeyId}, server ${pub.key_id}). ` +
+          'Re-run with --accept-key-change if this rotation is expected.',
+      )
+    }
   }
 
   return { bundle, keyId: pub.key_id }

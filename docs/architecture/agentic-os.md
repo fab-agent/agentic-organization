@@ -47,7 +47,7 @@ The existing **web UI does not change**; it is the path for non-developer staff.
    │  3pa run     → SANDBOX (ADR-0002):                     │
    │      • container: repo mount, egress allowlist,        │
    │        host FS / SSH / cloud creds NOT MOUNTED         │
-   │      • /etc/opencode/managed-settings.json (in image)  │
+   │      • /etc/opencode/opencode.json (baked; 3pa overrides)  │
    │      • org plugin (packages/agent-plugin):             │
    │          tool.execute.before → policy_engine           │
    │          command.executed / permission.asked → audit   │
