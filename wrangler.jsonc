@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agent-fab-engineering",
+  "compatibility_date": "2026-09-02",
+  "assets": {
+    "directory": "./",
+    "not_found_handling": "single-page-application"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
