@@ -1,6 +1,6 @@
 # ADR-0010: Injection defense strategy
 
-- **Status:** accepted (layers 1–4 implemented; 5 partial, 6 pending)
+- **Status:** accepted (layers 1–5 done; 6 — output scanning — a later phase)
 - **Date:** 2026-09-01 (accepted 2026-09-02)
 - **Related:** ADR-0005, ADR-0006; block/buzz `crates/buzz-acp/src/base_prompt.md`, `filter.rs`
 
@@ -43,7 +43,7 @@ does **not** provide an injection classifier — we will design this ourselves.
 | 2. Structural prompt guardrails | **done** | `sandbox/base-prompt.md`, injected as opencode `instructions` from `sandbox/opencode.json`, baked into the image. |
 | 3. Egress allowlist | **done** | `sandbox/compose.yaml` puts the sandbox on an `internal: true` network (no internet route) with `sandbox/egress/` (tinyproxy, `FilterDefaultDeny`) as its only way out. Allowlist = `egress/base-allowlist.txt` + `$EGRESS_ALLOWLIST` + the gateway host; suffix match, HTTPS `CONNECT` filtered on the target host. Verified end-to-end (allowed host 200, blocked host + lookalike refused). |
 | 4. Untrusted-triggered high-risk tool → `ask` | **done (backend)** | `baseline:untrusted-high-risk` in `policy_engine.py` — `bash`/`webfetch`/`fetch`/`write`/`edit`/`patch` + `provenance=untrusted` → `ask`, ordered so the catastrophic `deny` rules still win and an org rule can still tighten to `deny`. Mode-respecting (audited in `dry_run`, enforced in `enforce`), consistent with the other baseline rules. |
-| 5. Separate control channel | partial | `3pa login` + signed `/.well-known` exist (ADR-0007/0011); `base-prompt.md` states the rule. A dedicated signed command channel (`shutdown`/`rotate`) is still to build. |
+| 5. Separate control channel | **done** | `PersonaCommand` (migration `d4a7b0e916c8`) + `POST`/`GET /workstation/commands` + `/ack`. Commands (`stop` / `refresh` / `message` / …) are issued by the persona's owner or the persona itself, Ed25519-signed by the backend over their canonical JSON, and polled + **signature-verified** by `3pa` in its heartbeat loop (`packages/cli/src/utils/commands.ts`) — a forged command doesn't verify, and opencode / the plugin never touch this path. `3pa stop` / `3pa signal <kind>`. |
 | 6. Output scanning | pending | Explicitly a later phase. |
 
 opencode message-model limitation (open question below): resolved pragmatically —

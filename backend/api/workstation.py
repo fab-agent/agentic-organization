@@ -15,6 +15,7 @@ for the gateway. Identity resolution is shared via `api.deps`.
 """
 
 import json
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -23,7 +24,7 @@ from sqlmodel import select
 from api.auth import get_current_user, require_manager
 from api.deps import get_persona_audit, get_persona_gateway
 from database import get_session
-from models import AgentConfig, CompanyMember, Personnel, User
+from models import AgentConfig, CompanyMember, PersonaCommand, Personnel, User
 from services import audit_chain
 from services.auth import create_access_token
 from services.gateway_auth import PersonaPrincipal, create_persona_token
@@ -115,8 +116,6 @@ def heartbeat(
     `PersonaHeartbeat` and returns the current policy mode so `3pa` can react to
     an operator flipping `enforce` mid-session without re-fetching `.well-known`.
     """
-    from datetime import datetime
-
     from models import PersonaHeartbeat
     from services.policy_engine import resolve_mode, resolve_scope
 
@@ -318,7 +317,7 @@ def revoke_persona_tokens(
     """
     from services.persona_revocation import revoke_all
 
-    actor = _revoke_authorised(authorization, body.personnel_id)
+    actor = _persona_operator(authorization, body.personnel_id)
 
     with get_session() as session:
         person = session.get(Personnel, body.personnel_id)
@@ -334,8 +333,12 @@ def revoke_persona_tokens(
     }
 
 
-def _revoke_authorised(authorization: str | None, personnel_id: str) -> str:
-    """Return an actor label, or raise 401/403. Owner web session OR self-token."""
+def _persona_operator(authorization: str | None, personnel_id: str) -> str:
+    """
+    Return an actor label, or raise 401/403. The caller may operate on this
+    persona if it presents that persona's own token, or a web session for a
+    user who owns the persona.
+    """
     from services.auth import decode_token
     from services.gateway_auth import AUD_GATEWAY, decode_persona_token
 
@@ -343,12 +346,12 @@ def _revoke_authorised(authorization: str | None, personnel_id: str) -> str:
         raise HTTPException(status_code=401, detail="Yetkilendirme gerekli")
     token = authorization.split(" ", 1)[1]
 
-    # 1. A persona token that IS this persona (self-revoke).
+    # 1. A persona token that IS this persona (self-operation).
     try:
         principal = decode_persona_token(token, expected_audience=AUD_GATEWAY)
         if principal.persona_id == personnel_id:
             return f"persona:{personnel_id}"
-        raise HTTPException(status_code=403, detail="Başka persona iptal edilemez")
+        raise HTTPException(status_code=403, detail="Başka persona için yetki yok")
     except HTTPException:
         raise
     except Exception:
@@ -367,6 +370,108 @@ def _revoke_authorised(authorization: str | None, personnel_id: str) -> str:
     if personnel_id not in allowed:
         raise HTTPException(status_code=403, detail="Bu persona için yetkiniz yok")
     return f"user:{user_id}"
+
+
+# ── signed command channel (ADR-0010 layer 5) ──────────────────────────────
+
+_COMMAND_KINDS = {"stop", "refresh", "pause", "resume", "message"}
+
+
+class CommandRequest(BaseModel):
+    personnel_id: str
+    kind: str
+    payload: dict | None = None
+
+
+@router.post("/workstation/commands", status_code=201)
+def issue_command(body: CommandRequest, authorization: str | None = Header(None)):
+    """
+    Queue a privileged out-of-band command for a running `3pa run` session
+    (ADR-0010 layer 5). Auth: the persona's owner, or the persona itself. The
+    command is Ed25519-signed on delivery; opencode / the plugin never see this
+    path, so an injected prompt cannot forge or reach it.
+    """
+    if body.kind not in _COMMAND_KINDS:
+        raise HTTPException(
+            status_code=422, detail=f"kind must be one of {_COMMAND_KINDS}"
+        )
+    actor = _persona_operator(authorization, body.personnel_id)
+
+    with get_session() as session:
+        person = session.get(Personnel, body.personnel_id)
+        if not person or person.type != "agent":
+            raise HTTPException(status_code=404, detail="Persona bulunamadı")
+        cmd = PersonaCommand(
+            persona_id=person.id,
+            company_id=person.company_id,
+            kind=body.kind,
+            payload_json=json.dumps(body.payload) if body.payload else None,
+            issued_by=actor,
+        )
+        session.add(cmd)
+        session.commit()
+        return {"id": cmd.id, "kind": cmd.kind, "issued_by": actor}
+
+
+@router.get("/workstation/commands")
+def poll_commands(principal: PersonaPrincipal = Depends(get_persona_audit)):
+    """
+    Pending commands for the calling persona, each wrapped with an Ed25519
+    signature over its canonical JSON. Marks them delivered. `3pa` verifies the
+    signature against the pinned `/.well-known` key before acting.
+    """
+    from services import wellknown_sign
+
+    now = datetime.utcnow()
+    out = []
+    with get_session() as session:
+        rows = session.exec(
+            select(PersonaCommand)
+            .where(PersonaCommand.persona_id == principal.persona_id)
+            .where(PersonaCommand.delivered_at.is_(None))
+            .order_by(PersonaCommand.created_at)
+        ).all()
+        for cmd in rows:
+            body = {
+                "id": cmd.id,
+                "persona_id": cmd.persona_id,
+                "kind": cmd.kind,
+                "payload": json.loads(cmd.payload_json) if cmd.payload_json else None,
+                "issued_by": cmd.issued_by,
+                "created_at": cmd.created_at.isoformat(),
+            }
+            out.append(
+                {
+                    "command": body,
+                    "signature": wellknown_sign.sign(body),
+                    "key_id": wellknown_sign.key_id(),
+                    "algorithm": "ed25519",
+                }
+            )
+            cmd.delivered_at = now
+        session.commit()
+    return {"commands": out}
+
+
+class CommandAck(BaseModel):
+    result: str | None = None
+
+
+@router.post("/workstation/commands/{command_id}/ack", status_code=202)
+def ack_command(
+    command_id: str,
+    body: CommandAck,
+    principal: PersonaPrincipal = Depends(get_persona_audit),
+):
+    """`3pa` reports it has acted on a delivered command."""
+    with get_session() as session:
+        cmd = session.get(PersonaCommand, command_id)
+        if not cmd or cmd.persona_id != principal.persona_id:
+            raise HTTPException(status_code=404, detail="Komut bulunamadı")
+        cmd.acked_at = datetime.utcnow()
+        cmd.result = (body.result or "")[:500] or None
+        session.commit()
+    return {"acked": True}
 
 
 class OIDCExchange(BaseModel):

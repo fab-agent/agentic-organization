@@ -7,6 +7,7 @@ import { logout  } from './commands/logout.js'
 import { policy  } from './commands/policy.js'
 import { refresh } from './commands/refresh.js'
 import { run     } from './commands/run.js'
+import { signal  } from './commands/stop.js'
 import { start   } from './commands/start.js'
 import { status  } from './commands/status.js'
 
@@ -41,6 +42,14 @@ switch (cmd) {
     await audit(args)
     break
 
+  case 'stop':
+    await signal(['stop'])
+    break
+
+  case 'signal':
+    await signal(args)
+    break
+
   case 'doctor':
     await doctor()
     break
@@ -72,6 +81,7 @@ switch (cmd) {
     console.log('  ' + chalk.cyan('3pa run   ') + '   opencode\'u yönetilen sandbox içinde başlat')
     console.log('  ' + chalk.cyan('3pa policy') + '   Persona için etkin policy kurallarını göster')
     console.log('  ' + chalk.cyan('3pa audit verify') + ' Sunucudaki audit zincirini doğrula')
+    console.log('  ' + chalk.cyan('3pa stop  ') + '   Çalışan sandbox oturumunu durdur (imzalı komut)')
     console.log('  ' + chalk.cyan('3pa doctor') + '   Sandbox ön koşullarını kontrol et')
     console.log('  ' + chalk.cyan('3pa start ') + '   Platformu Docker ile başlat')
     console.log('  ' + chalk.cyan('3pa status') + '   Platform durumunu göster')

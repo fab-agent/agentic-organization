@@ -536,6 +536,27 @@ class RevokedToken(SQLModel, table=True):
     revoked_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class PersonaCommand(SQLModel, table=True):
+    """
+    A privileged out-of-band command for a running `3pa run` session (ADR-0010
+    layer 5 — the "separate control channel"). Issued by the persona's owner (or
+    the persona itself), Ed25519-signed by the backend, polled + verified by
+    `3pa` in its heartbeat loop. opencode / the plugin never touch this path, so
+    an injected prompt cannot reach it, and cannot forge the signature.
+    """
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    persona_id: str = Field(index=True)
+    company_id: str | None = Field(default=None, index=True)
+    kind: str  # stop | refresh | pause | resume | message
+    payload_json: str | None = None
+    issued_by: str  # user id, or "persona:<id>" for a self-command
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    delivered_at: datetime | None = None
+    acked_at: datetime | None = None
+    result: str | None = None
+
+
 class PersonaHeartbeat(SQLModel, table=True):
     """
     Last liveness ping from a running workstation session (ADR-0009). `3pa run`
