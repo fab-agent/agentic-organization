@@ -35,7 +35,7 @@ auto-refreshes near expiry.
 
 | ADR | Left to do |
 |-----|------------|
-| 0002 | ~~egress-proxy + allowlist~~ done; sandbox isolation hardening (drop caps, scrub `OPENCODE_*`), devcontainer/macOS |
+| 0002 | ~~egress-proxy + allowlist~~, ~~isolation hardening (cap_drop, no-new-privileges, pids/mem/cpu, OPENCODE_* scrub)~~ done; read-only rootfs, devcontainer/macOS |
 | 0004 | ~~parse the streamed `usage` chunk~~ done; Redis rate-limit for multi-worker; propagate non-200 upstream status on the streaming path |
 | 0005 | rule-authoring UI; parent-department policy inheritance |
 | 0006 | external chain anchoring (git / S3 Object Lock); Redis cross-process lock |
@@ -47,8 +47,8 @@ auto-refreshes near expiry.
 | 0012 | `release-*.yml` (container push, `3pa` binary matrix + signing, plugin publish); version compat matrix |
 | 0013 | Telegram wiring; per-company opt-in; feed high scores back into the Policy Engine |
 
-**Suggested next work:** (1) ADR-0002 sandbox isolation hardening, (2) ADR-0012
-release workflows, (3) ADR-0010 signed command channel.
+**Suggested next work:** (1) ADR-0012 release workflows, (2) ADR-0010 signed
+command channel, (3) ADR-0006 external chain anchoring.
 
 ## Fixed principles
 

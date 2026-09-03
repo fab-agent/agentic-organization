@@ -37,10 +37,29 @@ jobs:
           python-version: "3.11"
 
       - name: Lint shell
-        run: shellcheck sandbox/run.sh sandbox/egress/render-filter.sh sandbox/egress/entrypoint.sh
+        run: shellcheck sandbox/run.sh sandbox/entrypoint.sh sandbox/egress/render-filter.sh sandbox/egress/entrypoint.sh
 
       - name: Validate compose file
         run: docker compose -f sandbox/compose.yaml config -q
+
+      - name: Compose declares the isolation hardening
+        run: |
+          cfg=$(docker compose -f sandbox/compose.yaml config)
+          echo "$cfg" | grep -q 'no-new-privileges:true'
+          echo "$cfg" | grep -A2 'cap_drop:' | grep -q 'ALL'
+          echo "$cfg" | grep -q 'pids_limit: 512'
+
+      - name: Entrypoint scrubs OPENCODE_* overrides (keeps OPENCODE_MODEL)
+        run: |
+          set -eux
+          out=$(docker run --rm --entrypoint sh \
+            -e OPENCODE_MODEL=keepme -e OPENCODE_CONFIG=/evil -e OPENCODE_PERMISSION=all \
+            -e FABAGENT_TOKEN=keep \
+            -v "$PWD/sandbox/entrypoint.sh:/e.sh:ro" alpine \
+            -c 'sed "s#exec opencode#exec env#" /e.sh > /t.sh && chmod +x /t.sh && /t.sh')
+          echo "$out" | grep -q '^OPENCODE_MODEL=keepme'
+          echo "$out" | grep -q '^FABAGENT_TOKEN=keep'
+          ! echo "$out" | grep -qE '^OPENCODE_(CONFIG|PERMISSION)='
 
       - name: Egress allowlist renderer tests
         run: |

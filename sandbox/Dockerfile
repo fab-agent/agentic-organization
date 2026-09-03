@@ -35,6 +35,8 @@ RUN cd /opt/agent-plugin && npm install --omit=dev --no-audit --no-fund
 # base-prompt.md is always baked (the served config references it by path).
 COPY sandbox/opencode.json /etc/opencode/opencode.json
 COPY sandbox/base-prompt.md /etc/opencode/base-prompt.md
+COPY sandbox/entrypoint.sh /usr/local/bin/sandbox-entrypoint.sh
+RUN chmod +x /usr/local/bin/sandbox-entrypoint.sh
 
 # Non-root. The agent's blast radius is this user inside this container.
 RUN useradd --create-home --uid 10001 agent \
@@ -43,4 +45,5 @@ USER agent
 WORKDIR /work
 
 # FABAGENT_BASE_URL / FABAGENT_TOKEN / model are injected at `docker run` time.
-ENTRYPOINT ["opencode"]
+# The entrypoint scrubs OPENCODE_* overrides before exec'ing opencode (ADR-0002).
+ENTRYPOINT ["/usr/local/bin/sandbox-entrypoint.sh"]

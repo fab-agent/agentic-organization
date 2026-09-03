@@ -52,6 +52,15 @@ services:
       - "${PROJECT_DIR:-..}:/work"
     networks:
       - internal
+    # Isolation hardening (ADR-0002): no capabilities, no privilege escalation,
+    # bounded PIDs / memory / CPU. The agent's blast radius is this container.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    mem_limit: 2g
+    cpus: 2.0
     stdin_open: true
     tty: true
 
