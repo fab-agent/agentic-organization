@@ -59,6 +59,9 @@ opencode inside a managed sandbox:
   escapes and misconfigured mounts are possible. A determined user can bypass
   `3pa` and run opencode by hand — ADR-0003 addresses this.
 - **Follow-ups:** ~~`sandbox/` image + egress-proxy config~~ (done — `sandbox/egress/`
-  + `sandbox/compose.yaml`, internal-only network + `FilterDefaultDeny` proxy);
-  isolation hardening (drop caps, scrub `OPENCODE_*`), the "starts only inside the
+  + `sandbox/compose.yaml`, internal-only network + `FilterDefaultDeny` proxy).
+  ~~Isolation hardening~~ done: `cap_drop: ALL`, `no-new-privileges`,
+  `pids_limit`, `mem_limit`/`cpus`; `sandbox/entrypoint.sh` scrubs every
+  `OPENCODE_*` env override (keeps `OPENCODE_MODEL`) so the host cannot bypass
+  the managed config. Still: a read-only rootfs, the "starts only inside the
   sandbox" check, macOS VM, devcontainer.

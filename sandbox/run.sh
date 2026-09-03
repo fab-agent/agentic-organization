@@ -45,6 +45,11 @@ fi
 echo ">> starting opencode in sandbox (project: $PROJECT_DIR)"
 exec "$ENGINE" run --rm -it \
   --network bridge \
+  --cap-drop ALL \
+  --security-opt no-new-privileges \
+  --pids-limit 512 \
+  --memory 2g \
+  --cpus 2 \
   -v "$PROJECT_DIR:/work" \
   "${MANAGED_MOUNT[@]}" \
   -e FABAGENT_BASE_URL \
