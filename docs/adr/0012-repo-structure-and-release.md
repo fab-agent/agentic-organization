@@ -1,7 +1,7 @@
 # ADR-0012: Repo structure and release process
 
-- **Status:** proposed
-- **Date:** 2026-09-01
+- **Status:** accepted (monorepo + path-scoped CI + `release.yml` done; backend/frontend image push + Go `3pa` pending)
+- **Date:** 2026-09-01 (accepted 2026-09-03)
 - **Related:** ADR-0008, ADR-0009; `.github/workflows/`
 
 ## Context and problem
@@ -55,11 +55,28 @@ agentic-organization/
 - `release-*.yml` — tag-driven: container push, `3pa` binary matrix + signing,
   plugin npm/registry publish.
 
+## Implementation status (2026-09-03)
+
+- Monorepo (option A). Path-scoped CI: `ci.yml`, `gateway.yml`,
+  `policy-engine.yml`, `agent-plugin.yml`, `cli.yml`, `sandbox.yml`,
+  `postgres.yml`, `adr-guard.yml`.
+- **`release.yml`** — tag-driven (`v*`) or manual `dry_run`:
+  - `sandbox` + `egress` container images → GHCR
+    (`ghcr.io/<owner>/agentic-org-{sandbox,egress}:<version>` + `latest`).
+  - `3pa` CLI → a single self-contained ESM bundle
+    (`scripts/bundle.mjs` → `dist/3pa.mjs` + `.sha256`), attached to the GitHub
+    Release.
+  - `agent-plugin` + `cli` npm packages → GitHub Packages
+    (`https://npm.pkg.github.com`, `publishConfig` in each `package.json`).
+- **opencode pinned** to `1.18.26` (`sandbox/Dockerfile` `ARG OPENCODE_VERSION`).
+- Compatibility matrix: `docs/architecture/version-compat.md`.
+- Not yet: backend/frontend image push (still compose build-local); a Go `3pa`
+  binary matrix + code signing / notarization; an `e2e-nightly.yml`.
+
 ## Open questions
 
 - If `3pa` moves to Go, what happens to the existing TS `packages/cli` — a bridge,
-  or removed?
-- Plugin distribution: public npm, a private registry, or bundled with `3pa`?
+  or removed?  (Current call: keep TS; the ESM bundle is the "one file" story.)
 
 ## Consequences
 

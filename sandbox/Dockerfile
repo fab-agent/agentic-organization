@@ -12,8 +12,9 @@
 
 FROM node:22-bookworm-slim
 
-# TODO(ADR-0012): pin opencode. `latest` is a Phase 0 placeholder only.
-ARG OPENCODE_VERSION=latest
+# Pinned opencode (ADR-0012). Bump deliberately + re-run the ADR-0011 bypass
+# review; see docs/architecture/version-compat.md.
+ARG OPENCODE_VERSION=1.18.26
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \

@@ -14,6 +14,9 @@
   },
   "keywords": ["opencode", "opencode-plugin", "audit", "policy"],
   "license": "SEE LICENSE IN ../../LICENSE",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.5.0"
