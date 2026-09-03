@@ -15,10 +15,25 @@
   <meta property="og:description" content="Organizasyon şemasında yaşayan yapay zeka ajanları. Vizyon, misyon ve departman OKR'larıyla aynı bağlamda çalışırlar. Açık kaynak, self-hosted.">
   <meta property="og:site_name" content="agent.fab.engineering">
   <meta property="og:locale" content="tr_TR">
+  <meta property="og:image" content="https://agent.fab.engineering/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="agent.fab.engineering — Agentic Work OS: organizasyon şemasında yaşayan yapay zeka ajanları">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:site" content="@kuntaykunt">
   <meta name="twitter:title" content="agent.fab.engineering — Agentic Work OS">
   <meta name="twitter:description" content="Organizasyon şemasında yaşayan yapay zeka ajanları. Açık kaynak, self-hosted, model bağımsız.">
+  <meta name="twitter:image" content="https://agent.fab.engineering/og.jpg">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <meta name="googlebot" content="index, follow">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/favicon.svg">
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt — machine-readable brief">
+  <link rel="alternate" hreflang="tr" href="https://agent.fab.engineering/">
+  <link rel="alternate" hreflang="en" href="https://agent.fab.engineering/?lang=en">
+  <link rel="alternate" hreflang="de" href="https://agent.fab.engineering/?lang=de">
+  <link rel="alternate" hreflang="es" href="https://agent.fab.engineering/?lang=es">
+  <link rel="alternate" hreflang="x-default" href="https://agent.fab.engineering/">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -26,22 +41,64 @@
       {
         "@type": "SoftwareApplication",
         "@id": "https://agent.fab.engineering/#app",
-        "name": "agentic-organization",
-        "alternateName": "Agentic Work OS",
-        "description": "Kurumsal yapay zeka katmanı — organizasyon şemasında yaşayan ajanlar. Vizyon, misyon ve departman OKR bağlamı. Veritabanı, API ve MCP bağlantıları. Model bağımsız, açık kaynak, self-hosted.",
+        "name": "Agentic Work OS",
+        "alternateName": "agentic-organization",
+        "description": "Organizasyon şemasında yaşayan yapay zeka ajanları. Her ajan; şirket vizyonu & misyonu, departman OKR'ları ve pozisyonun politika/kurallarıyla aynı bağlamda çalışır. İnsanlar kararı onaylar, ajanlar işi yürütür. Veritabanı, API ve MCP bağlantıları. Model bağımsız, açık kaynak (MIT), self-hosted.",
         "applicationCategory": "BusinessApplication",
+        "applicationSubCategory": "AI agent platform",
         "operatingSystem": "Linux, Docker",
+        "isAccessibleForFree": true,
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "license": "https://opensource.org/licenses/MIT",
         "url": "https://agent.fab.engineering/",
+        "sameAs": ["https://github.com/fab-agent/agentic-organization"],
         "codeRepository": "https://github.com/fab-agent/agentic-organization",
+        "softwareHelp": "https://agent-docs.fab.engineering/",
+        "screenshot": "https://agent.fab.engineering/screenshots/org-chart.jpg",
+        "image": "https://agent.fab.engineering/og.jpg",
+        "featureList": [
+          "Organizasyon hiyerarşisi: şirket, departman, personel, ajan katmanları",
+          "Personel bazlı ajanlar: pozisyona özel model, skill ve politika",
+          "A2A delegasyon: ajan-ajan görev devri, iki aşamalı insan onayı",
+          "Politika & kural yönetimi: Markdown + Git, değişiklik onay akışı",
+          "Rol tabanlı erişim: 5 kademeli yetki sistemi",
+          "Kurumsal hafıza: oturumlar AI ile özetlenir, bağlam korunur",
+          "Model bağımsız: Claude, GPT-4o, Gemini, Qwen",
+          "Veritabanı, API ve MCP bağlantıları",
+          "Tek komut kurulum: bash install.sh (SSL, Nginx, Docker)",
+          "SLA & AI telemetri paneli, S3/R2 şifreli yedekleme, Telegram bildirimleri"
+        ],
+        "author": { "@id": "https://agent.fab.engineering/#person" },
         "publisher": { "@id": "https://agent.fab.engineering/#org" }
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://agent.fab.engineering/#website",
+        "url": "https://agent.fab.engineering/",
+        "name": "agent.fab.engineering — Agentic Work OS",
+        "inLanguage": ["tr", "en", "de", "es"],
+        "publisher": { "@id": "https://agent.fab.engineering/#org" },
+        "about": { "@id": "https://agent.fab.engineering/#app" }
+      },
+      {
+        "@type": "WebPage",
+        "@id": "https://agent.fab.engineering/#webpage",
+        "url": "https://agent.fab.engineering/",
+        "name": "agent.fab.engineering — Agentic Work OS",
+        "isPartOf": { "@id": "https://agent.fab.engineering/#website" },
+        "about": { "@id": "https://agent.fab.engineering/#app" },
+        "primaryImageOfPage": "https://agent.fab.engineering/og.jpg",
+        "inLanguage": "tr"
       },
       {
         "@type": "Organization",
         "@id": "https://agent.fab.engineering/#org",
         "name": "Fabrika Yazılım Tic. Ltd. Şti.",
+        "alternateName": "Fabrika Yazılım",
         "url": "https://fab.limited/",
+        "logo": "https://agent.fab.engineering/favicon.svg",
+        "email": "bilgi@kuntaykunt.com",
+        "founder": { "@id": "https://agent.fab.engineering/#person" },
         "sameAs": [
           "https://www.linkedin.com/in/kuntaykunt",
           "https://github.com/fab-agent",
@@ -55,7 +112,39 @@
         "name": "Kuntay Kunt",
         "jobTitle": "Founder",
         "worksFor": { "@id": "https://agent.fab.engineering/#org" },
-        "sameAs": ["https://www.linkedin.com/in/kuntaykunt", "https://x.com/kuntaykunt"]
+        "sameAs": ["https://www.linkedin.com/in/kuntaykunt", "https://x.com/kuntaykunt", "https://github.com/kuntaykunt"]
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://agent.fab.engineering/#faq",
+        "inLanguage": "tr",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Agentic Work OS nedir?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Organizasyon şemanızda yaşayan yapay zeka ajanları çalıştıran, açık kaynak ve self-hosted bir kurumsal yapay zeka katmanıdır. Her pozisyonun kendi ajanı, modeli, skill'leri ve politikaları olur; ajanlar veritabanlarınıza, API'lerinize ve MCP sunucularınıza bağlanarak gerçek iş süreçlerinin içinde çalışır." }
+          },
+          {
+            "@type": "Question",
+            "name": "Bağlam yönetimi (context management) nasıl çalışır?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Bir ajanın bağlamı, onu içeren katmanlardan oluşur: en dışta şirket vizyonu & misyonu ve şirket ana hedefleri (OKR), sonra departman, sorumlu insan çalışan ve en içte ajanın kendi politika ve kuralları. Ajan ayrıca yana takım arkadaşlarına, yukarı üst yönetime bağlanır." }
+          },
+          {
+            "@type": "Question",
+            "name": "Hangi modelleri destekliyor?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Model bağımsızdır. Claude, GPT-4o, Gemini, Qwen ve diğer modeller arasında ihtiyaca göre geçiş yapabilirsiniz; tek bir sağlayıcıya kilitlenmezsiniz." }
+          },
+          {
+            "@type": "Question",
+            "name": "Nasıl kurulur?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Docker kurulu her sunucuda tek komutla: curl -fsSL https://raw.githubusercontent.com/fab-agent/agentic-organization/main/install.sh | bash. Kurulum sihirbazı Let's Encrypt SSL, Nginx, Docker Compose ve şifreleme anahtarlarını otomatik yapılandırır. Tüm veriler kendi sunucunuzda kalır." }
+          },
+          {
+            "@type": "Question",
+            "name": "Lisansı nedir, ücretli mi?",
+            "acceptedAnswer": { "@type": "Answer", "text": "MIT lisansı ile açık kaynaktır ve ücretsizdir. Kaynak koda github.com/fab-agent/agentic-organization adresinden erişebilir, forklayabilir ve kendi organizasyonunuza uyarlayabilirsiniz." }
+          }
+        ]
       }
     ]
   }
@@ -344,7 +433,7 @@
     }
     .feat-item svg { flex-shrink: 0; margin-top: 2px; stroke: var(--acc-feat); }
     .feat-item h4 { font-size: 0.85rem; font-weight: 700; margin-bottom: 0.15rem; }
-    .feat-item p  { font-size: 0.74rem; line-height: 1.45; color: rgba(255,255,255,0.6); }
+    .feat-item p  { font-size: 0.74rem; line-height: 1.45; color: rgba(255,255,255,0.68); }
 
     /* ── PANEL 3: open source columns ── */
     .open-cols {
@@ -364,7 +453,7 @@
       margin-bottom: 0.4rem; transition: color 0.15s;
     }
     .open-col a:hover { color: #fff; }
-    .open-col .muted { color: rgba(255,255,255,0.42); font-size: 0.74rem; }
+    .open-col .muted { color: rgba(255,255,255,0.55); font-size: 0.74rem; }
     .install-box {
       display: flex; align-items: stretch;
       max-width: 560px; margin-bottom: 1.2rem;
@@ -443,7 +532,7 @@
       background: rgba(110,231,160,0.12); margin-bottom: 0.85rem;
     }
     .ov-card h3 { font-size: 0.92rem; font-weight: 700; margin-bottom: 0.4rem; }
-    .ov-card p  { font-size: 0.8rem; line-height: 1.6; color: rgba(255,255,255,0.62); }
+    .ov-card p  { font-size: 0.8rem; line-height: 1.6; color: rgba(255,255,255,0.72); }
     .ov-card code {
       font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;
       background: rgba(255,255,255,0.07); padding: 1px 5px; border-radius: 4px;
@@ -459,10 +548,30 @@
       flex: 0 0 auto; width: 320px; scroll-snap-align: start; cursor: pointer;
       border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; overflow: hidden;
       background: rgba(255,255,255,0.02); transition: border-color 0.2s, transform 0.2s;
+      font: inherit; color: inherit; text-align: left; padding: 0;
     }
     .shot:hover { border-color: rgba(110,231,160,0.4); transform: translateY(-3px); }
     .shot img { display: block; width: 100%; height: auto; }
-    .shot span { display: block; padding: 10px 12px; font-size: 0.76rem; font-weight: 500; color: rgba(255,255,255,0.75); }
+    .shot span { display: block; padding: 10px 12px; font-size: 0.76rem; font-weight: 500; color: rgba(255,255,255,0.8); }
+
+    /* ── SKIP LINK / NOSCRIPT / FOCUS ── */
+    .skip-link {
+      position: fixed; top: -60px; left: 1rem; z-index: 1000;
+      background: var(--acc-feat); color: #04160c; font-weight: 700;
+      padding: 0.5rem 0.9rem; border-radius: 0 0 8px 8px; text-decoration: none;
+      transition: top 0.15s;
+    }
+    .skip-link:focus { top: 0; }
+    :focus-visible { outline: 2px solid var(--acc-os); outline-offset: 3px; border-radius: 3px; }
+    .panel:focus-visible { outline-offset: -3px; }
+    .noscript-note {
+      max-width: 760px; margin: 0 auto; padding: 5rem 1.5rem;
+      color: rgba(255,255,255,0.85); line-height: 1.7; font-size: 0.95rem;
+    }
+    .noscript-note h2 { color: var(--acc-os); margin-bottom: 1rem; font-size: 1.6rem; }
+    .noscript-note p { margin-bottom: 1rem; }
+    .noscript-note a { color: var(--acc-feat); }
+    .noscript-note code { font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; background: rgba(255,255,255,0.07); padding: 2px 6px; border-radius: 4px; overflow-wrap: anywhere; }
 
     /* ── LIGHTBOX ── */
     .lightbox {
@@ -586,8 +695,8 @@
 </head>
 <body>
 
-<h1 class="sr-only">agent.fab.engineering — Agentic Work OS: organizasyon şemasında yaşayan yapay zeka ajanları</h1>
-<a class="wordmark" href="/"><b>agent</b><span>.fab.engineering</span></a>
+<a class="wordmark" href="/" aria-label="agent.fab.engineering ana sayfa"><b>agent</b><span>.fab.engineering</span></a>
+<p class="sr-only">agent.fab.engineering — organizasyon şemasında yaşayan yapay zeka ajanları. Açık kaynak (MIT), self-hosted, model bağımsız kurumsal yapay zeka katmanı.</p>
 
 <div class="top-right">
   <a class="gh-link" href="https://github.com/fab-agent/agentic-organization" target="_blank" rel="noopener">
@@ -602,7 +711,8 @@
   </div>
 </div>
 
-<div class="panels">
+<a class="skip-link" href="#panel-os">İçeriğe geç</a>
+<main class="panels" id="content">
 
   <!-- ① AGENTIC WORK OS -->
   <div class="panel panel-os active" id="panel-os" onclick="activate('os')">
@@ -613,7 +723,7 @@
     <div class="panel-content">
       <div class="os-text">
         <div class="panel-kicker" data-i18n="os.kicker">Agentic Work OS</div>
-        <h2 class="panel-title" data-i18n="os.title">Agentic Work OS</h2>
+        <h1 class="panel-title" data-i18n="os.title">Agentic Work OS</h1>
         <p class="panel-desc" data-i18n-html="os.desc">
           Organizasyon şemanızda <strong>yaşayan yapay zeka ajanları</strong>. Her ajan; şirket vizyonu,
           departman OKR'ları ve pozisyonun politikalarıyla aynı bağlamda çalışır — insanlar
@@ -769,19 +879,142 @@
     </div>
   </div>
 
-</div>
+</main>
+
+<noscript>
+  <div class="noscript-note">
+    <h2>Agentic Work OS — agent.fab.engineering</h2>
+    <p>Organizasyon şemasında yaşayan yapay zeka ajanları. Her ajan; şirket vizyonu &amp; misyonu, departman OKR'ları ve pozisyonun politika/kurallarıyla aynı bağlamda çalışır. İnsanlar kararı onaylar, ajanlar işi yürütür. Açık kaynak (MIT), self-hosted, model bağımsız.</p>
+    <p>
+      <a href="https://github.com/fab-agent/agentic-organization">GitHub — kaynak kod</a> ·
+      <a href="https://agent-docs.fab.engineering">Dokümantasyon</a> ·
+      <a href="https://demo.agent.fab.engineering">Demo</a> ·
+      <a href="https://app.agent.fab.engineering">Uygulama</a> ·
+      <a href="/llms.txt">llms.txt</a>
+    </p>
+    <p>Kurulum: <code>curl -fsSL https://raw.githubusercontent.com/fab-agent/agentic-organization/main/install.sh | bash</code></p>
+    <p>Fabrika Yazılım Tic. Ltd. Şti. · Kuntay Kunt · <a href="mailto:bilgi@kuntaykunt.com">bilgi@kuntaykunt.com</a></p>
+  </div>
+</noscript>
 
 <!-- FEATURES + SCREENSHOTS OVERLAY -->
-<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="ovTitle">
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="ovTitle" aria-hidden="true">
   <div class="overlay-head">
     <h2 id="ovTitle" data-i18n="ov.title">Özellikler &amp; Ekran Görüntüleri</h2>
     <button class="overlay-close" onclick="closeOverlay()" aria-label="Kapat">✕</button>
   </div>
   <div class="overlay-body">
     <p class="ov-sec-label" data-i18n="ov.features_label">Tüm Özellikler</p>
-    <div class="ov-features" id="ovFeatures"></div>
+    <div class="ov-features">
+      <article class="ov-card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></div>
+        <h3 data-i18n-html="f1.t">Organizasyon Hiyerarşisi</h3>
+        <p data-i18n-html="f1.d">Şirket, departman, personel ve ajan katmanlarını tanımla. Org chart'ı görselleştir, yöneticileri ve raporlama yapısını belirle.</p>
+      </article>
+      <article class="ov-card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8a4 4 0 100-8 4 4 0 000 8zM20 21a8 8 0 10-16 0"/></svg></div>
+        <h3 data-i18n-html="f2.t">Personel Bazlı Ajanlar</h3>
+        <p data-i18n-html="f2.d">Her pozisyona özel ajan: model seçimi, versiyon, skill'ler ve politikalar. Claude, GPT-4 veya Gemini — tek arayüzden.</p>
+      </article>
+      <article class="ov-card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/></svg></div>
+        <h3 data-i18n-html="f3.t">A2A Delegasyon</h3>
+        <p data-i18n-html="f3.d">Ajan-to-ajan görev devri. Bir ajan başka bir ajana iş atar; sorumlu insan onaylar ya da reddeder. İki aşamalı onay akışı.</p>
+      </article>
+      <article class="ov-card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6"/></svg></div>
+        <h3 data-i18n-html="f4.t">Policy &amp; Skill Yönetimi</h3>
+        <p data-i18n-html="f4.d">Politikalar ve yetenekler Markdown dosyalarıyla tanımlanır. Git ile versiyon kontrolü; değişiklik talepleri onay akışıyla.</p>
+      </article>
+      <article class="ov-card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8"/></svg></div>
+        <h3 data-i18n-html="f5.t">Rol Tabanlı Erişim</h3>
+        <p data-i18n-html="f5.d">5 kademeli yetki: Kurucu → Yönetici → Bölüm Müdürü → Ajan Sorumlusu → Kullanıcı. Her kademe kendi kapsamında.</p>
+      </article>
+      <article class="ov-card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2h20v8H2zM2 14h20v8H2"/></svg></div>
+        <h3 data-i18n-html="f6.t">Tek Komut Prodüksiyon Kurulumu</h3>
+        <p data-i18n-html="f6.d"><code>bash install.sh</code> — Let's Encrypt SSL, Nginx, Docker Compose. Sihirbaz JWT/şifreleme anahtarlarını üretir. Tüm veriler kendi sunucunda.</p>
+      </article>
+      <article class="ov-card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5M21 5c0 1.66-4 3-9 3S3 6.66 3 5s4-3 9-3 9 1.34 9 3"/></svg></div>
+        <h3 data-i18n-html="f7.t">S3 / R2 Yedekleme</h3>
+        <p data-i18n-html="f7.d">Tek tıkla veritabanı yedeği — AWS S3, Cloudflare R2 veya MinIO'ya. Kimlik bilgileri AES-256 ile şifreli.</p>
+      </article>
+      <article class="ov-card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a3 3 0 100-6 3 3 0 000 6zM6 15a3 3 0 100-6 3 3 0 000 6zM18 22a3 3 0 100-6 3 3 0 000 6M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg></div>
+        <h3 data-i18n-html="f8.t">Sosyal Medya Skill'leri</h3>
+        <p data-i18n-html="f8.d">Ajanlara Instagram Business ve WhatsApp Business skill'i ekle. Gönderi oluştur, mesaj gönder — sohbet arayüzünden.</p>
+      </article>
+      <article class="ov-card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M18 9l-5 5-3-3-4 4"/></svg></div>
+        <h3 data-i18n-html="f9.t">SLA &amp; AI Telemetri Dashboard</h3>
+        <p data-i18n-html="f9.d">Oturum sayıları, token harcaması, aktif ajan durumu. Yöneticilere ajan başarı oranı (SLA) renk kodlu tabloyla sunulur.</p>
+      </article>
+      <article class="ov-card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 00-3 3v12a3 3 0 006 0V6a3 3 0 00-3-3"/></svg></div>
+        <h3 data-i18n-html="f10.t">Uzun Dönem Ajan Hafızası</h3>
+        <p data-i18n-html="f10.d">Kapanan oturumlar AI tarafından özetlenerek hafıza kaydına dönüşür. Ajanın geçmiş bağlamı korunur.</p>
+      </article>
+      <article class="ov-card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012 5.1 2 2 0 014 3h3a2 2 0 012 1.7c.1 1 .4 1.9.7 2.8a2 2 0 01-.5 2.1L8 12a16 16 0 006 6l1.3-1.3a2 2 0 012.1-.4c.9.3 1.8.6 2.8.7A2 2 0 0122 16.9z"/></svg></div>
+        <h3 data-i18n-html="f11.t">Telegram Bildirimleri</h3>
+        <p data-i18n-html="f11.d">Davet ve şifre sıfırlama bildirimleri Telegram Bot API üzerinden anında. E-posta altyapısına gerek yok.</p>
+      </article>
+      <article class="ov-card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+        <h3 data-i18n-html="f12.t">AI Onboarding</h3>
+        <p data-i18n-html="f12.d">İlk kurulumda şirket adını yaz — AI web araştırması yapar ve departmanlar, ajanlar, yetenekler ile politikaları otomatik oluşturur.</p>
+      </article>
+      <article class="ov-card">
+        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg></div>
+        <h3 data-i18n-html="f13.t">Otomatik Güncelleme Bildirimi</h3>
+        <p data-i18n-html="f13.d">Platform yeni sürüm kontrolünü arka planda yapar (GitHub Releases API). Güncelleme varsa dashboard'da banner gösterilir.</p>
+      </article>
+    </div>
     <p class="ov-sec-label" data-i18n="ov.shots_label">Ekran Görüntüleri — büyütmek için tıklayın</p>
-    <div class="shots" id="shots"></div>
+    <div class="shots">
+      <button class="shot" type="button" onclick="openLightbox(0)">
+        <img src="screenshots/dashboard.jpg" loading="lazy" width="960" height="600" alt="Gösterge Paneli — Canlı Telemetri &amp; SLA">
+        <span data-i18n-html="s1">Gösterge Paneli — Canlı Telemetri &amp; SLA</span>
+      </button>
+      <button class="shot" type="button" onclick="openLightbox(1)">
+        <img src="screenshots/org-chart.jpg" loading="lazy" width="960" height="600" alt="Organizasyon Şeması">
+        <span data-i18n-html="s2">Organizasyon Şeması</span>
+      </button>
+      <button class="shot" type="button" onclick="openLightbox(2)">
+        <img src="screenshots/agents.jpg" loading="lazy" width="960" height="600" alt="Ajan Yönetimi">
+        <span data-i18n-html="s3">Ajan Yönetimi</span>
+      </button>
+      <button class="shot" type="button" onclick="openLightbox(3)">
+        <img src="screenshots/personnel.jpg" loading="lazy" width="960" height="600" alt="Personel Listesi">
+        <span data-i18n-html="s4">Personel Listesi</span>
+      </button>
+      <button class="shot" type="button" onclick="openLightbox(4)">
+        <img src="screenshots/skills.jpg" loading="lazy" width="960" height="600" alt="Skill Kütüphanesi">
+        <span data-i18n-html="s5">Skill Kütüphanesi</span>
+      </button>
+      <button class="shot" type="button" onclick="openLightbox(5)">
+        <img src="screenshots/policies.jpg" loading="lazy" width="960" height="600" alt="Politika Yönetimi">
+        <span data-i18n-html="s6">Politika Yönetimi</span>
+      </button>
+      <button class="shot" type="button" onclick="openLightbox(6)">
+        <img src="screenshots/chat.jpg" loading="lazy" width="960" height="600" alt="Ajanla Sohbet — Canlı ERP Sorgusu">
+        <span data-i18n-html="s7">Ajanla Sohbet — Canlı ERP Sorgusu</span>
+      </button>
+      <button class="shot" type="button" onclick="openLightbox(7)">
+        <img src="screenshots/changes.jpg" loading="lazy" width="960" height="600" alt="Değişiklik Onay Akışı">
+        <span data-i18n-html="s8">Değişiklik Onay Akışı</span>
+      </button>
+      <button class="shot" type="button" onclick="openLightbox(8)">
+        <img src="screenshots/delegation.jpg" loading="lazy" width="960" height="600" alt="Ajan-Ajan Delegasyonu (A2A)">
+        <span data-i18n-html="s9">Ajan-Ajan Delegasyonu (A2A)</span>
+      </button>
+      <button class="shot" type="button" onclick="openLightbox(9)">
+        <img src="screenshots/settings.jpg" loading="lazy" width="960" height="600" alt="Model Sağlayıcı Ayarları">
+        <span data-i18n-html="s10">Model Sağlayıcı Ayarları</span>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -795,7 +1028,7 @@
 </div>
 
 <!-- CONTACT BAR -->
-<div class="contact-bar">
+<footer class="contact-bar">
   <div class="bar-inner">
     <span class="bar-item static name">Kuntay Kunt</span>
     <a class="bar-item" href="https://www.linkedin.com/in/kuntaykunt" target="_blank" rel="noopener">
@@ -812,7 +1045,7 @@
     <a class="bar-item" href="https://infab.cloud" target="_blank" rel="noopener">infab.cloud</a>
     <span class="bar-item static" data-i18n="bar.copy">© 2026 Fabrika Yazılım Tic. Ltd. Şti.</span>
   </div>
-</div>
+</footer>
 
 <script>
 /* ─────────────  i18n  ───────────── */
@@ -1015,9 +1248,17 @@ const COPY = {
   },
 };
 
+const LANGS = ['tr', 'en', 'de', 'es'];
+const META = {
+  tr: { t: 'agent.fab.engineering — Agentic Work OS', d: 'Organizasyon şemasında yaşayan yapay zeka ajanları. Her ajan; şirket vizyonu, departman OKR\'ları ve pozisyon politikalarıyla aynı bağlamda çalışır. Açık kaynak, self-hosted, model bağımsız.' },
+  en: { t: 'agent.fab.engineering — Agentic Work OS', d: 'Living AI agents inside your org chart. Every agent works in the same context as the company vision, department OKRs and its position\'s policies. Open source, self-hosted, model-agnostic.' },
+  de: { t: 'agent.fab.engineering — Agentic Work OS', d: 'Lebende KI-Agenten in Ihrem Organigramm. Jeder Agent arbeitet im Kontext von Unternehmensvision, Abteilungs-OKRs und Positionsrichtlinien. Open Source, self-hosted, modellunabhängig.' },
+  es: { t: 'agent.fab.engineering — Agentic Work OS', d: 'Agentes de IA vivos dentro de tu organigrama. Cada agente trabaja en el contexto de la visión de empresa, los OKR del departamento y las políticas del puesto. Código abierto, self-hosted.' },
+};
 let currentLang = 'tr';
 
-function setLang(lang) {
+function setLang(lang, push) {
+  if (!LANGS.includes(lang)) lang = 'tr';
   currentLang = lang;
   const dict = COPY[lang] || COPY.tr;
   document.querySelectorAll('[data-i18n]').forEach(el => {
@@ -1031,15 +1272,27 @@ function setLang(lang) {
   document.querySelectorAll('.lang-btn').forEach(b =>
     b.classList.toggle('active', b.textContent.trim().toLowerCase() === lang));
   document.documentElement.lang = lang;
-  renderOverlay();
+  const m = META[lang] || META.tr;
+  document.title = m.t;
+  const md = document.querySelector('meta[name="description"]');
+  if (md) md.setAttribute('content', m.d);
+  if (push !== false) {
+    const u = new URL(location.href);
+    if (lang === 'tr') u.searchParams.delete('lang'); else u.searchParams.set('lang', lang);
+    history.replaceState(null, '', u);
+  }
   if (lightboxIndex >= 0) document.getElementById('lbCap').textContent = shotCap(lightboxIndex);
 }
 
 /* ─────────────  panels  ───────────── */
 function activate(id) {
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => {
+    p.classList.remove('active');
+    p.setAttribute('aria-expanded', 'false');
+  });
   const p = document.getElementById('panel-' + id);
   p.classList.add('active');
+  p.setAttribute('aria-expanded', 'true');
   const v = p.querySelector('video');
   if (v) { try { v.play(); } catch (e) {} }
   if (id === 'os') playDiagram();
@@ -1083,38 +1336,22 @@ function legacyCopy(text, done) {
 }
 
 /* ─────────────  features overlay  ───────────── */
-const FEAT_ICONS = ['M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z','M12 8a4 4 0 100-8 4 4 0 000 8zM20 21a8 8 0 10-16 0','M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3','M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6','M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8','M2 2h20v8H2zM2 14h20v8H2','M21 12c0 1.66-4 3-9 3s-9-1.34-9-3M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5M21 5c0 1.66-4 3-9 3S3 6.66 3 5s4-3 9-3 9 1.34 9 3','M18 8a3 3 0 100-6 3 3 0 000 6zM6 15a3 3 0 100-6 3 3 0 000 6zM18 22a3 3 0 100-6 3 3 0 000 6M8.6 13.5l6.8 4M15.4 6.5l-6.8 4','M3 3v18h18M18 9l-5 5-3-3-4 4','M12 3a3 3 0 00-3 3v12a3 3 0 006 0V6a3 3 0 00-3-3','M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012 5.1 2 2 0 014 3h3a2 2 0 012 1.7c.1 1 .4 1.9.7 2.8a2 2 0 01-.5 2.1L8 12a16 16 0 006 6l1.3-1.3a2 2 0 012.1-.4c.9.3 1.8.6 2.8.7A2 2 0 0122 16.9z','M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5','M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12'];
+/* Feature cards & screenshot buttons are static HTML (crawlable, work with no JS);
+   setLang() re-translates them via data-i18n / data-i18n-html. */
 const SHOTS = ['dashboard','org-chart','agents','personnel','skills','policies','chat','changes','delegation','settings'];
-
-function renderOverlay() {
-  const dict = COPY[currentLang] || COPY.tr;
-  const fw = document.getElementById('ovFeatures');
-  fw.innerHTML = '';
-  for (let i = 1; i <= 13; i++) {
-    const el = document.createElement('div');
-    el.className = 'ov-card';
-    el.innerHTML =
-      '<div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="' + FEAT_ICONS[i - 1] + '"/></svg></div>' +
-      '<h3>' + (dict['f' + i + '.t'] || '') + '</h3>' +
-      '<p>' + (dict['f' + i + '.d'] || '') + '</p>';
-    fw.appendChild(el);
-  }
-  const sw = document.getElementById('shots');
-  sw.innerHTML = '';
-  SHOTS.forEach((name, i) => {
-    const el = document.createElement('div');
-    el.className = 'shot';
-    el.onclick = () => openLightbox(i);
-    el.innerHTML =
-      '<img src="screenshots/' + name + '.jpg" loading="lazy" alt="' + shotCap(i) + '">' +
-      '<span>' + shotCap(i) + '</span>';
-    sw.appendChild(el);
-  });
-}
 function shotCap(i) { return (COPY[currentLang] || COPY.tr)['s' + (i + 1)] || ''; }
 
-function openOverlay() { document.getElementById('overlay').classList.add('open'); document.body.style.overflow = 'hidden'; }
-function closeOverlay() { document.getElementById('overlay').classList.remove('open'); closeLightbox(); document.body.style.overflow = ''; }
+function openOverlay() {
+  const o = document.getElementById('overlay');
+  o.classList.add('open'); o.setAttribute('aria-hidden', 'false');
+  document.body.style.overflow = 'hidden';
+  document.querySelector('.overlay-close').focus();
+}
+function closeOverlay() {
+  const o = document.getElementById('overlay');
+  o.classList.remove('open'); o.setAttribute('aria-hidden', 'true');
+  closeLightbox(); document.body.style.overflow = '';
+}
 
 /* ─────────────  lightbox  ───────────── */
 let lightboxIndex = -1;
@@ -1140,8 +1377,25 @@ document.addEventListener('keydown', e => {
 });
 
 /* ─────────────  init  ───────────── */
-setLang('tr');
-renderOverlay();
+(function () {
+  const urlLang = new URLSearchParams(location.search).get('lang');
+  const navLang = (navigator.language || 'tr').slice(0, 2).toLowerCase();
+  setLang(urlLang || (LANGS.includes(navLang) ? navLang : 'tr'), false);
+})();
+
+/* keyboard-accessible panels */
+document.querySelectorAll('.panel').forEach(p => {
+  const id = p.id.replace('panel-', '');
+  p.setAttribute('role', 'button');
+  p.setAttribute('tabindex', '0');
+  p.setAttribute('aria-expanded', p.classList.contains('active') ? 'true' : 'false');
+  p.addEventListener('keydown', e => {
+    if ((e.key === 'Enter' || e.key === ' ') && !p.classList.contains('active')) {
+      e.preventDefault(); activate(id);
+    }
+  });
+});
+
 /* diagram is drawn by default; only animate the draw-in when the panel is
    re-activated after leaving it (avoids a blank hero while animating). */
 document.addEventListener('visibilitychange', () => {

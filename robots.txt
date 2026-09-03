@@ -1,0 +1,32 @@
+# agent.fab.engineering — search + AI citation welcome; training preference via Content-Signal
+User-agent: *
+Allow: /
+Content-Signal: search=yes,ai-train=no,use=reference
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+# AI search / fetch agents (not model-training crawlers)
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+Sitemap: https://agent.fab.engineering/sitemap.xml
+# Machine-readable brief: https://agent.fab.engineering/llms.txt
