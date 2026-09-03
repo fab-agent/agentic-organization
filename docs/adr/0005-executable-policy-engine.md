@@ -1,7 +1,7 @@
 # ADR-0005: Executable Policy Engine (fail-closed broker)
 
-- **Status:** proposed
-- **Date:** 2026-09-01
+- **Status:** accepted (engine + scoping + AST + rollout mode + dept inheritance done; rule-authoring UI pending)
+- **Date:** 2026-09-01 (accepted 2026-09-03)
 - **Related:** ADR-0003, ADR-0006, ADR-0010; block/buzz `crates/buzz-agent/src/permission.rs`
 
 ## Context and problem
@@ -61,8 +61,13 @@ engine.
   `dry_run`). Managed via `GET`/`PUT /policies/config`.
 - **`dry_run` refinement (decided):** a fail-closed verdict blocks in every mode;
   only a *clean matched* deny/ask waits for `enforce`.
-- **Still glob-based** for `bash` — AST parsing (`bashlex`) is the next task
-  before `enforce` is meaningful for shell.
+- **AST matching** for `bash` shipped (`bashlex`, `command` matcher — spacing /
+  quoting / `sudo` / `$(...)` resistant).
+- **Parent-department inheritance (2026-09-03):** `applicable_policy_contents`
+  and `resolve_mode` walk `Department.parent_id` (`_department_chain`,
+  cycle-safe, depth-capped). A sub-department inherits its parents'
+  `DepartmentPolicyLink` policies and `PolicyConfig` mode; the agent's own
+  department is still the most specific.
 
 ## Open questions
 
@@ -71,8 +76,6 @@ engine.
 - What does an `ask` decision map to on the laptop (an opencode approval prompt)
   and in the backend?
 - The relationship with policy versioning + signing (ADR-0011).
-- Parent-department policy inheritance (`Department.parent_id`) — `run_session`
-  does not walk it today; the engine matches that.
 
 ## Consequences
 

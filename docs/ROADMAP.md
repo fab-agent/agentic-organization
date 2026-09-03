@@ -37,7 +37,7 @@ auto-refreshes near expiry.
 |-----|------------|
 | 0002 | ~~egress-proxy + allowlist~~, ~~isolation hardening (cap_drop, no-new-privileges, pids/mem/cpu, OPENCODE_* scrub)~~ done; read-only rootfs, devcontainer/macOS |
 | 0004 | ~~parse the streamed `usage` chunk~~ done; Redis rate-limit for multi-worker; propagate non-200 upstream status on the streaming path |
-| 0005 | rule-authoring UI; parent-department policy inheritance |
+| 0005 | ~~parent-department policy inheritance~~ done; rule-authoring UI (frontend) |
 | 0006 | external chain anchoring (git / S3 Object Lock); Redis cross-process lock |
 | 0007 | ~~token refresh + revocation + auto-revoke on stale heartbeat + prune~~ done; in-sandbox token rotation (long-run TTL limit); device registration |
 | 0008 | own Bubble Tea TUI (deferred until an "operations panel" need is concrete) |

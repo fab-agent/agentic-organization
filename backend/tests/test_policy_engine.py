@@ -405,6 +405,91 @@ def test_agent_specific_policy_only_applies_to_that_agent(client, db_session):
     assert not any("no-bash" in c for c in other)
 
 
+def _subdept(db_session, co, parent):
+    from models import Department
+
+    sub = Department(
+        company_id=co.id, name="Mobile", slug="mobile", parent_id=parent.id
+    )
+    db_session.add(sub)
+    db_session.flush()
+    return sub
+
+
+def test_department_chain_walks_parents(client, db_session):
+    from database import get_session
+    from services.policy_engine import _department_chain
+
+    co, dept, person, cfg = _org(db_session)
+    sub = _subdept(db_session, co, dept)
+    db_session.commit()
+
+    with get_session() as s:
+        assert _department_chain(s, sub.id) == [sub.id, dept.id]
+        assert _department_chain(s, dept.id) == [dept.id]
+        assert _department_chain(s, None) == []
+
+
+def test_subdepartment_inherits_parent_department_policy(client, db_session):
+    from models import DepartmentPolicyLink, Personnel, Policy
+    from services.policy_engine import applicable_policy_contents, resolve_scope
+
+    co, dept, _p, _c = _org(db_session)
+    sub = _subdept(db_session, co, dept)
+    # an agent that lives in the sub-department
+    sub_person = Personnel(
+        company_id=co.id,
+        department_id=sub.id,
+        name="Sub Bot",
+        slug="sub-bot",
+        type="agent",
+    )
+    db_session.add(sub_person)
+    db_session.flush()
+    from models import AgentConfig
+
+    sub_cfg = AgentConfig(
+        personnel_id=sub_person.id, model="qwen-turbo", status="active"
+    )
+    db_session.add(sub_cfg)
+
+    parent_pol = Policy(
+        company_id=co.id,
+        scope="department",
+        name="eng-no-curl",
+        slug="eng-no-curl",
+        content='```policy\n[{"id":"eng:no-curl","match":{"tool":"bash","args":{"command":"*curl*"}},"effect":"deny","reason":"x"}]\n```',
+    )
+    db_session.add(parent_pol)
+    db_session.flush()
+    db_session.add(DepartmentPolicyLink(department_id=dept.id, policy_id=parent_pol.id))
+    db_session.commit()
+
+    c, d, a = resolve_scope(sub_person.id)
+    contents = applicable_policy_contents(c, d, a)
+    assert any("eng:no-curl" in x for x in contents), (
+        "sub-dept should inherit parent policy"
+    )
+
+
+def test_mode_inherits_from_parent_department(client, db_session):
+    from models import PolicyConfig
+    from services.policy_engine import resolve_mode
+
+    co, dept, _p, _c = _org(db_session)
+    sub = _subdept(db_session, co, dept)
+    db_session.add(PolicyConfig(company_id=co.id, scope="company", mode="dry_run"))
+    db_session.add(
+        PolicyConfig(
+            company_id=co.id, scope="department", scope_id=dept.id, mode="enforce"
+        )
+    )
+    db_session.commit()
+
+    # sub-dept has no PolicyConfig of its own -> inherits the parent dept's enforce
+    assert resolve_mode(co.id, sub.id, None)[0] == "enforce"
+
+
 def test_decide_uses_agent_scoped_policy_and_mode(client, db_session):
     from models import AgentPolicyLink, Policy, PolicyConfig
 
