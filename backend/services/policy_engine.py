@@ -524,16 +524,40 @@ def resolve_scope(persona_id: str | None) -> tuple[str | None, str | None, str |
         return None, None, None
 
 
+def _department_chain(session, department_id: str | None) -> list[str]:
+    """
+    [department, parent, grandparent, …] — most-specific first. Cycle-safe,
+    depth-capped. Used so a sub-department inherits its parents' policies
+    (ADR-0005).
+    """
+    if not department_id:
+        return []
+    from models import Department
+
+    chain: list[str] = []
+    seen: set[str] = set()
+    cur: str | None = department_id
+    for _ in range(16):
+        if not cur or cur in seen:
+            break
+        seen.add(cur)
+        chain.append(cur)
+        dept = session.get(Department, cur)
+        cur = dept.parent_id if dept else None
+    return chain
+
+
 def applicable_policy_contents(
     company_id: str | None,
     department_id: str | None,
     agent_config_id: str | None,
 ) -> list[str]:
     """
-    The policy bodies that apply to one agent, gathered the same way
-    `agent_runtime.run_session` gathers policy names: company-scoped policies +
-    department-linked (DepartmentPolicyLink) + agent-linked (AgentPolicyLink),
-    active only, de-duplicated.
+    The policy bodies that apply to one agent: company-scoped policies +
+    department-linked (DepartmentPolicyLink) for the department **and every
+    ancestor** (ADR-0005) + agent-linked (AgentPolicyLink), active only,
+    de-duplicated. Ordered least→most specific so the more-specific rule wins
+    under the ruleset's last-match-wins.
     """
     if not company_id:
         return []
@@ -562,7 +586,8 @@ def applicable_policy_contents(
                     )
                 ).all()
             )
-            if department_id:
+            # ancestors first, then the agent's own department (most specific last)
+            for dept_id in reversed(_department_chain(session, department_id)):
                 _add(
                     session.exec(
                         select(Policy)
@@ -570,7 +595,7 @@ def applicable_policy_contents(
                             DepartmentPolicyLink,
                             DepartmentPolicyLink.policy_id == Policy.id,
                         )
-                        .where(DepartmentPolicyLink.department_id == department_id)
+                        .where(DepartmentPolicyLink.department_id == dept_id)
                         .where(Policy.is_active == True)  # noqa: E712
                     ).all()
                 )
@@ -597,7 +622,8 @@ def resolve_mode(
     (mode, default_effect), most-specific-wins:
     agent PolicyConfig → department PolicyConfig → company PolicyConfig →
     global AppConfig (policy.mode / policy.default_effect) → hardcoded defaults.
-    A null field on a PolicyConfig row inherits from the next level.
+    A null field on a PolicyConfig row inherits from the next level. The
+    department step walks the parent chain (sub-dept → parent → …, ADR-0005).
     """
     mode: str | None = None
     default_effect: str | None = None
@@ -608,12 +634,12 @@ def resolve_mode(
         from database import get_session
         from models import PolicyConfig
 
-        chain: list[tuple[str, str | None]] = [
-            ("agent", agent_config_id),
-            ("department", department_id),
-            ("company", None),
-        ]
         with get_session() as session:
+            chain: list[tuple[str, str | None]] = [("agent", agent_config_id)]
+            chain += [
+                ("department", d) for d in _department_chain(session, department_id)
+            ]
+            chain.append(("company", None))
             for scope, scope_id in chain:
                 if scope != "company" and not scope_id:
                     continue
