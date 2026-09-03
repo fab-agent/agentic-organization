@@ -211,6 +211,24 @@ def on_startup():
     except Exception as e:
         logger.warning("audit severity init failed", extra={"extra": {"error": str(e)}})
 
+    # Persona-token revocation housekeeping (ADR-0007/0009): prune expired
+    # RevokedToken rows; auto-revoke stale `3pa run` sessions when
+    # heartbeat.autorevoke=true.
+    try:
+        from services.persona_revocation import revocation_maintenance
+
+        _scheduler.add_job(
+            revocation_maintenance,
+            "interval",
+            minutes=5,
+            id="revocation_maintenance",
+            replace_existing=True,
+        )
+    except Exception as e:
+        logger.warning(
+            "revocation maintenance init failed", extra={"extra": {"error": str(e)}}
+        )
+
     _scheduler.start()
     from api.telegram_bot import start_polling
 
