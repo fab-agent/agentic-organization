@@ -286,10 +286,11 @@
     .diagram text { paint-order: stroke; stroke: rgba(0,0,0,0.62); stroke-width: 3.5px; stroke-linejoin: round; }
     .diagram .lbl {
       font-family: 'Space Grotesk', sans-serif;
-      font-size: 11px; font-weight: 700;
-      letter-spacing: 0.16em; text-transform: uppercase;
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 0.13em; text-transform: uppercase;
     }
     .diagram .lbl-vision { fill: var(--acc-os); }
+    .diagram .lbl-obj    { fill: rgba(140,190,255,0.78); font-size: 9px; letter-spacing: 0.09em; }
     .diagram .lbl-dept   { fill: rgba(255,255,255,0.5); }
     .diagram .lbl-human  { fill: rgba(255,255,255,0.7); }
     .diagram .lbl-agent  { fill: var(--acc-feat); }
@@ -364,15 +365,31 @@
     }
     .open-col a:hover { color: #fff; }
     .open-col .muted { color: rgba(255,255,255,0.42); font-size: 0.74rem; }
-    .install-line {
-      font-size: 0.76rem; color: rgba(255,255,255,0.8);
+    .install-box {
+      display: flex; align-items: stretch;
+      max-width: 560px; margin-bottom: 1.2rem;
       background: rgba(255,255,255,0.05);
       border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 8px; padding: 0.55rem 0.7rem;
-      margin-bottom: 1.1rem; max-width: 520px;
-      overflow-x: auto; white-space: nowrap;
+      border-radius: 9px; overflow: hidden;
+    }
+    .install-line {
+      flex: 1; min-width: 0; align-self: center;
+      font-size: 0.72rem; line-height: 1.55; color: rgba(255,255,255,0.85);
+      padding: 0.6rem 0.75rem;
+      white-space: normal; overflow-wrap: anywhere;
     }
     .install-line .c-accent { color: var(--acc-open); }
+    .copy-btn {
+      flex-shrink: 0; display: flex; align-items: center; gap: 0.35rem;
+      padding: 0 0.85rem; border: 0; border-left: 1px solid rgba(255,255,255,0.12);
+      background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.7);
+      font-family: inherit; font-size: 0.72rem; font-weight: 700;
+      letter-spacing: 0.02em; cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .copy-btn:hover { background: rgba(93,232,220,0.14); color: var(--acc-open); }
+    .copy-btn.done { color: var(--acc-feat); background: rgba(110,231,160,0.12); }
+    .copy-btn svg { flex-shrink: 0; }
 
     /* ── OVERLAY (all features + screenshots) ── */
     .overlay {
@@ -546,7 +563,7 @@
         gap: 0; align-items: stretch;
       }
       .panel-desc { max-width: 100%; }
-      .feat-grid, .open-cols, .install-line { max-width: 100%; }
+      .feat-grid, .open-cols, .install-box { max-width: 100%; }
       .os-text { align-self: stretch; }
       .os-visual { margin-top: 1.5rem; align-self: stretch; }
       .diagram { max-height: none; max-width: 100%; }
@@ -617,7 +634,7 @@
       <div class="os-visual" onclick="event.stopPropagation()">
         <!-- SIGNATURE DIAGRAM -->
         <svg class="diagram" id="diagram" viewBox="0 0 680 520" role="img" aria-labelledby="dgTitle">
-          <title id="dgTitle" data-i18n="os.diagram_alt">İç içe bağlam katmanları: şirket vizyonu içinde departman, içinde insan, içinde geliştirme ajanı; dış katmandan yukarı yönetime ve yana takım arkadaşlarına oklar.</title>
+          <title id="dgTitle" data-i18n="os.diagram_alt">İç içe bağlam katmanları: vizyon & misyon içinde departman, içinde insan çalışan, içinde geliştirme ajanı; dış katmandan üst yönetime ve yana takım arkadaşına oklar.</title>
           <defs>
             <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0 0 L10 5 L0 10 z" fill="var(--acc-open)"/>
@@ -627,22 +644,23 @@
           <!-- arrows out of the outermost frame -->
           <path class="arrow flowing" marker-end="url(#ah)" d="M255 64 L255 26"/>
           <path class="arrow flowing" marker-end="url(#ah)" d="M470 200 L628 200"/>
-          <text class="lbl lbl-arrow" x="255" y="15" text-anchor="middle" data-i18n="dg.upper">upper management</text>
-          <text class="lbl lbl-arrow" x="548" y="190" text-anchor="middle" data-i18n="dg.teammate">teammate</text>
+          <text class="lbl lbl-arrow" x="255" y="15" text-anchor="middle" data-i18n="dg.upper">Üst Yönetim</text>
+          <text class="lbl lbl-arrow" x="548" y="190" text-anchor="middle" data-i18n="dg.teammate">Takım Arkadaşı</text>
 
-          <!-- ① company vision -->
+          <!-- ① vizyon & misyon -->
           <rect class="frame f-vision" x="40" y="64" width="430" height="416" rx="20" pathLength="1"/>
-          <text class="lbl lbl-vision" x="60" y="272" text-anchor="middle" transform="rotate(-90 60 272)" data-i18n="dg.vision">company vision</text>
+          <text class="lbl lbl-vision" x="60" y="272" text-anchor="middle" transform="rotate(-90 60 272)" data-i18n="dg.vision">Vizyon &amp; Misyon</text>
+          <text class="lbl lbl-obj" x="54" y="470" text-anchor="start" data-i18n="dg.objectives">Şirket Ana Hedefleri</text>
 
           <!-- ② departman -->
           <rect class="frame f-dept" x="76" y="100" width="358" height="344" rx="17" pathLength="1"/>
-          <text class="lbl lbl-dept" x="424" y="432" text-anchor="end" data-i18n="dg.dept">departman</text>
+          <text class="lbl lbl-dept" x="424" y="432" text-anchor="end" data-i18n="dg.dept">Departman</text>
 
-          <!-- ③ human -->
+          <!-- ③ insan çalışan -->
           <rect class="frame f-human" x="112" y="140" width="286" height="252" rx="15" pathLength="1"/>
           <text class="val val-name" x="132" y="170">Kuntay Kunt</text>
-          <text class="val val-sub" x="132" y="186" data-i18n="dg.human_sub">İnsan · Kurucu</text>
-          <text class="lbl lbl-human" x="384" y="266" text-anchor="middle" transform="rotate(-90 384 266)" data-i18n="dg.human">human</text>
+          <text class="val val-sub" x="132" y="186" data-i18n="dg.human_sub">İnsan Çalışan</text>
+          <text class="lbl lbl-human" x="384" y="266" text-anchor="middle" transform="rotate(-90 384 266)" data-i18n="dg.human">İnsan</text>
 
           <!-- ④ development agent -->
           <g class="g-agent">
@@ -650,9 +668,9 @@
           </g>
           <circle class="node-ring" cx="180" cy="278" r="4.5"/>
           <circle class="node-core" cx="180" cy="278" r="4.5"/>
-          <text class="val val-agent" x="196" y="276" data-i18n="dg.agent">Development Agent</text>
-          <text class="val val-sub" x="196" y="292" data-i18n="dg.agent_sub">claude-sonnet · active</text>
-          <text class="lbl lbl-agent" x="256" y="330" text-anchor="middle" data-i18n="dg.policies">policies &amp; goals</text>
+          <text class="val val-agent" x="196" y="276" data-i18n="dg.agent">Geliştirme Ajanı</text>
+          <text class="val val-sub" x="196" y="292" data-i18n="dg.agent_sub">claude-sonnet · aktif</text>
+          <text class="lbl lbl-agent" x="256" y="330" text-anchor="middle" data-i18n="dg.policies">Politika ve Kurallar</text>
         </svg>
       </div>
     </div>
@@ -718,8 +736,12 @@
       <p class="panel-desc" data-i18n="open.desc">
         MIT lisansı. Kendi sunucunuzda çalışır, kod tamamen görünür. Sizden gizli çalışan hiçbir katman yok.
       </p>
-      <div class="install-line mono" onclick="event.stopPropagation()">
-        <span class="c-accent">curl</span> -fsSL https://raw.githubusercontent.com/fab-agent/agentic-organization/main/install.sh | <span class="c-accent">bash</span>
+      <div class="install-box" onclick="event.stopPropagation()">
+        <code class="install-line mono"><span class="c-accent">curl</span> -fsSL https://raw.githubusercontent.com/fab-agent/agentic-organization/main/install.sh | <span class="c-accent">bash</span></code>
+        <button class="copy-btn" type="button" onclick="copyInstall(this)" aria-label="Kopyala">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span data-i18n="open.copy">Kopyala</span>
+        </button>
       </div>
       <div class="open-cols" onclick="event.stopPropagation()">
         <div class="open-col">
@@ -800,9 +822,10 @@ const COPY = {
     'os.desc': 'Organizasyon şemanızda <strong>yaşayan yapay zeka ajanları</strong>. Her ajan; şirket vizyonu, departman OKR\'ları ve pozisyonun politikalarıyla aynı bağlamda çalışır — insanlar <strong>karar onaylar</strong>, ajanlar işi yürütür.',
     'os.cta_demo': 'Demo Dene', 'os.cta_app': 'Uygulamayı Aç',
     'os.diagram_alt': 'İç içe bağlam katmanları: şirket vizyonu içinde departman, içinde insan, içinde geliştirme ajanı; dış katmandan yukarı yönetime ve yana takım arkadaşlarına oklar.',
-    'dg.vision': 'company vision', 'dg.dept': 'departman', 'dg.human': 'human', 'dg.human_sub': 'İnsan · Kurucu',
-    'dg.agent': 'Development Agent', 'dg.agent_sub': 'claude-sonnet · active', 'dg.policies': 'policies & goals',
-    'dg.upper': 'upper management', 'dg.teammate': 'teammate',
+    'dg.vision': 'Vizyon & Misyon', 'dg.objectives': 'Şirket Ana Hedefleri', 'dg.dept': 'Departman',
+    'dg.human': 'İnsan', 'dg.human_sub': 'İnsan Çalışan',
+    'dg.agent': 'Geliştirme Ajanı', 'dg.agent_sub': 'claude-sonnet · aktif', 'dg.policies': 'Politika ve Kurallar',
+    'dg.upper': 'Üst Yönetim', 'dg.teammate': 'Takım Arkadaşı',
 
     'feat.label': 'Özellikler', 'feat.kicker': 'Ne yapar?', 'feat.title': 'Özellikler',
     'feat.desc': 'Organizasyon hiyerarşisinden ajan hafızasına, delegasyon onaylarından tek komut kuruluma — gerçek iş süreçlerinin içinde çalışan bir katman.',
@@ -820,6 +843,7 @@ const COPY = {
     'open.stack': 'FastAPI + SvelteKit · SQLite · Model bağımsız',
     'open.company': 'Fabrika Yazılım Tic. Ltd. Şti. · İstanbul',
     'open.role': 'Kurucu — Fabrika Yazılım',
+    'open.copy': 'Kopyala', 'open.copied': 'Kopyalandı',
 
     'ov.title': 'Özellikler & Ekran Görüntüleri',
     'ov.features_label': 'Tüm Özellikler', 'ov.shots_label': 'Ekran Görüntüleri — büyütmek için tıklayın',
@@ -847,9 +871,10 @@ const COPY = {
     'os.desc': '<strong>Living AI agents</strong> inside your org chart. Every agent works in the same context as the company vision, department OKRs and its position\'s policies — humans <strong>approve decisions</strong>, agents run the work.',
     'os.cta_demo': 'Try Demo', 'os.cta_app': 'Open App',
     'os.diagram_alt': 'Nested context layers: department inside company vision, human inside it, development agent inside that; arrows from the outer layer to upper management and to teammates.',
-    'dg.vision': 'company vision', 'dg.dept': 'department', 'dg.human': 'human', 'dg.human_sub': 'Human · Founder',
-    'dg.agent': 'Development Agent', 'dg.agent_sub': 'claude-sonnet · active', 'dg.policies': 'policies & goals',
-    'dg.upper': 'upper management', 'dg.teammate': 'teammate',
+    'dg.vision': 'Vision & Mission', 'dg.objectives': 'Company Objectives', 'dg.dept': 'Department',
+    'dg.human': 'Human', 'dg.human_sub': 'Human Employee',
+    'dg.agent': 'Development Agent', 'dg.agent_sub': 'claude-sonnet · active', 'dg.policies': 'Policies & Rules',
+    'dg.upper': 'Upper Management', 'dg.teammate': 'Teammate',
 
     'feat.label': 'Features', 'feat.kicker': 'What it does', 'feat.title': 'Features',
     'feat.desc': 'From org hierarchy to agent memory, from delegation approvals to one-command install — a layer that runs inside your real business processes.',
@@ -867,6 +892,7 @@ const COPY = {
     'open.stack': 'FastAPI + SvelteKit · SQLite · Model-agnostic',
     'open.company': 'Fabrika Yazılım Tic. Ltd. Şti. · Istanbul',
     'open.role': 'Founder — Fabrika Yazılım',
+    'open.copy': 'Copy', 'open.copied': 'Copied',
 
     'ov.title': 'Features & Screenshots',
     'ov.features_label': 'All Features', 'ov.shots_label': 'Screenshots — click to enlarge',
@@ -894,9 +920,10 @@ const COPY = {
     'os.desc': '<strong>Lebende KI-Agenten</strong> in Ihrem Organigramm. Jeder Agent arbeitet im selben Kontext wie Unternehmensvision, Abteilungs-OKRs und die Richtlinien seiner Position — Menschen <strong>genehmigen Entscheidungen</strong>, Agenten führen die Arbeit aus.',
     'os.cta_demo': 'Demo testen', 'os.cta_app': 'App öffnen',
     'os.diagram_alt': 'Verschachtelte Kontextebenen: Abteilung in der Unternehmensvision, Mensch darin, Entwicklungsagent darin; Pfeile von der äußeren Ebene zur Geschäftsleitung und zu Teamkollegen.',
-    'dg.vision': 'company vision', 'dg.dept': 'abteilung', 'dg.human': 'human', 'dg.human_sub': 'Mensch · Gründer',
-    'dg.agent': 'Development Agent', 'dg.agent_sub': 'claude-sonnet · active', 'dg.policies': 'policies & goals',
-    'dg.upper': 'upper management', 'dg.teammate': 'teammate',
+    'dg.vision': 'Vision & Mission', 'dg.objectives': 'Unternehmensziele', 'dg.dept': 'Abteilung',
+    'dg.human': 'Mensch', 'dg.human_sub': 'Menschlicher Mitarbeiter',
+    'dg.agent': 'Entwicklungsagent', 'dg.agent_sub': 'claude-sonnet · aktiv', 'dg.policies': 'Richtlinien & Regeln',
+    'dg.upper': 'Obere Führungsebene', 'dg.teammate': 'Teamkollege',
 
     'feat.label': 'Funktionen', 'feat.kicker': 'Was es kann', 'feat.title': 'Funktionen',
     'feat.desc': 'Von Organisationshierarchie bis Agentengedächtnis, von Delegationsfreigaben bis Ein-Befehl-Installation — eine Schicht in Ihren echten Geschäftsprozessen.',
@@ -914,6 +941,7 @@ const COPY = {
     'open.stack': 'FastAPI + SvelteKit · SQLite · Modellunabhängig',
     'open.company': 'Fabrika Yazılım Tic. Ltd. Şti. · Istanbul',
     'open.role': 'Gründer — Fabrika Yazılım',
+    'open.copy': 'Kopieren', 'open.copied': 'Kopiert',
 
     'ov.title': 'Funktionen & Screenshots',
     'ov.features_label': 'Alle Funktionen', 'ov.shots_label': 'Screenshots — zum Vergrößern klicken',
@@ -941,9 +969,10 @@ const COPY = {
     'os.desc': '<strong>Agentes de IA vivos</strong> dentro de tu organigrama. Cada agente trabaja en el mismo contexto que la visión de empresa, los OKR del departamento y las políticas de su puesto — las personas <strong>aprueban decisiones</strong>, los agentes ejecutan el trabajo.',
     'os.cta_demo': 'Probar demo', 'os.cta_app': 'Abrir app',
     'os.diagram_alt': 'Capas de contexto anidadas: departamento dentro de la visión de empresa, humano dentro, agente de desarrollo dentro; flechas de la capa externa a la dirección y a los compañeros.',
-    'dg.vision': 'company vision', 'dg.dept': 'departamento', 'dg.human': 'human', 'dg.human_sub': 'Humano · Fundador',
-    'dg.agent': 'Development Agent', 'dg.agent_sub': 'claude-sonnet · active', 'dg.policies': 'policies & goals',
-    'dg.upper': 'upper management', 'dg.teammate': 'teammate',
+    'dg.vision': 'Visión y Misión', 'dg.objectives': 'Objetivos de Empresa', 'dg.dept': 'Departamento',
+    'dg.human': 'Humano', 'dg.human_sub': 'Empleado Humano',
+    'dg.agent': 'Agente de Desarrollo', 'dg.agent_sub': 'claude-sonnet · activo', 'dg.policies': 'Políticas y Reglas',
+    'dg.upper': 'Alta Dirección', 'dg.teammate': 'Compañero de Equipo',
 
     'feat.label': 'Características', 'feat.kicker': 'Qué hace', 'feat.title': 'Características',
     'feat.desc': 'De la jerarquía organizacional a la memoria del agente, de las aprobaciones de delegación a la instalación en un comando — una capa dentro de tus procesos reales.',
@@ -961,6 +990,7 @@ const COPY = {
     'open.stack': 'FastAPI + SvelteKit · SQLite · Independiente del modelo',
     'open.company': 'Fabrika Yazılım Tic. Ltd. Şti. · Estambul',
     'open.role': 'Fundador — Fabrika Yazılım',
+    'open.copy': 'Copiar', 'open.copied': 'Copiado',
 
     'ov.title': 'Características y Capturas',
     'ov.features_label': 'Todas las Características', 'ov.shots_label': 'Capturas — clic para ampliar',
@@ -1021,6 +1051,35 @@ function playDiagram() {
   d.classList.remove('intro');
   void d.offsetWidth;            /* restart animation */
   d.classList.add('intro');
+}
+
+/* ─────────────  copy install command  ───────────── */
+const INSTALL_CMD = 'curl -fsSL https://raw.githubusercontent.com/fab-agent/agentic-organization/main/install.sh | bash';
+function copyInstall(btn) {
+  const label = btn.querySelector('span');
+  const flash = () => {
+    const dict = COPY[currentLang] || COPY.tr;
+    btn.classList.add('done');
+    label.textContent = dict['open.copied'] || 'Copied';
+    setTimeout(() => {
+      btn.classList.remove('done');
+      label.textContent = (COPY[currentLang] || COPY.tr)['open.copy'] || 'Copy';
+    }, 1800);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(INSTALL_CMD).then(flash).catch(() => legacyCopy(INSTALL_CMD, flash));
+  } else {
+    legacyCopy(INSTALL_CMD, flash);
+  }
+}
+function legacyCopy(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try { document.execCommand('copy'); done(); } catch (e) {}
+  document.body.removeChild(ta);
 }
 
 /* ─────────────  features overlay  ───────────── */
