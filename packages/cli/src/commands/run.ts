@@ -22,6 +22,7 @@ import * as p from '@clack/prompts'
 import chalk from 'chalk'
 import { execa, type ExecaError } from 'execa'
 
+import { pollCommands } from '../utils/commands.js'
 import { findSandboxDir } from '../utils/sandbox.js'
 import { ensureFreshToken, refreshNow } from '../utils/token.js'
 import { fetchAndVerifyWellKnown } from '../utils/wellknown.js'
@@ -134,14 +135,16 @@ export async function run(args: string[]): Promise<void> {
   let failClosed = false
   let policyMode = 'unknown'
   let managedConfigPath: string | null = null
+  let signingKeyB64: string | null = null
   if (opts.verify) {
     spin.start('Verifying the signed org config')
     try {
-      const { bundle, keyId } = await fetchAndVerifyWellKnown(
+      const { bundle, keyId, publicKeyB64 } = await fetchAndVerifyWellKnown(
         session.base_url,
         session.wellknown_key_id ?? null,
         { allowKeyChange: opts.acceptKeyChange },
       )
+      signingKeyB64 = publicKeyB64
       const x = ((bundle.config as Record<string, unknown>)?.['x-fabagent'] ??
         {}) as Record<string, unknown>
       failClosed = Boolean(x.fail_closed)
@@ -200,9 +203,8 @@ export async function run(args: string[]): Promise<void> {
     child = execa('docker', composeArgs, { stdio: 'inherit', env })
   }
 
-  // 4. Heartbeat while the sandbox runs — POST /workstation/heartbeat every 30s
-  //    (records liveness for ADR-0007 auto-revoke; returns the live policy mode).
-  const heartbeat = startHeartbeat(session, failClosed, child)
+  // 4. Heartbeat + signed command channel while the sandbox runs.
+  const heartbeat = startHeartbeat(session, signingKeyB64, failClosed, child)
 
   const cleanup = async (): Promise<void> => {
     clearInterval(heartbeat)
@@ -232,6 +234,7 @@ export async function run(args: string[]): Promise<void> {
 
 function startHeartbeat(
   session: Session,
+  signingKeyB64: string | null,
   failClosed: boolean,
   child: ReturnType<typeof execa>,
 ): NodeJS.Timeout {
@@ -257,6 +260,10 @@ function startHeartbeat(
         }
         mode = body.policy_mode
       }
+
+      // signed command channel (ADR-0010 layer 5)
+      const { stop } = await pollCommands(session, signingKeyB64, child)
+      if (stop) clearInterval(timer)
       return
     } catch {
       misses += 1

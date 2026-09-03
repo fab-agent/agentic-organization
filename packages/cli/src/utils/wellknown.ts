@@ -78,7 +78,7 @@ export async function fetchAndVerifyWellKnown(
   baseUrl: string,
   pinnedKeyId: string | null,
   opts: { allowKeyChange?: boolean; fetchImpl?: typeof fetch } = {},
-): Promise<{ bundle: WellKnownBundle; keyId: string }> {
+): Promise<{ bundle: WellKnownBundle; keyId: string; publicKeyB64: string }> {
   const f = opts.fetchImpl ?? fetch
   const [bundleRes, pubRes] = await Promise.all([
     f(`${baseUrl}/.well-known/opencode`),
@@ -113,5 +113,5 @@ export async function fetchAndVerifyWellKnown(
     }
   }
 
-  return { bundle, keyId: pub.key_id }
+  return { bundle, keyId: pub.key_id, publicKeyB64: pub.public_key_b64 }
 }

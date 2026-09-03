@@ -113,3 +113,8 @@ def canonical(config: dict) -> str:
 def sign_config(config: dict) -> str:
     sig = _private_key().sign(canonical(config).encode())
     return base64.b64encode(sig).decode()
+
+
+# Generic — signs any JSON-serialisable dict over its canonical form. Used for
+# the persona command channel (ADR-0010 layer 5) as well as the config bundle.
+sign = sign_config

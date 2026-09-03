@@ -57,6 +57,7 @@ def pg():
         "revokedtoken",
         "personatokenstate",
         "personaheartbeat",
+        "personacommand",
     }
     base = [t for n, t in SQLModel.metadata.tables.items() if n not in added_since]
     SQLModel.metadata.create_all(database.engine, tables=base)
