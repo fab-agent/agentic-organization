@@ -1083,7 +1083,8 @@ document.addEventListener('keydown', e => {
 /* ─────────────  init  ───────────── */
 setLang('tr');
 renderOverlay();
-requestAnimationFrame(playDiagram);
+/* diagram is drawn by default; only animate the draw-in when the panel is
+   re-activated after leaving it (avoids a blank hero while animating). */
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible')
     document.querySelectorAll('.panel.active video').forEach(v => { if (v.paused) v.play().catch(() => {}); });
