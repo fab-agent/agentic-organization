@@ -229,6 +229,22 @@ def on_startup():
             "revocation maintenance init failed", extra={"extra": {"error": str(e)}}
         )
 
+    # Audit chain external anchoring (ADR-0006) — records each chain head to an
+    # append-only log (+ S3 if backup_bucket is set) so truncation / rewrite is
+    # detectable even by someone with DB access.
+    try:
+        from services.audit_anchor import anchor_heads
+
+        _scheduler.add_job(
+            anchor_heads,
+            "interval",
+            hours=1,
+            id="audit_anchor",
+            replace_existing=True,
+        )
+    except Exception as e:
+        logger.warning("audit anchor init failed", extra={"extra": {"error": str(e)}})
+
     _scheduler.start()
     from api.telegram_bot import start_polling
 
