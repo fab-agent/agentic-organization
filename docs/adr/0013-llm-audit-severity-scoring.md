@@ -1,6 +1,6 @@
 # ADR-0013: LLM audit severity scoring
 
-- **Status:** proposed
+- **Status:** accepted (scoring + inbox + Telegram + per-company opt-in + policy auto-escalation done)
 - **Date:** 2026-09-01
 - **Deciders:** Fabrika / fab.engineering
 - **Related:** ADR-0004, ADR-0006, ADR-0010
@@ -58,10 +58,21 @@ surface the risky events on its own.
   OpenAI-compatible model through the org's configured upstream, writes to a
   side table `AuditSeverity` (`(chain_key, seq)`; the chain is never touched).
 - Score >= `severity.threshold` (default 4) → `InboxMessage` to the persona's
-  responsible human. Telegram wiring is a follow-up.
+  responsible human **and** a Telegram message to the company's `TelegramConfig`
+  admin chat (best-effort; never crashes scoring).
+- **Per-company opt-in (2026-09-03):** the job runs globally
+  (`severity.enabled`); alerting + policy feedback for a company's events is
+  gated by `severity.enabled:<company_id>` (default: follows
+  `severity.alert_default`, itself default `true`). Events are still *scored*
+  and stored for opted-out companies, just not `alerted`.
+- **Policy feedback (2026-09-03):** with `severity.autopolicy=true`, once a
+  company accrues `severity.autopolicy_count` (default 3) high-severity events
+  inside an hour, its company-scope `PolicyConfig` mode is forced to `enforce`
+  (ADR-0005) and every founder/executive gets an inbox note. Off by default.
 - Prompt frames the events as data and tells the model to ignore embedded
   directives; the parser trusts only its own JSON shape (ADR-0010).
-- Config: `severity.{enabled,model,threshold,batch}` in `AppConfig`.
+- Config: `severity.{enabled,model,threshold,batch,alert_default,autopolicy,
+  autopolicy_count}` + `severity.enabled:<cid>` in `AppConfig`.
 - Migration `a4e6c8b02d17`.
 
 ## Open questions

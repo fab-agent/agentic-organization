@@ -45,7 +45,7 @@ auto-refreshes near expiry.
 | 0010 | ~~layers 1-5 (taint, guardrails, untrusted→ask, egress, signed command channel)~~ done; layer 6 output scanning (later phase) |
 | 0011 | ~~fetch + verify + in-container injection + key rotation~~ done; `OPENCODE_PERMISSION` env-bypass hardening; plugin runtime assert; rotate UI |
 | 0012 | ~~`release.yml` (sandbox/egress images, 3pa bundle, plugin/cli npm), opencode pin, compat matrix~~ done; backend/frontend image push; Go 3pa + signing; e2e-nightly |
-| 0013 | Telegram wiring; per-company opt-in; feed high scores back into the Policy Engine |
+| 0013 | ~~Telegram wiring, per-company opt-in, policy auto-escalation~~ done |
 
 **Suggested next work:** (1) ADR-0012 release workflows, (2) ADR-0010 signed
 command channel, (3) ADR-0006 external chain anchoring.
