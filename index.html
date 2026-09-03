@@ -151,7 +151,7 @@
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
   <style>
     :root {
@@ -167,7 +167,7 @@
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     html { height: 100%; scroll-behavior: smooth; }
     body {
-      font-family: 'Space Grotesk', system-ui, sans-serif;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
       background: #000;
       color: #fff;
       height: 100%;
@@ -176,6 +176,12 @@
     }
     a { color: inherit; }
     .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+    /* Space Grotesk = display face (headings, wordmark, labels, buttons) */
+    .wordmark, .panel-kicker, .panel-title, .panel-label, .panel-num,
+    .overlay-head h2, .ov-sec-label, .ov-group > h3, .ov-card h3, .feat-item h4,
+    .open-col h4, .btn, .gh-link, .lang-btn, .noscript-note h2, .agent-status {
+      font-family: 'Space Grotesk', 'Inter', sans-serif;
+    }
 
     .sr-only {
       position: absolute; width: 1px; height: 1px;
@@ -232,7 +238,7 @@
     .panel {
       position: relative; overflow: hidden;
       flex: 0.6; cursor: pointer;
-      transition: flex var(--dur) var(--ease);
+      transition: flex var(--dur) var(--ease), box-shadow 0.25s var(--ease);
     }
     .panel.active { flex: 5; cursor: default; }
 
@@ -244,7 +250,8 @@
       filter: blur(1.5px) saturate(0.9);
       transition: opacity var(--dur) var(--ease);
     }
-    .panel:not(.active) video { opacity: 0.18; }
+    .panel:not(.active) video { opacity: 0.14; }
+    .panel-os.active video { opacity: 0.5; }
 
     .panel-os   { background: #06101f; }
     .panel-feat { background: #061a10; }
@@ -265,7 +272,7 @@
       linear-gradient(to top, rgba(0,0,0,0.97) 0%, rgba(2,22,21,0.72) 34%, rgba(2,22,21,0.25) 62%, transparent 80%),
       radial-gradient(ellipse at 50% 45%, rgba(93,232,220,0.09), transparent 60%); }
 
-    /* ── COLLAPSED LABEL ── */
+    /* ── COLLAPSED LABEL + NUMBER + HOVER AFFORDANCE ── */
     .panel-label {
       position: absolute; z-index: 3;
       bottom: 50%; left: 50%;
@@ -274,14 +281,40 @@
       white-space: nowrap;
       font-size: 0.66rem; font-weight: 700;
       letter-spacing: 0.2em; text-transform: uppercase;
-      color: rgba(255,255,255,0.5);
+      color: rgba(255,255,255,0.55);
       transition: opacity 0.25s, color 0.2s;
     }
-    .panel:not(.active):hover .panel-label { color: rgba(255,255,255,0.92); }
-    .panel.active .panel-label { opacity: 0; pointer-events: none; }
-    .panel-os:not(.active):hover::before   { background: rgba(120,180,255,0.10); }
-    .panel-feat:not(.active):hover::before { background: rgba(110,231,160,0.09); }
-    .panel-open:not(.active):hover::before { background: rgba(93,232,220,0.09); }
+    .panel-num {
+      position: absolute; z-index: 3; left: 50%;
+      bottom: calc(50% + 4.6rem);
+      transform: translateX(-50%);
+      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em;
+      color: rgba(255,255,255,0.3);
+      transition: opacity 0.25s, color 0.2s;
+    }
+    .panel-hint {
+      position: absolute; z-index: 3; left: 50%;
+      top: calc(50% + 4.4rem);
+      transform: translateX(-50%) translateY(6px);
+      opacity: 0; transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+    }
+    .panel:not(.active):hover .panel-label { color: #fff; }
+    .panel:not(.active):hover .panel-num   { color: rgba(255,255,255,0.6); }
+    .panel:not(.active):hover .panel-hint  { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .panel-os:not(.active):hover   .panel-hint { color: var(--acc-os); }
+    .panel-feat:not(.active):hover .panel-hint { color: var(--acc-feat); }
+    .panel-open:not(.active):hover .panel-hint { color: var(--acc-open); }
+    .panel.active .panel-label,
+    .panel.active .panel-num,
+    .panel.active .panel-hint { opacity: 0; pointer-events: none; }
+
+    .panel-os:not(.active):hover   { box-shadow: inset 0 -3px 0 var(--acc-os); }
+    .panel-feat:not(.active):hover { box-shadow: inset 0 -3px 0 var(--acc-feat); }
+    .panel-open:not(.active):hover { box-shadow: inset 0 -3px 0 var(--acc-open); }
+    .panel-os:not(.active):hover::before   { background: rgba(120,180,255,0.13); }
+    .panel-feat:not(.active):hover::before { background: rgba(110,231,160,0.12); }
+    .panel-open:not(.active):hover::before { background: rgba(93,232,220,0.12); }
 
     /* ── PANEL CONTENT ── */
     .panel-content {
@@ -293,6 +326,18 @@
       pointer-events: none;
     }
     .panel.active .panel-content { opacity: 1; transform: none; pointer-events: auto; }
+
+    /* content stagger on activate */
+    @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    .panel.active .panel-kicker { animation: rise 0.5s var(--ease) 0.06s backwards; }
+    .panel.active .panel-title  { animation: rise 0.5s var(--ease) 0.13s backwards; }
+    .panel.active .panel-desc   { animation: rise 0.5s var(--ease) 0.20s backwards; }
+    .panel.active .cta-row,
+    .panel.active .proof        { animation: rise 0.5s var(--ease) 0.27s backwards; }
+    .panel.active .os-visual,
+    .panel.active .feat-grid,
+    .panel.active .install-box,
+    .panel.active .open-cols    { animation: rise 0.5s var(--ease) 0.34s backwards; }
 
     .panel-kicker {
       font-size: 0.72rem; font-weight: 700; letter-spacing: 0.18em;
@@ -339,6 +384,20 @@
       color: #fff;
     }
     .btn-ghost:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.34); }
+    .btn svg { transition: transform 0.15s var(--ease); }
+    .btn:hover svg { transform: translateX(2px); }
+
+    /* proof strip (panel 1) */
+    .proof {
+      list-style: none; display: flex; flex-wrap: wrap; gap: 0.4rem 0.55rem;
+      margin-top: 1.15rem;
+    }
+    .proof li {
+      font-size: 0.68rem; font-weight: 500; letter-spacing: 0.01em;
+      color: rgba(255,255,255,0.6);
+      border: 1px solid rgba(255,255,255,0.13); border-radius: 999px;
+      padding: 3px 10px; white-space: nowrap;
+    }
 
     /* ── PANEL 1: OS — diagram layout ── */
     .panel-os.active .panel-content {
@@ -355,8 +414,8 @@
     /* ── SIGNATURE DIAGRAM ── */
     .diagram {
       width: 100%;
-      max-width: 520px;
-      max-height: min(54vh, 440px);
+      max-width: 580px;
+      max-height: min(58vh, 490px);
       height: auto;
       overflow: visible;
     }
@@ -392,7 +451,33 @@
     .diagram .val-sub  { font-size: 10.5px; font-weight: 400; fill: rgba(255,255,255,0.55); }
     .diagram .val-agent { font-size: 12.5px; font-weight: 700; fill: var(--acc-feat); }
     .diagram .node-core { fill: var(--acc-feat); }
-    .diagram .node-ring { fill: none; stroke: var(--acc-feat); stroke-width: 1.4; transform-origin: 180px 278px; }
+    .diagram .node-ring { fill: none; stroke: var(--acc-feat); stroke-width: 1.4; transform-origin: 180px 270px; }
+    .diagram .agent-status {
+      font-family: 'Space Grotesk', sans-serif; font-size: 9px; font-weight: 500;
+      fill: rgba(110,231,160,0.85); letter-spacing: 0.02em;
+    }
+    .diagram .edge-flow {
+      fill: none; stroke: var(--acc-os); stroke-width: 2.2; opacity: 0.9;
+      stroke-linecap: round;
+      stroke-dasharray: 34 1660; stroke-dashoffset: 0;
+      animation: edgeFlow 6s linear infinite;
+    }
+    .diagram .sig { fill: var(--acc-feat); opacity: 0; }
+    .diagram .sig-up    { animation: sigUp 3.8s ease-in-out infinite; }
+    .diagram .sig-right { animation: sigRight 3.8s ease-in-out 1.9s infinite; }
+    @keyframes edgeFlow { to { stroke-dashoffset: -1694; } }
+    @keyframes sigUp {
+      0% { transform: translate(0,0); opacity: 0; }
+      12% { opacity: 0.95; }
+      55% { transform: translate(75px,-244px); opacity: 0.95; }
+      66%, 100% { transform: translate(75px,-244px); opacity: 0; }
+    }
+    @keyframes sigRight {
+      0% { transform: translate(0,0); opacity: 0; }
+      12% { opacity: 0.95; }
+      55% { transform: translate(446px,-70px); opacity: 0.95; }
+      66%, 100% { transform: translate(446px,-70px); opacity: 0; }
+    }
 
     @keyframes drawFrame { from { stroke-dashoffset: 1850; } to { stroke-dashoffset: 0; } }
     @keyframes drawArrow { from { stroke-dashoffset: 180; }  to { stroke-dashoffset: 0; } }
@@ -512,20 +597,31 @@
 
     .ov-sec-label {
       font-size: 0.7rem; font-weight: 700; letter-spacing: 0.16em;
-      text-transform: uppercase; color: rgba(255,255,255,0.4);
+      text-transform: uppercase; color: rgba(255,255,255,0.5);
       margin: 0 0 1rem;
     }
+    .ov-groups { margin-bottom: 2.5rem; }
+    .ov-group { margin-bottom: 1.8rem; }
+    .ov-group > h3 {
+      font-size: 0.72rem; font-weight: 700; letter-spacing: 0.14em;
+      text-transform: uppercase; color: var(--acc-feat);
+      margin: 0 0 0.9rem; padding-bottom: 0.5rem;
+      border-bottom: 1px solid rgba(110,231,160,0.2);
+    }
     .ov-features {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 0.9rem; margin-bottom: 3rem;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 0.9rem;
     }
     .ov-card {
       background: rgba(255,255,255,0.03);
       border: 1px solid rgba(255,255,255,0.08);
       border-radius: 14px; padding: 1.2rem;
-      transition: border-color 0.2s, transform 0.2s;
+      transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
     }
-    .ov-card:hover { border-color: rgba(110,231,160,0.35); transform: translateY(-2px); }
+    .ov-card:hover {
+      border-color: rgba(110,231,160,0.4); transform: translateY(-2px);
+      box-shadow: 0 0 0 1px rgba(110,231,160,0.15), 0 10px 34px rgba(0,0,0,0.35);
+    }
     .ov-card .ic {
       width: 36px; height: 36px; border-radius: 9px;
       display: flex; align-items: center; justify-content: center;
@@ -620,14 +716,14 @@
       display: flex; align-items: center; gap: 0.5rem;
       padding: 0 1.5rem; height: 100%;
       font-size: 0.8rem; font-weight: 500;
-      color: rgba(255,255,255,0.5); text-decoration: none; white-space: nowrap;
+      color: rgba(255,255,255,0.62); text-decoration: none; white-space: nowrap;
       border-right: 1px solid rgba(255,255,255,0.07);
       transition: color 0.2s; flex-shrink: 0;
     }
     .bar-item:last-child { border-right: none; }
     .bar-item:hover { color: #fff; }
     .bar-item.static { cursor: default; }
-    .bar-item.static:hover { color: rgba(255,255,255,0.5); }
+    .bar-item.static:hover { color: rgba(255,255,255,0.62); }
     .bar-item.name { font-weight: 700; color: rgba(255,255,255,0.72); }
     .bar-item.name:hover { color: rgba(255,255,255,0.72); }
     .bar-item svg { flex-shrink: 0; opacity: 0.55; }
@@ -660,6 +756,7 @@
         transform: none; bottom: auto; top: 50%; left: 1.3rem;
         transform: translateY(-50%); letter-spacing: 0.16em;
       }
+      .panel-num, .panel-hint { display: none; }
       .panel-content {
         position: relative; inset: auto;
         width: 100%; max-width: 100%;
@@ -688,8 +785,13 @@
       .panel video { display: none; }
       .diagram .frame, .diagram .arrow { stroke-dashoffset: 0 !important; animation: none !important; }
       .diagram .lbl, .diagram .val { opacity: 1 !important; animation: none !important; }
-      .diagram .node-core, .diagram .node-ring, .diagram .g-agent { animation: none !important; }
-      * { transition-duration: 0.001s !important; }
+      .diagram .node-core, .diagram .node-ring, .diagram .g-agent,
+      .diagram .edge-flow, .diagram .sig { animation: none !important; }
+      .diagram .edge-flow, .diagram .sig { opacity: 0 !important; }
+      .panel.active .panel-kicker, .panel.active .panel-title, .panel.active .panel-desc,
+      .panel.active .cta-row, .panel.active .proof, .panel.active .os-visual,
+      .panel.active .feat-grid, .panel.active .install-box, .panel.active .open-cols { animation: none !important; }
+      * { transition-duration: 0.001s !important; animation-duration: 0.001s !important; }
     }
   </style>
 </head>
@@ -719,7 +821,9 @@
     <video autoplay muted loop playsinline preload="metadata" poster="videos/panel-1.jpg">
       <source src="videos/panel-1.mp4" type="video/mp4">
     </video>
+    <span class="panel-num" aria-hidden="true">01</span>
     <div class="panel-label" data-i18n="os.label">Agentic Work OS</div>
+    <span class="panel-hint" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
     <div class="panel-content">
       <div class="os-text">
         <div class="panel-kicker" data-i18n="os.kicker">Agentic Work OS</div>
@@ -739,6 +843,12 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"/></svg>
           </a>
         </div>
+        <ul class="proof" aria-label="Öne çıkanlar">
+          <li>MIT</li><li>Self-hosted</li>
+          <li data-i18n="os.p_model">Model bağımsız</li>
+          <li>API · MCP · DB</li><li>SQLite</li>
+          <li data-i18n="os.p_install">install.sh</li>
+        </ul>
       </div>
 
       <div class="os-visual" onclick="event.stopPropagation()">
@@ -759,6 +869,7 @@
 
           <!-- ① vizyon & misyon -->
           <rect class="frame f-vision" x="40" y="64" width="430" height="416" rx="20" pathLength="1"/>
+          <rect class="edge-flow" x="40" y="64" width="430" height="416" rx="20"/>
           <text class="lbl lbl-vision" x="60" y="272" text-anchor="middle" transform="rotate(-90 60 272)" data-i18n="dg.vision">Vizyon &amp; Misyon</text>
           <text class="lbl lbl-obj" x="54" y="470" text-anchor="start" data-i18n="dg.objectives">Şirket Ana Hedefleri</text>
 
@@ -774,13 +885,18 @@
 
           <!-- ④ development agent -->
           <g class="g-agent">
-            <rect class="frame f-agent" x="150" y="212" width="212" height="128" rx="13" pathLength="1"/>
+            <rect class="frame f-agent" x="150" y="210" width="212" height="132" rx="13" pathLength="1"/>
           </g>
-          <circle class="node-ring" cx="180" cy="278" r="4.5"/>
-          <circle class="node-core" cx="180" cy="278" r="4.5"/>
-          <text class="val val-agent" x="196" y="276" data-i18n="dg.agent">Geliştirme Ajanı</text>
-          <text class="val val-sub" x="196" y="292" data-i18n="dg.agent_sub">claude-sonnet · aktif</text>
-          <text class="lbl lbl-agent" x="256" y="330" text-anchor="middle" data-i18n="dg.policies">Politika ve Kurallar</text>
+          <circle class="node-ring" cx="180" cy="270" r="4.5"/>
+          <circle class="node-core" cx="180" cy="270" r="4.5"/>
+          <text class="val val-agent" x="196" y="268" data-i18n="dg.agent">Geliştirme Ajanı</text>
+          <text class="val val-sub" x="196" y="284" data-i18n="dg.agent_sub">claude-sonnet · aktif</text>
+          <text class="agent-status" id="agentStatus" x="196" y="301" data-i18n="dg.st0">bağlam okuyor…</text>
+          <text class="lbl lbl-agent" x="256" y="332" text-anchor="middle" data-i18n="dg.policies">Politika ve Kurallar</text>
+
+          <!-- living signals emitted from the agent node -->
+          <circle class="sig sig-up" cx="180" cy="270" r="3"/>
+          <circle class="sig sig-right" cx="180" cy="270" r="3"/>
         </svg>
       </div>
     </div>
@@ -791,7 +907,9 @@
     <video autoplay muted loop playsinline preload="none" poster="videos/panel-2.jpg">
       <source src="videos/panel-2.mp4" type="video/mp4">
     </video>
+    <span class="panel-num" aria-hidden="true">02</span>
     <div class="panel-label" data-i18n="feat.label">Özellikler</div>
+    <span class="panel-hint" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
     <div class="panel-content">
       <div class="panel-kicker" data-i18n="feat.kicker">Ne yapar?</div>
       <h2 class="panel-title" data-i18n="feat.title">Özellikler</h2>
@@ -839,7 +957,9 @@
     <video autoplay muted loop playsinline preload="none" poster="videos/panel-3.jpg">
       <source src="videos/panel-3.mp4" type="video/mp4">
     </video>
+    <span class="panel-num" aria-hidden="true">03</span>
     <div class="panel-label" data-i18n="open.label">Açık Kaynak</div>
+    <span class="panel-hint" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg></span>
     <div class="panel-content">
       <div class="panel-kicker" data-i18n="open.kicker">Açık kaynak · Self-hosted</div>
       <h2 class="panel-title" data-i18n="open.title">Kaynak açık, veriler sizde</h2>
@@ -905,72 +1025,92 @@
   </div>
   <div class="overlay-body">
     <p class="ov-sec-label" data-i18n="ov.features_label">Tüm Özellikler</p>
-    <div class="ov-features">
-      <article class="ov-card">
-        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></div>
-        <h3 data-i18n-html="f1.t">Organizasyon Hiyerarşisi</h3>
-        <p data-i18n-html="f1.d">Şirket, departman, personel ve ajan katmanlarını tanımla. Org chart'ı görselleştir, yöneticileri ve raporlama yapısını belirle.</p>
-      </article>
-      <article class="ov-card">
-        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8a4 4 0 100-8 4 4 0 000 8zM20 21a8 8 0 10-16 0"/></svg></div>
-        <h3 data-i18n-html="f2.t">Personel Bazlı Ajanlar</h3>
-        <p data-i18n-html="f2.d">Her pozisyona özel ajan: model seçimi, versiyon, skill'ler ve politikalar. Claude, GPT-4 veya Gemini — tek arayüzden.</p>
-      </article>
-      <article class="ov-card">
-        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/></svg></div>
-        <h3 data-i18n-html="f3.t">A2A Delegasyon</h3>
-        <p data-i18n-html="f3.d">Ajan-to-ajan görev devri. Bir ajan başka bir ajana iş atar; sorumlu insan onaylar ya da reddeder. İki aşamalı onay akışı.</p>
-      </article>
-      <article class="ov-card">
-        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6"/></svg></div>
-        <h3 data-i18n-html="f4.t">Policy &amp; Skill Yönetimi</h3>
-        <p data-i18n-html="f4.d">Politikalar ve yetenekler Markdown dosyalarıyla tanımlanır. Git ile versiyon kontrolü; değişiklik talepleri onay akışıyla.</p>
-      </article>
-      <article class="ov-card">
-        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8"/></svg></div>
-        <h3 data-i18n-html="f5.t">Rol Tabanlı Erişim</h3>
-        <p data-i18n-html="f5.d">5 kademeli yetki: Kurucu → Yönetici → Bölüm Müdürü → Ajan Sorumlusu → Kullanıcı. Her kademe kendi kapsamında.</p>
-      </article>
-      <article class="ov-card">
-        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2h20v8H2zM2 14h20v8H2"/></svg></div>
-        <h3 data-i18n-html="f6.t">Tek Komut Prodüksiyon Kurulumu</h3>
-        <p data-i18n-html="f6.d"><code>bash install.sh</code> — Let's Encrypt SSL, Nginx, Docker Compose. Sihirbaz JWT/şifreleme anahtarlarını üretir. Tüm veriler kendi sunucunda.</p>
-      </article>
-      <article class="ov-card">
-        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5M21 5c0 1.66-4 3-9 3S3 6.66 3 5s4-3 9-3 9 1.34 9 3"/></svg></div>
-        <h3 data-i18n-html="f7.t">S3 / R2 Yedekleme</h3>
-        <p data-i18n-html="f7.d">Tek tıkla veritabanı yedeği — AWS S3, Cloudflare R2 veya MinIO'ya. Kimlik bilgileri AES-256 ile şifreli.</p>
-      </article>
-      <article class="ov-card">
-        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a3 3 0 100-6 3 3 0 000 6zM6 15a3 3 0 100-6 3 3 0 000 6zM18 22a3 3 0 100-6 3 3 0 000 6M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg></div>
-        <h3 data-i18n-html="f8.t">Sosyal Medya Skill'leri</h3>
-        <p data-i18n-html="f8.d">Ajanlara Instagram Business ve WhatsApp Business skill'i ekle. Gönderi oluştur, mesaj gönder — sohbet arayüzünden.</p>
-      </article>
-      <article class="ov-card">
-        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M18 9l-5 5-3-3-4 4"/></svg></div>
-        <h3 data-i18n-html="f9.t">SLA &amp; AI Telemetri Dashboard</h3>
-        <p data-i18n-html="f9.d">Oturum sayıları, token harcaması, aktif ajan durumu. Yöneticilere ajan başarı oranı (SLA) renk kodlu tabloyla sunulur.</p>
-      </article>
-      <article class="ov-card">
-        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 00-3 3v12a3 3 0 006 0V6a3 3 0 00-3-3"/></svg></div>
-        <h3 data-i18n-html="f10.t">Uzun Dönem Ajan Hafızası</h3>
-        <p data-i18n-html="f10.d">Kapanan oturumlar AI tarafından özetlenerek hafıza kaydına dönüşür. Ajanın geçmiş bağlamı korunur.</p>
-      </article>
-      <article class="ov-card">
-        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012 5.1 2 2 0 014 3h3a2 2 0 012 1.7c.1 1 .4 1.9.7 2.8a2 2 0 01-.5 2.1L8 12a16 16 0 006 6l1.3-1.3a2 2 0 012.1-.4c.9.3 1.8.6 2.8.7A2 2 0 0122 16.9z"/></svg></div>
-        <h3 data-i18n-html="f11.t">Telegram Bildirimleri</h3>
-        <p data-i18n-html="f11.d">Davet ve şifre sıfırlama bildirimleri Telegram Bot API üzerinden anında. E-posta altyapısına gerek yok.</p>
-      </article>
-      <article class="ov-card">
-        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
-        <h3 data-i18n-html="f12.t">AI Onboarding</h3>
-        <p data-i18n-html="f12.d">İlk kurulumda şirket adını yaz — AI web araştırması yapar ve departmanlar, ajanlar, yetenekler ile politikaları otomatik oluşturur.</p>
-      </article>
-      <article class="ov-card">
-        <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg></div>
-        <h3 data-i18n-html="f13.t">Otomatik Güncelleme Bildirimi</h3>
-        <p data-i18n-html="f13.d">Platform yeni sürüm kontrolünü arka planda yapar (GitHub Releases API). Güncelleme varsa dashboard'da banner gösterilir.</p>
-      </article>
+    <div class="ov-groups">
+      <section class="ov-group">
+        <h3 data-i18n="og1">Organizasyon & Yetki</h3>
+        <div class="ov-features">
+        <article class="ov-card">
+          <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></div>
+          <h3 data-i18n-html="f1.t">Organizasyon Hiyerarşisi</h3>
+          <p data-i18n-html="f1.d">Şirket, departman, personel ve ajan katmanlarını tanımla. Org chart'ı görselleştir, yöneticileri ve raporlama yapısını belirle.</p>
+        </article>
+        <article class="ov-card">
+          <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8"/></svg></div>
+          <h3 data-i18n-html="f5.t">Rol Tabanlı Erişim</h3>
+          <p data-i18n-html="f5.d">5 kademeli yetki: Kurucu → Yönetici → Bölüm Müdürü → Ajan Sorumlusu → Kullanıcı. Her kademe kendi kapsamında.</p>
+        </article>
+        <article class="ov-card">
+          <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3"/></svg></div>
+          <h3 data-i18n-html="f3.t">A2A Delegasyon</h3>
+          <p data-i18n-html="f3.d">Ajan-to-ajan görev devri. Bir ajan başka bir ajana iş atar; sorumlu insan onaylar ya da reddeder. İki aşamalı onay akışı.</p>
+        </article>
+        </div>
+      </section>
+      <section class="ov-group">
+        <h3 data-i18n="og2">Ajan, Model & Hafıza</h3>
+        <div class="ov-features">
+        <article class="ov-card">
+          <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8a4 4 0 100-8 4 4 0 000 8zM20 21a8 8 0 10-16 0"/></svg></div>
+          <h3 data-i18n-html="f2.t">Personel Bazlı Ajanlar</h3>
+          <p data-i18n-html="f2.d">Her pozisyona özel ajan: model seçimi, versiyon, skill'ler ve politikalar. Claude, GPT-4 veya Gemini — tek arayüzden.</p>
+        </article>
+        <article class="ov-card">
+          <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 00-3 3v12a3 3 0 006 0V6a3 3 0 00-3-3"/></svg></div>
+          <h3 data-i18n-html="f10.t">Uzun Dönem Ajan Hafızası</h3>
+          <p data-i18n-html="f10.d">Kapanan oturumlar AI tarafından özetlenerek hafıza kaydına dönüşür. Ajanın geçmiş bağlamı korunur.</p>
+        </article>
+        <article class="ov-card">
+          <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+          <h3 data-i18n-html="f12.t">AI Onboarding</h3>
+          <p data-i18n-html="f12.d">İlk kurulumda şirket adını yaz — AI web araştırması yapar ve departmanlar, ajanlar, yetenekler ile politikaları otomatik oluşturur.</p>
+        </article>
+        </div>
+      </section>
+      <section class="ov-group">
+        <h3 data-i18n="og3">Politika, Skill & Entegrasyon</h3>
+        <div class="ov-features">
+        <article class="ov-card">
+          <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6"/></svg></div>
+          <h3 data-i18n-html="f4.t">Policy &amp; Skill Yönetimi</h3>
+          <p data-i18n-html="f4.d">Politikalar ve yetenekler Markdown dosyalarıyla tanımlanır. Git ile versiyon kontrolü; değişiklik talepleri onay akışıyla.</p>
+        </article>
+        <article class="ov-card">
+          <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a3 3 0 100-6 3 3 0 000 6zM6 15a3 3 0 100-6 3 3 0 000 6zM18 22a3 3 0 100-6 3 3 0 000 6M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg></div>
+          <h3 data-i18n-html="f8.t">Sosyal Medya Skill'leri</h3>
+          <p data-i18n-html="f8.d">Ajanlara Instagram Business ve WhatsApp Business skill'i ekle. Gönderi oluştur, mesaj gönder — sohbet arayüzünden.</p>
+        </article>
+        </div>
+      </section>
+      <section class="ov-group">
+        <h3 data-i18n="og4">Kurulum & Operasyon</h3>
+        <div class="ov-features">
+        <article class="ov-card">
+          <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2h20v8H2zM2 14h20v8H2"/></svg></div>
+          <h3 data-i18n-html="f6.t">Tek Komut Prodüksiyon Kurulumu</h3>
+          <p data-i18n-html="f6.d"><code>bash install.sh</code> — Let's Encrypt SSL, Nginx, Docker Compose. Sihirbaz JWT/şifreleme anahtarlarını üretir. Tüm veriler kendi sunucunda.</p>
+        </article>
+        <article class="ov-card">
+          <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M18 9l-5 5-3-3-4 4"/></svg></div>
+          <h3 data-i18n-html="f9.t">SLA &amp; AI Telemetri Dashboard</h3>
+          <p data-i18n-html="f9.d">Oturum sayıları, token harcaması, aktif ajan durumu. Yöneticilere ajan başarı oranı (SLA) renk kodlu tabloyla sunulur.</p>
+        </article>
+        <article class="ov-card">
+          <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5M21 5c0 1.66-4 3-9 3S3 6.66 3 5s4-3 9-3 9 1.34 9 3"/></svg></div>
+          <h3 data-i18n-html="f7.t">S3 / R2 Yedekleme</h3>
+          <p data-i18n-html="f7.d">Tek tıkla veritabanı yedeği — AWS S3, Cloudflare R2 veya MinIO'ya. Kimlik bilgileri AES-256 ile şifreli.</p>
+        </article>
+        <article class="ov-card">
+          <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 01-2.2 2 19.8 19.8 0 01-8.6-3.1 19.5 19.5 0 01-6-6A19.8 19.8 0 012 5.1 2 2 0 014 3h3a2 2 0 012 1.7c.1 1 .4 1.9.7 2.8a2 2 0 01-.5 2.1L8 12a16 16 0 006 6l1.3-1.3a2 2 0 012.1-.4c.9.3 1.8.6 2.8.7A2 2 0 0122 16.9z"/></svg></div>
+          <h3 data-i18n-html="f11.t">Telegram Bildirimleri</h3>
+          <p data-i18n-html="f11.d">Davet ve şifre sıfırlama bildirimleri Telegram Bot API üzerinden anında. E-posta altyapısına gerek yok.</p>
+        </article>
+        <article class="ov-card">
+          <div class="ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6EE7A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg></div>
+          <h3 data-i18n-html="f13.t">Otomatik Güncelleme Bildirimi</h3>
+          <p data-i18n-html="f13.d">Platform yeni sürüm kontrolünü arka planda yapar (GitHub Releases API). Güncelleme varsa dashboard'da banner gösterilir.</p>
+        </article>
+        </div>
+      </section>
     </div>
     <p class="ov-sec-label" data-i18n="ov.shots_label">Ekran Görüntüleri — büyütmek için tıklayın</p>
     <div class="shots">
@@ -1053,12 +1193,13 @@ const COPY = {
   tr: {
     'os.label': 'Agentic Work OS', 'os.kicker': 'Agentic Work OS', 'os.title': 'Agentic Work OS',
     'os.desc': 'Organizasyon şemanızda <strong>yaşayan yapay zeka ajanları</strong>. Her ajan; şirket vizyonu, departman OKR\'ları ve pozisyonun politikalarıyla aynı bağlamda çalışır — insanlar <strong>karar onaylar</strong>, ajanlar işi yürütür.',
-    'os.cta_demo': 'Demo Dene', 'os.cta_app': 'Uygulamayı Aç',
+    'os.cta_demo': 'Demo Dene', 'os.cta_app': 'Uygulamayı Aç', 'os.p_model': 'Model bağımsız', 'os.p_install': 'install.sh',
     'os.diagram_alt': 'İç içe bağlam katmanları: şirket vizyonu içinde departman, içinde insan, içinde geliştirme ajanı; dış katmandan yukarı yönetime ve yana takım arkadaşlarına oklar.',
     'dg.vision': 'Vizyon & Misyon', 'dg.objectives': 'Şirket Ana Hedefleri', 'dg.dept': 'Departman',
     'dg.human': 'İnsan', 'dg.human_sub': 'İnsan Çalışan',
     'dg.agent': 'Geliştirme Ajanı', 'dg.agent_sub': 'claude-sonnet · aktif', 'dg.policies': 'Politika ve Kurallar',
     'dg.upper': 'Üst Yönetim', 'dg.teammate': 'Takım Arkadaşı',
+    'dg.st0': 'bağlam okuyor…', 'dg.st1': 'delege ediyor…', 'dg.st2': 'özet yazıyor…', 'dg.st3': 'onay bekliyor…',
 
     'feat.label': 'Özellikler', 'feat.kicker': 'Ne yapar?', 'feat.title': 'Özellikler',
     'feat.desc': 'Organizasyon hiyerarşisinden ajan hafızasına, delegasyon onaylarından tek komut kuruluma — gerçek iş süreçlerinin içinde çalışan bir katman.',
@@ -1080,6 +1221,7 @@ const COPY = {
 
     'ov.title': 'Özellikler & Ekran Görüntüleri',
     'ov.features_label': 'Tüm Özellikler', 'ov.shots_label': 'Ekran Görüntüleri — büyütmek için tıklayın',
+    'og1': 'Organizasyon & Yetki', 'og2': 'Ajan, Model & Hafıza', 'og3': 'Politika, Skill & Entegrasyon', 'og4': 'Kurulum & Operasyon',
     'bar.docs': 'Dokümantasyon', 'bar.copy': '© 2026 Fabrika Yazılım Tic. Ltd. Şti.',
 
     'f1.t': 'Organizasyon Hiyerarşisi', 'f1.d': 'Şirket, departman, personel ve ajan katmanlarını tanımla. Org chart\'ı görselleştir, yöneticileri ve raporlama yapısını belirle.',
@@ -1102,12 +1244,13 @@ const COPY = {
   en: {
     'os.label': 'Agentic Work OS', 'os.kicker': 'Agentic Work OS', 'os.title': 'Agentic Work OS',
     'os.desc': '<strong>Living AI agents</strong> inside your org chart. Every agent works in the same context as the company vision, department OKRs and its position\'s policies — humans <strong>approve decisions</strong>, agents run the work.',
-    'os.cta_demo': 'Try Demo', 'os.cta_app': 'Open App',
+    'os.cta_demo': 'Try Demo', 'os.cta_app': 'Open App', 'os.p_model': 'Model-agnostic', 'os.p_install': 'install.sh',
     'os.diagram_alt': 'Nested context layers: department inside company vision, human inside it, development agent inside that; arrows from the outer layer to upper management and to teammates.',
     'dg.vision': 'Vision & Mission', 'dg.objectives': 'Company Objectives', 'dg.dept': 'Department',
     'dg.human': 'Human', 'dg.human_sub': 'Human Employee',
     'dg.agent': 'Development Agent', 'dg.agent_sub': 'claude-sonnet · active', 'dg.policies': 'Policies & Rules',
     'dg.upper': 'Upper Management', 'dg.teammate': 'Teammate',
+    'dg.st0': 'reading context…', 'dg.st1': 'delegating…', 'dg.st2': 'writing summary…', 'dg.st3': 'awaiting approval…',
 
     'feat.label': 'Features', 'feat.kicker': 'What it does', 'feat.title': 'Features',
     'feat.desc': 'From org hierarchy to agent memory, from delegation approvals to one-command install — a layer that runs inside your real business processes.',
@@ -1129,6 +1272,7 @@ const COPY = {
 
     'ov.title': 'Features & Screenshots',
     'ov.features_label': 'All Features', 'ov.shots_label': 'Screenshots — click to enlarge',
+    'og1': 'Organization & Authority', 'og2': 'Agents, Model & Memory', 'og3': 'Policy, Skills & Integration', 'og4': 'Setup & Operations',
     'bar.docs': 'Documentation', 'bar.copy': '© 2026 Fabrika Yazılım Tic. Ltd. Şti.',
 
     'f1.t': 'Organization Hierarchy', 'f1.d': 'Define company, department, personnel and agent layers. Visualize the org chart, set managers and reporting structures.',
@@ -1151,12 +1295,13 @@ const COPY = {
   de: {
     'os.label': 'Agentic Work OS', 'os.kicker': 'Agentic Work OS', 'os.title': 'Agentic Work OS',
     'os.desc': '<strong>Lebende KI-Agenten</strong> in Ihrem Organigramm. Jeder Agent arbeitet im selben Kontext wie Unternehmensvision, Abteilungs-OKRs und die Richtlinien seiner Position — Menschen <strong>genehmigen Entscheidungen</strong>, Agenten führen die Arbeit aus.',
-    'os.cta_demo': 'Demo testen', 'os.cta_app': 'App öffnen',
+    'os.cta_demo': 'Demo testen', 'os.cta_app': 'App öffnen', 'os.p_model': 'Modellunabhängig', 'os.p_install': 'install.sh',
     'os.diagram_alt': 'Verschachtelte Kontextebenen: Abteilung in der Unternehmensvision, Mensch darin, Entwicklungsagent darin; Pfeile von der äußeren Ebene zur Geschäftsleitung und zu Teamkollegen.',
     'dg.vision': 'Vision & Mission', 'dg.objectives': 'Unternehmensziele', 'dg.dept': 'Abteilung',
     'dg.human': 'Mensch', 'dg.human_sub': 'Menschlicher Mitarbeiter',
     'dg.agent': 'Entwicklungsagent', 'dg.agent_sub': 'claude-sonnet · aktiv', 'dg.policies': 'Richtlinien & Regeln',
     'dg.upper': 'Obere Führungsebene', 'dg.teammate': 'Teamkollege',
+    'dg.st0': 'liest Kontext…', 'dg.st1': 'delegiert…', 'dg.st2': 'schreibt Zusammenfassung…', 'dg.st3': 'wartet auf Freigabe…',
 
     'feat.label': 'Funktionen', 'feat.kicker': 'Was es kann', 'feat.title': 'Funktionen',
     'feat.desc': 'Von Organisationshierarchie bis Agentengedächtnis, von Delegationsfreigaben bis Ein-Befehl-Installation — eine Schicht in Ihren echten Geschäftsprozessen.',
@@ -1178,6 +1323,7 @@ const COPY = {
 
     'ov.title': 'Funktionen & Screenshots',
     'ov.features_label': 'Alle Funktionen', 'ov.shots_label': 'Screenshots — zum Vergrößern klicken',
+    'og1': 'Organisation & Berechtigungen', 'og2': 'Agenten, Modell & Gedächtnis', 'og3': 'Richtlinien, Skills & Integration', 'og4': 'Einrichtung & Betrieb',
     'bar.docs': 'Dokumentation', 'bar.copy': '© 2026 Fabrika Yazılım Tic. Ltd. Şti.',
 
     'f1.t': 'Organisationshierarchie', 'f1.d': 'Definieren Sie Unternehmens-, Abteilungs-, Personal- und Agentenebenen. Visualisieren Sie das Organigramm.',
@@ -1200,12 +1346,13 @@ const COPY = {
   es: {
     'os.label': 'Agentic Work OS', 'os.kicker': 'Agentic Work OS', 'os.title': 'Agentic Work OS',
     'os.desc': '<strong>Agentes de IA vivos</strong> dentro de tu organigrama. Cada agente trabaja en el mismo contexto que la visión de empresa, los OKR del departamento y las políticas de su puesto — las personas <strong>aprueban decisiones</strong>, los agentes ejecutan el trabajo.',
-    'os.cta_demo': 'Probar demo', 'os.cta_app': 'Abrir app',
+    'os.cta_demo': 'Probar demo', 'os.cta_app': 'Abrir app', 'os.p_model': 'Independiente del modelo', 'os.p_install': 'install.sh',
     'os.diagram_alt': 'Capas de contexto anidadas: departamento dentro de la visión de empresa, humano dentro, agente de desarrollo dentro; flechas de la capa externa a la dirección y a los compañeros.',
     'dg.vision': 'Visión y Misión', 'dg.objectives': 'Objetivos de Empresa', 'dg.dept': 'Departamento',
     'dg.human': 'Humano', 'dg.human_sub': 'Empleado Humano',
     'dg.agent': 'Agente de Desarrollo', 'dg.agent_sub': 'claude-sonnet · activo', 'dg.policies': 'Políticas y Reglas',
     'dg.upper': 'Alta Dirección', 'dg.teammate': 'Compañero de Equipo',
+    'dg.st0': 'leyendo contexto…', 'dg.st1': 'delegando…', 'dg.st2': 'escribiendo resumen…', 'dg.st3': 'esperando aprobación…',
 
     'feat.label': 'Características', 'feat.kicker': 'Qué hace', 'feat.title': 'Características',
     'feat.desc': 'De la jerarquía organizacional a la memoria del agente, de las aprobaciones de delegación a la instalación en un comando — una capa dentro de tus procesos reales.',
@@ -1227,6 +1374,7 @@ const COPY = {
 
     'ov.title': 'Características y Capturas',
     'ov.features_label': 'Todas las Características', 'ov.shots_label': 'Capturas — clic para ampliar',
+    'og1': 'Organización y Permisos', 'og2': 'Agentes, Modelo y Memoria', 'og3': 'Políticas, Skills e Integración', 'og4': 'Instalación y Operación',
     'bar.docs': 'Documentación', 'bar.copy': '© 2026 Fabrika Yazılım Tic. Ltd. Şti.',
 
     'f1.t': 'Jerarquía Organizacional', 'f1.d': 'Define capas de empresa, departamento, personal y agente. Visualiza el organigrama, establece managers.',
@@ -1305,6 +1453,20 @@ function playDiagram() {
   void d.offsetWidth;            /* restart animation */
   d.classList.add('intro');
 }
+
+/* cycling agent activity line inside the diagram */
+(function () {
+  const el = document.getElementById('agentStatus');
+  if (!el || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  let i = 0;
+  setInterval(() => {
+    i = (i + 1) % 4;
+    const dict = COPY[currentLang] || COPY.tr;
+    el.style.opacity = '0';
+    setTimeout(() => { el.textContent = dict['dg.st' + i] || ''; el.style.opacity = ''; }, 220);
+  }, 2800);
+  el.style.transition = 'opacity 0.22s ease';
+})();
 
 /* ─────────────  copy install command  ───────────── */
 const INSTALL_CMD = 'curl -fsSL https://raw.githubusercontent.com/fab-agent/agentic-organization/main/install.sh | bash';
