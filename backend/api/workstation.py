@@ -415,3 +415,22 @@ def verify_chain(company_id: str | None = None, _: User = Depends(require_manage
     if company_id:
         return audit_chain.verify(company_id)
     return audit_chain.verify_all()
+
+
+@router.get("/audit/chain/anchors")
+def audit_chain_anchors(_: User = Depends(require_manager)):
+    """
+    External-anchor check (ADR-0006): compares live chain heads to the
+    append-only anchor log, flagging truncation / rewrite that `verify` cannot.
+    """
+    from services import audit_anchor
+
+    return audit_anchor.check_anchors()
+
+
+@router.post("/audit/chain/anchors", status_code=202)
+def audit_chain_anchor_now(_: User = Depends(require_manager)):
+    """Force an anchor now (also runs hourly on a schedule)."""
+    from services import audit_anchor
+
+    return audit_anchor.anchor_heads()

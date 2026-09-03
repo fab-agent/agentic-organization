@@ -56,13 +56,22 @@ be tampered with" claim:
   move.
 - **Severity triage** on top of the chain: see ADR-0013 (an LLM scores recent
   events via the gateway; high risk → inbox / Telegram).
+- **External anchoring (2026-09-03):** `services/audit_anchor.py` — an hourly
+  job records every chain's `(seq, head_hash)` to an append-only local log
+  (`data/audit_anchors.jsonl`) and, when `backup_bucket` is set, PUTs the log to
+  S3 (`ObjectLockMode=COMPLIANCE` for `audit_anchor_lock_days` days, falling back
+  to an unlocked PUT if the bucket has no Object Lock). `check_anchors()` flags a
+  chain whose live `seq` is **below** the last anchored seq (truncation) or
+  whose head at the anchored seq **changed** (rewrite) — neither of which
+  `verify()` can see. `GET`/`POST /audit/chain/anchors` (manager).
 
 ## Open questions
 
 - Retention period and PII redaction (raw prompt/response — an ADR-0004 open
   question).
-- Chain anchoring target: the org's git repo, S3 Object Lock, or an external
-  notary? (Deferred — verification is local-only until then.)
+- A cross-process lock (Redis) for a **non-Postgres** multi-worker deployment —
+  on Postgres the transaction advisory lock already covers it.
+- Anchoring to the org git repo or a public timestamp notary in addition to S3.
 
 ## Consequences
 

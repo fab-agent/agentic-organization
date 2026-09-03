@@ -38,7 +38,7 @@ auto-refreshes near expiry.
 | 0002 | ~~egress-proxy + allowlist~~, ~~isolation hardening (cap_drop, no-new-privileges, pids/mem/cpu, OPENCODE_* scrub)~~ done; read-only rootfs, devcontainer/macOS |
 | 0004 | ~~parse the streamed `usage` chunk~~ done; Redis rate-limit for multi-worker; propagate non-200 upstream status on the streaming path |
 | 0005 | ~~parent-department policy inheritance~~ done; rule-authoring UI (frontend) |
-| 0006 | external chain anchoring (git / S3 Object Lock); Redis cross-process lock |
+| 0006 | ~~external chain anchoring (local log + S3 Object Lock, truncation/rewrite check)~~ done; Redis lock for non-Postgres multi-worker; git/notary anchor |
 | 0007 | ~~token refresh + revocation + auto-revoke on stale heartbeat + prune~~ done; in-sandbox token rotation (long-run TTL limit); device registration |
 | 0008 | own Bubble Tea TUI (deferred until an "operations panel" need is concrete) |
 | 0009 | ~~`3pa run`~~, ~~`3pa doctor`~~, ~~`3pa policy`~~, ~~`3pa audit verify`~~, ~~`/workstation/heartbeat`~~ done; `3pa update`; auto-revoke job; distribution + signing |
