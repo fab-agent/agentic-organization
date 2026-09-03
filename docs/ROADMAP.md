@@ -44,7 +44,7 @@ auto-refreshes near expiry.
 | 0009 | ~~`3pa run`~~, ~~`3pa doctor`~~, ~~`3pa policy`~~, ~~`3pa audit verify`~~, ~~`/workstation/heartbeat`~~ done; `3pa update`; auto-revoke job; distribution + signing |
 | 0010 | ~~provenance / taint separation~~, ~~structural prompt guardrails~~, ~~untrusted-turn → `ask`~~, ~~egress allowlist~~ done; signed command channel, output scanning still pending |
 | 0011 | ~~fetch + verify + in-container injection + key rotation~~ done; `OPENCODE_PERMISSION` env-bypass hardening; plugin runtime assert; rotate UI |
-| 0012 | `release-*.yml` (container push, `3pa` binary matrix + signing, plugin publish); version compat matrix |
+| 0012 | ~~`release.yml` (sandbox/egress images, 3pa bundle, plugin/cli npm), opencode pin, compat matrix~~ done; backend/frontend image push; Go 3pa + signing; e2e-nightly |
 | 0013 | Telegram wiring; per-company opt-in; feed high scores back into the Policy Engine |
 
 **Suggested next work:** (1) ADR-0012 release workflows, (2) ADR-0010 signed

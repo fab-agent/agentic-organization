@@ -1,0 +1,147 @@
+name: Release
+
+# Tag-driven release of the workstation-agent layer (ADR-0012):
+#   - sandbox + egress container images  -> GHCR
+#   - `3pa` CLI single-file bundle       -> GitHub Release asset
+#   - `3pa` CLI + agent-plugin packages  -> GitHub Packages (npm)
+#
+# Backend / frontend images stay on the compose build-local flow for now.
+#
+#   git tag v0.2.0 && git push origin v0.2.0
+# or run manually with dry_run to build without publishing.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build everything but do not push / publish"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NS: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - id: v
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.0-dev.$(date +%s)" >> "$GITHUB_OUTPUT"
+            echo "publish=${{ inputs.dry_run == false }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  images:
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: sandbox
+            context: .
+            file: sandbox/Dockerfile
+          - name: egress
+            context: sandbox/egress
+            file: sandbox/egress/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        if: needs.version.outputs.publish == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build + push ${{ matrix.name }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: ${{ needs.version.outputs.publish == 'true' }}
+          tags: |
+            ${{ env.IMAGE_NS }}/agentic-org-${{ matrix.name }}:${{ needs.version.outputs.version }}
+            ${{ env.IMAGE_NS }}/agentic-org-${{ matrix.name }}:latest
+          provenance: false
+
+  cli-bundle:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: packages/cli/package-lock.json
+      - working-directory: packages/cli
+        run: |
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npm test
+          npm run bundle
+          sha256sum dist/3pa.mjs | tee dist/3pa.mjs.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 3pa-cli
+          path: packages/cli/dist/3pa.mjs*
+
+  npm-publish:
+    needs: version
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pkg: [agent-plugin, cli]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://npm.pkg.github.com"
+      - name: Set version + publish ${{ matrix.pkg }}
+        working-directory: packages/${{ matrix.pkg }}
+        run: |
+          npm version "${{ needs.version.outputs.version }}" \
+            --no-git-tag-version --allow-same-version
+          npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release:
+    needs: [version, images, cli-bundle]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: 3pa-cli
+          path: dist
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/3pa.mjs*
+          generate_release_notes: true
+          body: |
+            ## Container images
+            - `${{ env.IMAGE_NS }}/agentic-org-sandbox:${{ needs.version.outputs.version }}`
+            - `${{ env.IMAGE_NS }}/agentic-org-egress:${{ needs.version.outputs.version }}`
+
+            ## `3pa` CLI
+            - `dist/3pa.mjs` — single-file bundle (`node >=20`), `sha256` alongside
+            - GitHub Packages: `@3rdpartyagent/cli@${{ needs.version.outputs.version }}`
+
+            See `docs/architecture/version-compat.md` for the compatibility matrix.

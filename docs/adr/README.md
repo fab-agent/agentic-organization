@@ -28,7 +28,7 @@ Format: a [MADR](https://adr.github.io/madr/) derivative — see [`0000-template
 | [0009](0009-workstation-wrapper-cli.md) | Workstation wrapper CLI (`3pa`) responsibilities and distribution | accepted |
 | [0010](0010-injection-defense-strategy.md) | Injection defense strategy (provenance, egress allowlist) | accepted |
 | [0011](0011-managed-config-and-precedence.md) | Managed config and config precedence | accepted |
-| [0012](0012-repo-structure-and-release.md) | Repo structure and release process | proposed |
+| [0012](0012-repo-structure-and-release.md) | Repo structure and release process | accepted |
 | [0013](0013-llm-audit-severity-scoring.md) | LLM audit severity scoring | proposed |
 
 ## Adding a new ADR

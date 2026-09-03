@@ -49,3 +49,8 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Bundle (release artifact smoke)
+        run: |
+          npm run bundle
+          node dist/3pa.mjs --version
