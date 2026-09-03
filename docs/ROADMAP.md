@@ -39,7 +39,7 @@ auto-refreshes near expiry.
 | 0004 | ~~parse the streamed `usage` chunk~~ done; Redis rate-limit for multi-worker; propagate non-200 upstream status on the streaming path |
 | 0005 | rule-authoring UI; parent-department policy inheritance |
 | 0006 | external chain anchoring (git / S3 Object Lock); Redis cross-process lock |
-| 0007 | ~~token refresh + server-side revocation~~ done; in-sandbox token rotation (long-run TTL limit); device registration; auto-revoke on plugin-heartbeat loss; prune expired revocation rows |
+| 0007 | ~~token refresh + revocation + auto-revoke on stale heartbeat + prune~~ done; in-sandbox token rotation (long-run TTL limit); device registration |
 | 0008 | own Bubble Tea TUI (deferred until an "operations panel" need is concrete) |
 | 0009 | ~~`3pa run`~~, ~~`3pa doctor`~~, ~~`3pa policy`~~, ~~`3pa audit verify`~~, ~~`/workstation/heartbeat`~~ done; `3pa update`; auto-revoke job; distribution + signing |
 | 0010 | ~~provenance / taint separation~~, ~~structural prompt guardrails~~, ~~untrusted-turn → `ask`~~, ~~egress allowlist~~ done; signed command channel, output scanning still pending |

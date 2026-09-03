@@ -86,7 +86,14 @@ their own OAuth are never forced to set one up.
 - The heartbeat now probes the **unauthenticated** `/health` for liveness, not
   `/v1/models` — see the open item below.
 
-Still open: device registration; auto-revoke on plugin-heartbeat loss.
+- **Auto-revoke + prune** (`services/persona_revocation.revocation_maintenance`,
+  scheduled every 5 min): prunes `RevokedToken` rows older than 24 h (their
+  tokens have expired); and — opt-in via `AppConfig heartbeat.autorevoke=true`,
+  threshold `heartbeat.stale_minutes` (default 10) — `revoke_all()` any persona
+  whose `PersonaHeartbeat` (ADR-0009) has gone stale, i.e. `3pa run` died with a
+  token still live.
+
+Still open: device registration.
 
 ## Open questions
 

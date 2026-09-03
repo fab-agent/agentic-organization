@@ -14,10 +14,15 @@ revocation check that cannot run rejects the token).
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
+
+from sqlmodel import select
 
 from database import get_session
 from models import PersonaTokenState, RevokedToken
+
+logger = logging.getLogger("app")
 
 
 def is_revoked(
@@ -76,3 +81,61 @@ def revoke_all(persona_id: str, company_id: str | None, reason: str) -> datetime
     # No "un-revoke" needed: a fresh `3pa login` mints a token whose iat is after
     # the marker, so it passes without the marker being cleared.
     return now
+
+
+# ── scheduled maintenance (ADR-0007 / ADR-0009) ─────────────────────────────
+
+
+def revocation_maintenance() -> dict:
+    """
+    Scheduled housekeeping:
+      - **auto-revoke stale sessions** — a `PersonaHeartbeat` older than
+        `heartbeat.stale_minutes` (default 10) means `3pa run` died or lost the
+        network with a token still live; `revoke_all()` that persona and drop
+        the row. Opt-in via `heartbeat.autorevoke` (default off).
+      - **prune** `RevokedToken` rows older than 24h — the tokens they blacklist
+        have long since expired, so the jti check is moot.
+    """
+    from datetime import timedelta
+
+    from models import AppConfig, PersonaHeartbeat
+
+    revoked, pruned = 0, 0
+    try:
+        with get_session() as session:
+            enabled = session.get(AppConfig, "heartbeat.autorevoke")
+            stale_cfg = session.get(AppConfig, "heartbeat.stale_minutes")
+            stale_minutes = (
+                int(stale_cfg.value) if stale_cfg and stale_cfg.value else 10
+            )
+            cutoff = datetime.utcnow() - timedelta(minutes=stale_minutes)
+
+            if enabled and (enabled.value or "").lower() == "true":
+                stale = session.exec(
+                    select(PersonaHeartbeat).where(PersonaHeartbeat.last_seen < cutoff)
+                ).all()
+                for hb in stale:
+                    revoke_all(hb.persona_id, hb.company_id, "stale heartbeat")
+                    session.delete(hb)
+                    revoked += 1
+                session.commit()
+
+            old = session.exec(
+                select(RevokedToken).where(
+                    RevokedToken.revoked_at < datetime.utcnow() - timedelta(hours=24)
+                )
+            ).all()
+            for row in old:
+                session.delete(row)
+                pruned += 1
+            session.commit()
+    except Exception as e:  # noqa: BLE001 — best-effort housekeeping
+        logger.warning("revocation_maintenance failed: %s", e)
+
+    if revoked or pruned:
+        logger.info(
+            "revocation_maintenance: revoked=%d stale sessions, pruned=%d rows",
+            revoked,
+            pruned,
+        )
+    return {"revoked": revoked, "pruned": pruned}
