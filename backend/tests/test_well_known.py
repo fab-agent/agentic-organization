@@ -97,3 +97,36 @@ def test_tampered_config_fails_verification(client):
             base64.b64decode(body["signature"]),
             wellknown_sign.canonical(tampered).encode(),
         )
+
+
+# ── Agent discovery documents (RFC 9727 / A2A / Auth.md) ─────────────────────
+
+
+def test_api_catalog(client):
+    r = client.get("/.well-known/api-catalog")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/linkset+json")
+    linkset = r.json()["linkset"]
+    root = next(e for e in linkset if not e["anchor"].endswith("/mcp"))
+    assert root["service-desc"][0]["href"].endswith("/openapi.json")
+    assert any(d["href"].endswith("/auth.md") for d in root["service-meta"])
+    assert root["status"][0]["href"].endswith("/health")
+
+
+def test_agent_card(client):
+    r = client.get("/.well-known/agent-card.json")
+    assert r.status_code == 200
+    card = r.json()
+    assert card["name"] and card["version"] and card["description"]
+    assert card["supportedInterfaces"][0]["url"].endswith("/mcp")
+    assert card["supportedInterfaces"][0]["transport"] == "JSONRPC"
+    assert card["capabilities"] is not None
+    for skill in card["skills"]:
+        assert skill["id"] and skill["name"] and skill["description"]
+
+
+def test_auth_md(client):
+    r = client.get("/auth.md")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/markdown")
+    assert r.text.lstrip().splitlines()[0].strip().lower().startswith("# auth.md")
