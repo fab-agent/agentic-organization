@@ -62,7 +62,7 @@ from seed import run_seed, seed_company_skills
 
 app = FastAPI(
     title="3rdParty Agent Organization API",
-    version="0.2.0",
+    version=VERSION,
     description="Self-hosted agentic organization management platform",
 )
 
