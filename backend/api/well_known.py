@@ -28,9 +28,9 @@ router = APIRouter(tags=["well-known"])
 # Public origin for the discovery documents. Prefer the operator-set value, then
 # an env override, then whatever the request came in on (behind the proxy this is
 # the external host once forwarded headers are honoured).
-_DEFAULT_PUBLIC_BASE = "https://agent.fab.engineering"
+_DEFAULT_PUBLIC_BASE = "https://app.agent.fab.engineering"
 _SOURCE_REPO = "https://github.com/fab-agent/agentic-organization"
-_DOCS_URL = "https://docs.fab.engineering"
+_DOCS_URL = "https://agent-docs.fab.engineering"
 
 
 def public_base_url(request: Request) -> str:
