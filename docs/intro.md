@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # fab.engineering — Kurumsal Yapay Zeka Katmanı
 
-**Versiyon 1.1** · Self-hosted, açık kaynak (MIT + Commons Clause) · [GitHub](https://github.com/fab-agent/agentic-organization)
+**Versiyon 1.2** · Self-hosted, açık kaynak (MIT + Commons Clause) · [GitHub](https://github.com/fab-agent/agentic-organization)
 
 > **Kurumsal hafıza ve kurumsal yapay zeka ile işleriniz artık çok daha verimli ve hızlı.**
 
@@ -25,6 +25,9 @@ Ajanlarınız sadece sohbet etmez. Mevcut veritabanlarınıza, dahili API'lerini
 
 ### Kurumsal Hafıza
 Şirketinizin bilgisi, deneyimi ve süreçleri yapay zeka eşliğinde korunur ve büyür. Yeni çalışanlar geçmişe anında erişir; ajanlar bağlamı hiç unutmaz.
+
+### Denetlenebilir Yürütme
+Geliştirici personalar iş istasyonlarında [opencode](https://opencode.ai) ile çalışır; tüm model trafiği merkezî bir gateway'den geçer, her komut çalıştırılabilir politikalarla değerlendirilir ve her eylem değiştirilemez bir denetim zincirine yazılır. Ayrıntı → [Ajan Yürütme Katmanı](./workstation/overview.md).
 
 ---
 
@@ -52,6 +55,7 @@ Ajanlarınız sadece sohbet etmez. Mevcut veritabanlarınıza, dahili API'lerini
 - Departman ve skill filtreyle uygun ajana görev gönder (Görev Talepleri)
 - Ajana resim ürettir — Qwen Image, DALL-E ve uyumlu modeller desteklenir
 - Ekip üyelerini platforma davet et; rol bazlı erişim kontrolü uygula (5 kademe)
+- Geliştirici personalarını `3pa` CLI ile iş istasyonunda çalıştır — merkezî gateway, politika zorlaması ve hash-zincirli denetim ile
 - Arayüzü Türkçe veya İngilizce kullan
 
 ---

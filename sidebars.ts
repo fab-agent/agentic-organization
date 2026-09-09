@@ -45,6 +45,21 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: 'Ajan Yürütme Katmanı',
+      items: [
+        'workstation/overview',
+        'workstation/llm-gateway',
+        'workstation/policy-engine',
+        'workstation/audit-chain',
+        'workstation/identity',
+        'workstation/cli',
+        'workstation/sandbox',
+        'workstation/injection-defense',
+        'workstation/managed-config',
+      ],
+    },
+    {
+      type: 'category',
       label: 'Mimari',
       items: [
         'architecture/3rdparty-agent-org',

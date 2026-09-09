@@ -255,6 +255,11 @@ departments = await deptApi.list(companyStore.active?.id);
 | Sosyal Medya | Instagram Graph API + WhatsApp Business Cloud API builtin skill'leri |
 | Telegram | Bot API bildirimleri (davet, şifre sıfırlama), şifreli token saklama |
 | Denetim Günlüğü | Tüm mutasyon endpoint'leri için `log_action()` kaydı |
+| Ajan Yürütme Katmanı | İş istasyonunda opencode: merkezî LLM gateway, çalıştırılabilir politika motoru, hash-zincirli denetim, persona token'ları, zorunlu sandbox, katmanlı injection savunması (v1.2) |
+
+> **Not (v1.2):** Prodüksiyon dağıtımı artık Postgres + `pgvector` kullanır
+> (RAG ana veritabanına taşındı). SQLite geliştirme ve küçük kurulumlar için
+> desteklenmeye devam eder.
 
 ---
 
@@ -265,4 +270,5 @@ departments = await deptApi.list(companyStore.active?.id);
 - [Provider Anahtar Yönetimi](./provider-key-management.md)
 - [Agent Runtime Mimarisi](./runtime.md)
 - [Skill Tipleri](./skill-types.md)
+- [Ajan Yürütme Katmanı — Genel Bakış](../workstation/overview.md)
 - [A2A İşbirliği Mimarisi](../product/a2a-architecture.md)

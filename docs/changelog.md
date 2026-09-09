@@ -8,6 +8,138 @@ Platform güncellemelerinin kronolojik kaydı.
 
 ---
 
+## v1.2 — 9 Eylül 2026
+
+> **Ajan Yürütme Katmanı (Agentic OS).** Bu sürüm, geliştirici personaların kendi
+> iş istasyonlarında **opencode** ile çalışmasını sağlayan yeni bir katman
+> getiriyor. Tüm model trafiği merkezî bir gateway'den geçer, her komut
+> çalıştırılabilir politikalarla değerlendirilir, her eylem değiştirilemez bir
+> denetim zincirine yazılır. Web arayüzü değişmedi — bu katman onun yanında,
+> opsiyonel olarak çalışır. Mimari kararların tamamı `docs/adr/` altındadır
+> (ADR-0001 … ADR-0013). Ayrıntılı dokümantasyon → **Ajan Yürütme Katmanı**
+> bölümü.
+
+### Yeni Özellikler
+
+**Merkezî LLM Gateway (ADR-0004):**
+- OpenAI uyumlu proxy (`POST /v1/chat/completions`, `GET /v1/models`). Ajanlar
+  kendi API anahtarını görmez; persona bearer token'ı ile gateway'e bağlanır.
+- Upstream, şirketin `ProviderKey.base_url` kaydından çözülür — "kendi anahtarını
+  getir" (BYO). Anthropic, OpenAI, Google, Mistral, Qwen ve OpenAI uyumlu her
+  endpoint desteklenir.
+- SSE streaming birebir geçirilir; `stream_options.include_usage` enjekte
+  edilerek akışlı çağrıların token tüketimi de ölçülür.
+- Guardrail'lar (`services/gateway_limits.py`): model allow-list, persona başına
+  hız sınırı ve günlük/aylık token kotası (`GatewayUsage`), `GET /gateway/usage`.
+  Varsayılanların tamamı serbest.
+
+**Çalıştırılabilir Politika Motoru (ADR-0005):**
+- Saf `evaluate()` (fail-closed) + veritabanı destekli `decide()`. Persona'dan
+  şirket → departman → ajan kapsamı çözülür.
+- Rollout modu `off | dry_run | enforce` (`PolicyConfig`, en-özel-kazanır,
+  varsayılan `dry_run`). Fail-closed verdict'ler her modda engeller.
+- `bashlex` AST tabanlı komut eşleştirme — string kaçışlarına dayanıklı.
+  Yıkıcı komutlar için yerleşik taban kurallar.
+- Üst departman politikaları alt departmanlara miras kalır (`_department_chain`).
+- opencode plugin'i `tool.execute.before` içinde `/policy/decide` çağırır;
+  `enforce` modda `deny`/`ask` verdict'inde araç çağrısı başarısız olur.
+
+**Değiştirilemez Denetim Zinciri (ADR-0006):**
+- sha256 hash zinciri, kiracı başına ayrı zincir (`AuditEvent`, `chain_key`,
+  `seq`). `GET /audit/chain/verify` zincirin bütünlüğünü doğrular.
+- gateway çağrısı / politika kararı / araç olayı tek bir `record()` üzerinden
+  hem zincire hem eski `AuditLog` tablosuna yazılır.
+- Harici çıpalama (`services/audit_anchor.py`): periyodik olarak zincir başlıkları
+  yerel `jsonl` dosyasına ve S3 Object Lock (COMPLIANCE) kovasına yazılır;
+  `check_anchors()` kesme/yeniden yazma tespit eder. `GET/POST /audit/chain/anchors`.
+- Postgres'te advisory lock ile eşzamanlılık güvenliği.
+
+**LLM Denetim Önem Skorlaması (ADR-0013):**
+- 10 dakikada bir çalışan iş: son denetim olaylarını OpenAI uyumlu bir modele
+  gönderip 1–5 risk puanı, kategori ve tek satır gerekçe alır; sonucu `AuditSeverity`
+  yan tablosuna yazar (zincir hiç değiştirilmez).
+- Puan ≥ eşik → sorumlu insana `InboxMessage` + şirketin Telegram admin sohbetine
+  uyarı.
+- Şirket bazında opt-in (`severity.enabled:<company_id>`).
+- Politika geri beslemesi: `severity.autopolicy` açıkken bir şirket bir saat
+  içinde eşik sayıda yüksek-önem olay biriktirirse, o şirketin politika modu
+  otomatik olarak `enforce`'a çekilir ve yöneticiler bilgilendirilir.
+- Ayarlar: `severity.{enabled,model,threshold,batch,alert_default,autopolicy,autopolicy_count}`.
+
+**`3pa` İş İstasyonu CLI (ADR-0009):**
+- `3pa init` — kurulum sihirbazı; `3pa login` — persona seç, workstation token al
+  (`~/.config/3pa/session.json`); `3pa refresh` / `3pa logout` (`--revoke`).
+- `3pa run` — opencode'u yönetilen sandbox içinde başlatır.
+- `3pa policy` — persona için etkin politika kurallarını gösterir.
+- `3pa audit verify` — sunucudaki denetim zincirini doğrular.
+- `3pa stop` / `3pa signal` — çalışan sandbox oturumunu imzalı komutla durdurur.
+- `3pa doctor` — sandbox ön koşullarını kontrol eder.
+- `POST /workstation/heartbeat` — periyodik durum + imzalı komut kanalını yoklar.
+
+**Yönetilen opencode Yapılandırması (ADR-0011):**
+- İmzalı `/.well-known/opencode` (Ed25519, `services/wellknown_sign.py`) +
+  `/.well-known/opencode/pubkey`. Anahtar rotasyonu `previous_key_id` ile.
+- Sandbox içinde `/etc/opencode/opencode.json` olarak enjekte edilir — opencode
+  Linux'ta bunu "managed config" olarak, kullanıcı ayarlarının üstünde okur.
+
+**Backend MCP Sunucusu (ADR-0001):**
+- `POST /mcp` — JSON-RPC. Persona'nın skill'lerini (`build_tool_definitions` /
+  `execute_skill`) ve `org_policies` aracını sunar.
+
+### Güvenlik
+
+**Persona Kimliği ve Kısa Ömürlü Kimlik Bilgileri (ADR-0007):**
+- Access token (`typ=persona`, ~60 dk) + refresh token (`typ=persona_refresh`,
+  `aud=refresh`, ~12 sa), her ikisinde `jti`.
+- `POST /workstation/persona-token`, `.../refresh`, `.../revoke` (sahip veya
+  persona'nın kendisi).
+- İptal kontrolü fail-closed (`api/deps.py`): `RevokedToken` + `PersonaTokenState`
+  (not-before işareti). `revocation_maintenance` işi bayat oturumları otomatik
+  iptal eder ve eski iptal satırlarını temizler.
+- OIDC token değişimi (`services/oidc.py`, JWKS) — `oidc.enabled` olmadıkça kapalı,
+  otomatik kullanıcı oluşturmaz.
+
+**Prompt Injection Savunması (ADR-0010):**
+- **Katman 1 — köken/taint:** dış içerik (webfetch, dosya, araç çıktısı)
+  "untrusted" olarak işaretlenir.
+- **Katman 2 — yapısal guardrail'lar:** `sandbox/base-prompt.md` üzerinden
+  enjekte edilen kalıcı sistem direktifleri.
+- **Katman 3 — untrusted → ask:** untrusted bağlamdan tetiklenen yan etkili
+  araçlar onaya düşer.
+- **Katman 4 — egress allowlist:** sandbox yalnızca `egress` filtreleyen proxy
+  üzerinden çıkabilir; internal-only Docker ağının başka rotası yoktur.
+- **Katman 5 — imzalı komut kanalı:** `PersonaCommand` tablosu, Ed25519 ile
+  imzalanmış sarmalanmış komutlar; `3pa` heartbeat sırasında doğrular.
+- Katman 6 (çıktı taraması) sonraki faza bırakıldı.
+
+**Sandbox İzolasyon Sıkılaştırması (ADR-0002):**
+- `cap_drop: ALL`, `security_opt: no-new-privileges`, `pids_limit`, `mem_limit`,
+  `cpus` sınırları. Ajanın etki alanı bu konteynerdir.
+- `entrypoint.sh` tüm `OPENCODE_*` ortam değişkenlerini temizler (config bypass'ını
+  engellemek için).
+- Egress proxy `tinyproxy` `FilterDefaultDeny` + genişletilmiş regex allowlist
+  ile çalışır.
+
+### Altyapı
+
+**Postgres + pgvector'a tam geçiş:**
+- RAG artık ana veritabanında (`EmbeddingRecord` / `RagIndexState`); `sqlite-vec`
+  bırakıldı. Postgres'te `pgvector` (`<=>` + HNSW), SQLite'ta numpy brute-force.
+- `db` servisi (`pgvector/pgvector:pg16`) base/prod/cloud compose dosyalarına
+  eklendi. `database.py` dialect-farkında.
+- Canlı test dağıtımı SQLite → Postgres taşındı; 390 satır / 23 tablo, denetim
+  zinciri taşıma sonrası bütünlüğü doğrulandı.
+
+**Sürüm Yayınlama İş Akışı (ADR-0012):**
+- `release.yml` — sandbox/egress imajları → GHCR, `3pa` esbuild bundle,
+  plugin/cli → GitHub Packages.
+- opencode **1.18.26**'ya sabitlendi; `docs/architecture/version-compat.md`
+  uyumluluk matrisi eklendi.
+- Yeni CI iş akışları: `sandbox.yml`, `cli.yml`, path-scoped tetikleyiciler,
+  `adr-guard`.
+
+---
+
 ## v1.1.2 — 15 Temmuz 2026
 
 ### Lisans
