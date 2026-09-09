@@ -1,0 +1,68 @@
+{
+  "linkset": [
+    {
+      "anchor": "https://agent.fab.engineering",
+      "service-desc": [
+        {
+          "href": "https://app.agent.fab.engineering/openapi.json",
+          "type": "application/json",
+          "title": "Agentic Organization API — OpenAPI 3.1"
+        }
+      ],
+      "service-doc": [
+        {
+          "href": "https://github.com/fab-agent/agentic-organization",
+          "type": "text/html",
+          "title": "Source code, ADRs and one-command self-host guide (MIT)"
+        },
+        {
+          "href": "https://agent-docs.fab.engineering",
+          "type": "text/html",
+          "title": "Documentation"
+        },
+        {
+          "href": "https://agent.fab.engineering/llms.txt",
+          "type": "text/plain",
+          "title": "Machine-readable brief"
+        }
+      ],
+      "service-meta": [
+        {
+          "href": "https://agent.fab.engineering/.well-known/agent-card.json",
+          "type": "application/json",
+          "title": "A2A / MCP agent card"
+        },
+        {
+          "href": "https://agent.fab.engineering/auth.md",
+          "type": "text/markdown",
+          "title": "Agent authentication & provisioning"
+        }
+      ],
+      "status": [
+        { "href": "https://app.agent.fab.engineering/health", "type": "application/json" }
+      ]
+    },
+    {
+      "anchor": "https://app.agent.fab.engineering",
+      "service-desc": [
+        {
+          "href": "https://app.agent.fab.engineering/openapi.json",
+          "type": "application/json",
+          "title": "Live application API — OpenAPI 3.1"
+        },
+        {
+          "href": "https://app.agent.fab.engineering/.well-known/api-catalog",
+          "type": "application/linkset+json",
+          "title": "Application API catalog"
+        }
+      ],
+      "service-meta": [
+        {
+          "href": "https://app.agent.fab.engineering/.well-known/agent-card.json",
+          "type": "application/json",
+          "title": "Agent card (MCP endpoint)"
+        }
+      ]
+    }
+  ]
+}

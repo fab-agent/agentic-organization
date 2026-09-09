@@ -5,3 +5,6 @@
 wrangler.jsonc
 node_modules
 *.md
+
+# agent-discovery doc must ship
+!auth.md
