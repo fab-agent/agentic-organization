@@ -8,13 +8,22 @@ from datetime import datetime, timedelta
 import bcrypt
 from jose import jwt
 
+from core.runtime import check_jwt_secret, is_production
+
 SECRET_KEY = os.getenv("JWT_SECRET", "change-me-in-production-please")
-if SECRET_KEY == "change-me-in-production-please":
+_secret_problem = check_jwt_secret(SECRET_KEY)
+if _secret_problem:
+    if is_production():
+        raise RuntimeError(
+            f"{_secret_problem}. Refusing to start with ENVIRONMENT=production — "
+            "generate one with: openssl rand -hex 32"
+        )
     import logging as _logging
 
     _logging.getLogger(__name__).critical(
-        "JWT_SECRET is using the default insecure value. "
-        "Set a strong random secret in .env before deploying to production."
+        "%s. Fine for local development; the app refuses to start like this "
+        "with ENVIRONMENT=production.",
+        _secret_problem,
     )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 72
