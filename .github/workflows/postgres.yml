@@ -62,7 +62,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt -r requirements-dev.txt
         working-directory: backend
 
       - name: Migrations + pgvector + audit-chain smoke on real Postgres
