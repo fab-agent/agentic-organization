@@ -50,6 +50,24 @@ auto-refreshes near expiry.
 **Suggested next work:** (1) ADR-0012 release workflows, (2) ADR-0010 signed
 command channel, (3) ADR-0006 external chain anchoring.
 
+## Next phase — every department in a terminal workspace (proposed)
+
+Direction set 2026-09-28: every department works from a terminal workspace where
+an agent does the tool work. Decisions: [ADR-0014](adr/0014-department-terminal-workspace.md)
+(server-side workspaces + Rust/Ratatui TUI), [ADR-0015](adr/0015-document-ingestion-and-ranking.md)
+(Docling ingestion + TypeSafe Jev ranking, ACL-filtered, small context),
+[ADR-0016](adr/0016-installation-kit.md) (org chart, SSO / password / Google,
+OpenAI-compatible model endpoints by URL + token, ERP via MCP).
+
+| Step | Scope |
+|------|-------|
+| 1 | `packages/tui` skeleton: login, sidebar (org / recurring / recent runs) from existing APIs, one agent pane; herdr reuse spike |
+| 2 | `openai_compatible` provider (base URL + token) + validation |
+| 3 | Docling ingest worker, `DocumentChunk` with ACL, hybrid retrieval, `Ranker` (Jev / local) |
+| 4 | Workspace container image with LibreOffice, PDF tools, headless Chromium; lifecycle API |
+| 5 | OIDC + Google login for web and TUI (device-code flow) |
+| 6 | Installation `setup` flow + read-only ERP MCP template |
+
 ## Fixed principles
 
 - **The web version stays unchanged.** The new execution model is optional;

@@ -1,6 +1,6 @@
 # ADR-0008: TUI strategy
 
-- **Status:** accepted
+- **Status:** accepted — the "later: Go + Bubble Tea" part is superseded by ADR-0014 (Rust + Ratatui, server-side workspaces)
 - **Date:** 2026-09-01
 - **Deciders:** Fabrika / fab.engineering
 - **Related:** ADR-0001, ADR-0009

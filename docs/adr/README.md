@@ -24,12 +24,15 @@ Format: a [MADR](https://adr.github.io/madr/) derivative — see [`0000-template
 | [0005](0005-executable-policy-engine.md) | Executable Policy Engine (fail-closed broker) | accepted |
 | [0006](0006-tamper-evident-audit.md) | Tamper-evident audit (hash-chained, one-way stream) | proposed |
 | [0007](0007-agent-identity-and-credentials.md) | Agent identity and short-lived credentials | accepted |
-| [0008](0008-tui-strategy.md) | TUI strategy (opencode's TUI for now, Bubble Tea later) | accepted |
+| [0008](0008-tui-strategy.md) | TUI strategy (opencode's TUI for now, Bubble Tea later) | accepted; TUI technology superseded by ADR-0014 |
 | [0009](0009-workstation-wrapper-cli.md) | Workstation wrapper CLI (`3pa`) responsibilities and distribution | accepted |
 | [0010](0010-injection-defense-strategy.md) | Injection defense strategy (provenance, egress allowlist) | accepted |
 | [0011](0011-managed-config-and-precedence.md) | Managed config and config precedence | accepted |
 | [0012](0012-repo-structure-and-release.md) | Repo structure and release process | accepted |
 | [0013](0013-llm-audit-severity-scoring.md) | LLM audit severity scoring | accepted |
+| [0014](0014-department-terminal-workspace.md) | Terminal workspace for every department (server-side workspaces, Rust + Ratatui TUI) | proposed |
+| [0015](0015-document-ingestion-and-ranking.md) | Company document ingestion (Docling) and relevance ranking (TypeSafe Jev) | proposed |
+| [0016](0016-installation-kit.md) | Installation kit — org chart, identity, models, company systems | proposed |
 
 ## Adding a new ADR
 
