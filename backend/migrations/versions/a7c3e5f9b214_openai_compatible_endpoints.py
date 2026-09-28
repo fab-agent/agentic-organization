@@ -18,18 +18,27 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _columns(table: str) -> set[str]:
+    return {c["name"] for c in sa.inspect(op.get_bind()).get_columns(table)}
+
+
 def upgrade() -> None:
-    with op.batch_alter_table("agentconfig") as batch_op:
-        batch_op.add_column(
-            sa.Column("provider", sqlmodel.sql.sqltypes.AutoString(), nullable=True)
-        )
-    with op.batch_alter_table("providerkey") as batch_op:
-        batch_op.add_column(
-            sa.Column("display_name", sqlmodel.sql.sqltypes.AutoString(), nullable=True)
-        )
-        batch_op.add_column(
-            sa.Column("models_json", sqlmodel.sql.sqltypes.AutoString(), nullable=True)
-        )
+    # Idempotent: a schema built with create_all from current models (fresh
+    # installs, the Postgres smoke test) already has these columns.
+    agent_cols = _columns("agentconfig")
+    if "provider" not in agent_cols:
+        with op.batch_alter_table("agentconfig") as batch_op:
+            batch_op.add_column(
+                sa.Column("provider", sqlmodel.sql.sqltypes.AutoString(), nullable=True)
+            )
+    key_cols = _columns("providerkey")
+    new_key_cols = [c for c in ("display_name", "models_json") if c not in key_cols]
+    if new_key_cols:
+        with op.batch_alter_table("providerkey") as batch_op:
+            for name in new_key_cols:
+                batch_op.add_column(
+                    sa.Column(name, sqlmodel.sql.sqltypes.AutoString(), nullable=True)
+                )
 
 
 def downgrade() -> None:
