@@ -40,13 +40,21 @@ be settled on the main server before people start working:
    A signed-in identity maps to a `User` and a `Personnel` record by e-mail.
 
 3. **Models — any OpenAI-compatible endpoint, defined by base URL + token.**
+   Today the protocol is already OpenAI-compatible (the gateway exposes
+   `/v1/chat/completions` and forwards to `ProviderKey.base_url`), but the
+   endpoint is picked by **guessing the provider from the model-name prefix**
+   (`detect_provider`): a model such as `llama-3.1-70b` or `mistral-large` falls
+   through to `google`, and the web runtime ignores the stored URL for
+   Ollama / LM Studio. Arbitrary endpoints therefore don't work reliably.
    A new generic provider type `openai_compatible` stores a **base URL**, an
    **API token** (encrypted like other keys) and the model list (fetched from
    `GET {base_url}/models` or entered by hand). This covers cloud APIs, vLLM,
    Ollama, LM Studio, LiteLLM and in-house gateways with the same code path. The
    named providers stay as presets. The installer validates the endpoint
-   (`/models` + a one-token completion) before saving. The gateway (ADR-0004)
-   routes to these endpoints unchanged. The ranking backend (ADR-0015: Jev or
+   (`/models` + a one-token completion) before saving. Routing becomes
+   explicit: each agent / flow references a configured endpoint + model, and
+   the web runtime, flow runner and gateway (ADR-0004) resolve the endpoint from
+   that reference instead of the model name. The ranking backend (ADR-0015: Jev or
    local) is chosen in the same step, with an explicit "documents may leave the
    premises" switch.
 
