@@ -47,7 +47,7 @@ jobs:
           ruff format --check backend/services/policy_engine.py backend/tests/test_policy_engine.py
 
       - name: Install backend dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt -r requirements-dev.txt
         working-directory: backend
 
       - name: Run policy engine tests
