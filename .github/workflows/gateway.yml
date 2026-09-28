@@ -51,7 +51,7 @@ jobs:
           ruff format --check backend/api/gateway.py backend/services/gateway_auth.py backend/tests/test_gateway.py
 
       - name: Install backend dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt -r requirements-dev.txt
         working-directory: backend
 
       - name: Run gateway tests
