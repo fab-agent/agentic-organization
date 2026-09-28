@@ -1,5 +1,6 @@
 import logging
 import os
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -57,6 +58,12 @@ from api.tenant import router as tenant_router
 from api.users import router as users_router
 from api.well_known import router as well_known_router
 from api.workstation import router as workstation_router
+from core.runtime import (
+    acquire_job_leader,
+    cors_origins,
+    is_job_leader,
+    startup_lock,
+)
 from database import get_session, init_db
 from seed import run_seed, seed_company_skills
 
@@ -66,10 +73,12 @@ app = FastAPI(
     description="Self-hosted agentic organization management platform",
 )
 
+# The web UI authenticates with a Bearer header, never cookies, so credentialed
+# CORS is not needed. Non-browser clients (3pa, opencode, MCP) ignore CORS.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=cors_origins(),
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -135,39 +144,78 @@ app.include_router(tenant_router)
 
 _scheduler = BackgroundScheduler(timezone="UTC")
 
+# Flow jobs are keyed "flow:<id>" so a reload never touches the system jobs
+# (RAG indexer, severity, revocation, anchoring). Maps job id -> cron string.
+_FLOW_JOB_PREFIX = "flow:"
+_scheduled_flows: dict[str, str] = {}
+# The flows API (request thread) and the resync job (scheduler thread) both call
+# _reload_flow_schedules on the leader.
+_flow_reload_lock = threading.Lock()
+
 
 def _reload_flow_schedules():
-    """Load all enabled flows from DB and schedule them."""
-    from models import Flow
-    from services.flow_runner import run_flow
+    """Sync the scheduler's flow jobs with the enabled flows in the DB.
 
-    _scheduler.remove_all_jobs()
+    Only the job-leader worker runs the scheduler; elsewhere this is a no-op and
+    the leader's periodic resync picks the change up. Unchanged flows keep their
+    job, so a resync never drops a firing that is about to happen.
+    """
+    if not is_job_leader():
+        return
+    from models import Flow
+
     with get_session() as session:
         flows = session.exec(select(Flow).where(Flow.enabled == True)).all()
-        for flow in flows:
-            try:
-                parts = flow.schedule.split()
-                if len(parts) == 5:
-                    minute, hour, day, month, day_of_week = parts
-                    _scheduler.add_job(
-                        run_flow,
-                        CronTrigger(
-                            minute=minute,
-                            hour=hour,
-                            day=day,
-                            month=month,
-                            day_of_week=day_of_week,
-                        ),
-                        args=[flow.id],
-                        id=flow.id,
-                        replace_existing=True,
-                    )
-            except Exception as e:
-                logger.warning(
-                    "Failed to schedule flow",
-                    extra={"extra": {"flow_id": flow.id, "error": str(e)}},
+        wanted = {f"{_FLOW_JOB_PREFIX}{f.id}": (f.id, f.schedule) for f in flows}
+
+    with _flow_reload_lock:
+        changed = _sync_flow_jobs(wanted)
+    if changed:
+        logger.info(
+            "Flows scheduled", extra={"extra": {"count": len(_scheduled_flows)}}
+        )
+
+
+def _sync_flow_jobs(wanted: dict[str, tuple[str, str]]) -> bool:
+    from services.flow_runner import run_flow
+
+    changed = False
+    for job_id in list(_scheduled_flows):
+        spec = wanted.get(job_id)
+        if spec is None or spec[1] != _scheduled_flows[job_id]:
+            if _scheduler.get_job(job_id):
+                _scheduler.remove_job(job_id)
+            del _scheduled_flows[job_id]
+            changed = True
+
+    for job_id, (flow_id, schedule) in wanted.items():
+        if job_id in _scheduled_flows:
+            continue
+        try:
+            parts = schedule.split()
+            if len(parts) == 5:
+                minute, hour, day, month, day_of_week = parts
+                _scheduler.add_job(
+                    run_flow,
+                    CronTrigger(
+                        minute=minute,
+                        hour=hour,
+                        day=day,
+                        month=month,
+                        day_of_week=day_of_week,
+                    ),
+                    args=[flow_id],
+                    id=job_id,
+                    replace_existing=True,
                 )
-    logger.info("Flows scheduled", extra={"extra": {"count": len(flows)}})
+                _scheduled_flows[job_id] = schedule
+                changed = True
+        except Exception as e:
+            logger.warning(
+                "Failed to schedule flow",
+                extra={"extra": {"flow_id": flow_id, "error": str(e)}},
+            )
+    return changed
 
 
 # ── Startup ────────────────────────────────────────────────────────────────────
@@ -175,18 +223,40 @@ def _reload_flow_schedules():
 
 @app.on_event("startup")
 def on_startup():
-    init_db()
-    run_seed()
-    seed_company_skills()
-    _sync_env_config()
-    _sync_env_provider_keys()
-    _reload_flow_schedules()
+    with startup_lock():
+        init_db()
+        run_seed()
+        seed_company_skills()
+        _sync_env_config()
+        _sync_env_provider_keys()
 
-    # RAG: init DB and schedule incremental indexing every 15 minutes
     try:
-        from services.rag_service import index_new_records, init_rag_db
+        from services.rag_service import init_rag_db
 
         init_rag_db()
+    except Exception as e:
+        logger.warning("RAG init failed", extra={"extra": {"error": str(e)}})
+
+    # With --workers N, only one worker runs the scheduler + Telegram polling.
+    if not acquire_job_leader():
+        logger.info("Background jobs run in another worker; serving requests only")
+        logger.info("Application started")
+        return
+
+    _reload_flow_schedules()
+    # Flow edits handled by a non-leader worker reach the scheduler here.
+    _scheduler.add_job(
+        _reload_flow_schedules,
+        "interval",
+        minutes=1,
+        id="flow_resync",
+        replace_existing=True,
+    )
+
+    # RAG: incremental indexing every 15 minutes
+    try:
+        from services.rag_service import index_new_records
+
         _scheduler.add_job(
             index_new_records,
             "interval",
@@ -195,7 +265,9 @@ def on_startup():
             replace_existing=True,
         )
     except Exception as e:
-        logger.warning("RAG init failed", extra={"extra": {"error": str(e)}})
+        logger.warning(
+            "RAG indexer schedule failed", extra={"extra": {"error": str(e)}}
+        )
 
     # Audit severity scoring (ADR-0013) — no-ops unless severity.enabled=true.
     try:
@@ -254,7 +326,8 @@ def on_startup():
 
 @app.on_event("shutdown")
 def on_shutdown():
-    _scheduler.shutdown(wait=False)
+    if _scheduler.running:
+        _scheduler.shutdown(wait=False)
     from api.telegram_bot import stop_polling
 
     stop_polling()

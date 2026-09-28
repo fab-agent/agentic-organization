@@ -125,9 +125,14 @@ Login endpoint is rate-limited to 5 attempts/minute per IP.
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 uvicorn main:app --port 8000
 ```
+
+Dependencies are locked: edit `backend/requirements.in` (runtime) or
+`backend/requirements-dev.in` (test/lint), then regenerate the pinned
+`requirements*.txt` with the `uv pip compile` commands at the top of
+`requirements.in`. Never edit the `.txt` lockfiles by hand.
 
 **Frontend (separate terminal):**
 
@@ -348,8 +353,14 @@ All endpoints require `Authorization: Bearer <token>` except `/auth/token`, `/au
 ## Environment Variables
 
 ```bash
-# Required
+# Required — at least 32 chars; with ENVIRONMENT=production the app refuses
+# to start on a placeholder or short value
 JWT_SECRET=<random-64-char-hex>
+
+# Runtime (optional)
+ENVIRONMENT=development        # production in the prod/cloud compose files
+CORS_ORIGINS=                  # default: APP_URL (+ localhost:5173 outside production)
+SCHEDULER_ENABLED=true         # one worker runs cron flows / jobs via data/scheduler.lock
 
 # Telegram (for invite / notifications)
 TELEGRAM_BOT_TOKEN=
@@ -370,7 +381,7 @@ APP_URL=http://localhost:5173
 
 ```bash
 cd backend
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 pytest tests/ -v
 ```
 
@@ -379,7 +390,7 @@ pytest tests/ -v
 ## TODO
 
 ### Security
-- [ ] CORS tightening — `allow_origins=["*"]` should be restricted in production
+- [x] CORS tightening — origins from `CORS_ORIGINS` / `APP_URL`, no credentialed wildcard
 - [x] Invite role validation — `require_founder` guard on all user CRUD endpoints
 - [x] A2A approver verification — `approver_id` stored and filtered per request
 

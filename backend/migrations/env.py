@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 from logging.config import fileConfig
@@ -14,7 +15,10 @@ import models  # noqa: F401 — side-effect: registers all tables on SQLModel.me
 
 config = context.config
 
-if config.config_file_name is not None:
+# Only configure logging for a standalone `alembic` CLI run. When the app runs
+# migrations at startup, core.logging already set up the root handlers, and
+# fileConfig would disable every existing logger — silencing the app's logs.
+if config.config_file_name is not None and not logging.getLogger().handlers:
     fileConfig(config.config_file_name)
 
 target_metadata = SQLModel.metadata
