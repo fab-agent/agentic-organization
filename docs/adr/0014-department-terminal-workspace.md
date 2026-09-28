@@ -95,8 +95,15 @@ herdr reference and is revisited here.
    (`/a2a`, `/task-requests`, `/change-requests`). Keyboard-first with a visible
    key hint bar and mouse support; no command memorisation needed. TR / EN.
 
-4. **The web UI stays** for approvals, file preview and admin, and as a fallback.
-   It is no longer the primary surface for departments.
+4. **Web UI: shrink and freeze.** The SvelteKit app gets no new features; product
+   work goes to the TUI. It is cut down to what a browser does better:
+   sign-in / SSO redirects, the installation wizard (ADR-0016), approvals with
+   diff review (ADR-0017), file preview, and admin. Other screens (chat, agents,
+   flows, …) are removed as their TUI equivalents ship. The remainder is built
+   with `adapter-static` and served by FastAPI, which removes the Node server
+   and the separate frontend container. Dropping it entirely was rejected for
+   now: SSO needs a browser, and reviewing diffs and generated documents is
+   clearer in one.
 
 ## Consequences
 
@@ -117,4 +124,4 @@ herdr reference and is revisited here.
      lifecycle API (create / attach / suspend / resume) on the backend.
   3. `packages/tui` skeleton: login, sidebar from existing APIs, one agent pane.
   4. Capacity model + idle suspension.
-  5. Update ADR-0008 status and the ROADMAP.
+  5. Web shrink: switch to `adapter-static` served by FastAPI; remove screens as TUI equivalents ship.
