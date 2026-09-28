@@ -157,6 +157,7 @@
 	const emptyForm = () => ({
 		name: '', slug: '', title: '',
 		model: 'claude-sonnet-4-6',
+		provider: '', // '' = infer from the model name
 		status: 'draft' as 'active' | 'draft' | 'inactive',
 		department_id: '',
 		responsible_id: '',
@@ -167,6 +168,20 @@
 	});
 
 	let form = $state(emptyForm());
+
+	// The model <select> keys options by provider + id: the same model id can be
+	// served by several endpoints (e.g. a cloud API and the org's own vLLM).
+	const isCustomProvider = (p: string | null | undefined) => (p ?? '').startsWith('custom:');
+	function modelKey(provider: string | null | undefined, id: string): string {
+		const p = provider || availableModels.find(m => m.id === id)?.provider || '';
+		return `${p}|${id}`;
+	}
+	function pickModel(key: string) {
+		const i = key.indexOf('|');
+		const provider = key.slice(0, i);
+		form.model = key.slice(i + 1);
+		form.provider = provider; // pinned: routing never has to guess from the name
+	}
 
 	const selectedDept = $derived(depts.find(d => d.id === form.department_id) ?? null);
 	const selectedDeptName = $derived(selectedDept?.name ?? '');
@@ -194,6 +209,7 @@
 			slug: agent.slug,
 			title: agent.title ?? '',
 			model: cfg?.model ?? 'claude-sonnet-4-6',
+			provider: cfg?.provider ?? '',
 			status: cfg?.status ?? 'draft',
 			department_id: agent.department_id ?? '',
 			responsible_id: cfg?.responsible_id ?? '',
@@ -230,6 +246,7 @@
 			};
 			const configPayload = {
 				model: form.model,
+				provider: form.provider || null,
 				status: form.status,
 				responsible_id: form.responsible_id || undefined,
 			};
@@ -454,6 +471,7 @@
 					role: form.jobDescription,
 					department_id: form.department_id || null,
 					model: form.model,
+					provider: form.provider || null,
 					status: form.status,
 					responsible_id: form.responsible_id || null,
 					skills: form.selectedSkills,
@@ -665,13 +683,18 @@
 									Aktif AI sağlayıcısı yok — Ayarlar &gt; AI Sağlayıcılar
 								</div>
 							{:else}
-								<select id="ag-model" class="select-input" bind:value={form.model}>
+								<select
+									id="ag-model"
+									class="select-input"
+									value={modelKey(form.provider, form.model)}
+									onchange={(e) => pickModel(e.currentTarget.value)}
+								>
 									{#each availableModels as m}
-										<option value={m.id}>{modelLabel(m)} · {modelTierHint(m)}</option>
+										<option value={modelKey(m.provider, m.id)}>{modelLabel(m)} · {modelTierHint(m)}{isCustomProvider(m.provider) ? ` · ${m.provider.slice(7)}` : ''}</option>
 									{/each}
 								</select>
 								{#if form.model}
-									{@const selected = availableModels.find(m => m.id === form.model)}
+									{@const selected = availableModels.find(m => m.id === form.model && (!form.provider || m.provider === form.provider))}
 									{#if selected}
 										<p class="text-xs mt-1 {TIER_COLOR[selected.tier]}">
 											{#if selected.tier === 'premium'}⚠ Pahalı model — yüksek token kullanımında maliyet hızlı artar.

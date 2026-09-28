@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { providers as providerApi, type ProviderStatus } from '$lib/api/providers.js';
+	import { providers as providerApi, type ProviderStatus, type CustomEndpoint } from '$lib/api/providers.js';
 	import { git as gitApi, type GitConfig, type SyncLog } from '$lib/api/git.js';
 	import { api } from '$lib/api/client.js';
 	import { telegram as telegramApi, type TelegramConfigResponse } from '$lib/api/telegram.js';
@@ -78,8 +78,66 @@
 	const configuredProviders = $derived(providerCards.filter((c) => c.has_key));
 	const unconfiguredProviders = $derived(providerCards.filter((c) => !c.has_key));
 
+	// ── Custom OpenAI-compatible endpoints (ADR-0016) ─────────────────────────
+	let customEndpoints = $state<CustomEndpoint[]>([]);
+	let customForm = $state({ name: '', base_url: '', api_key: '', models: '' });
+	let customSaving = $state(false);
+	let customBusy = $state<string | null>(null); // slug being tested / deleted
+	let customError = $state('');
+
+	async function loadCustomEndpoints() {
+		try {
+			customEndpoints = await providerApi.listCustom();
+		} catch {
+			customEndpoints = [];
+		}
+	}
+
+	async function addCustomEndpoint() {
+		if (!customForm.name.trim() || !customForm.base_url.trim()) return;
+		customSaving = true;
+		customError = '';
+		try {
+			const models = customForm.models.split(',').map((m) => m.trim()).filter(Boolean);
+			const saved = await providerApi.saveCustom({
+				name: customForm.name.trim(),
+				base_url: customForm.base_url.trim(),
+				api_key: customForm.api_key.trim() || undefined,
+				models: models.length ? models : undefined,
+			});
+			if (saved.status !== 'active') customError = t('settings_provider_invalid');
+			customForm = { name: '', base_url: '', api_key: '', models: '' };
+			await loadCustomEndpoints();
+		} catch (e) {
+			customError = (e as Error).message;
+		} finally {
+			customSaving = false;
+		}
+	}
+
+	async function testCustomEndpoint(ep: CustomEndpoint) {
+		customBusy = ep.slug;
+		try {
+			await providerApi.testCustom(ep.slug);
+			await loadCustomEndpoints();
+		} finally {
+			customBusy = null;
+		}
+	}
+
+	async function deleteCustomEndpoint(ep: CustomEndpoint) {
+		customBusy = ep.slug;
+		try {
+			await providerApi.deleteCustom(ep.slug);
+			await loadCustomEndpoints();
+		} finally {
+			customBusy = null;
+		}
+	}
+
 	async function loadProviders() {
 		providerLoading = true;
+		loadCustomEndpoints();
 		try {
 			const list = await providerApi.status();
 			providerCards = list.map((p) => ({
@@ -839,6 +897,72 @@
 						{@const showForm = card.connectMode || card.editMode || isInvalid}
 						{@render providerCard(card, isActive, isInvalid, isUnconfigured, isLocal, showForm)}
 					{/each}
+				</div>
+
+				<!-- ── Custom OpenAI-compatible endpoints ─────────────────────── -->
+				<div class="space-y-3 mt-8">
+					<div class="flex items-center gap-2">
+						<Link class="w-4 h-4 text-muted-foreground" />
+						<span class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{t('settings_custom_providers')}</span>
+						<span class="text-xs text-muted-foreground">— {t('settings_custom_providers_desc')}</span>
+					</div>
+					{#each customEndpoints as ep (ep.provider)}
+						<div class="rounded-xl border border-border bg-card px-5 py-4 flex items-center justify-between gap-4">
+							<div class="flex items-center gap-x-3 min-w-0">
+								{#if ep.status === 'active'}
+									<CheckCircle2 class="w-5 h-5 text-emerald-500 flex-shrink-0" />
+								{:else}
+									<AlertTriangle class="w-5 h-5 text-destructive flex-shrink-0" />
+								{/if}
+								<div class="min-w-0">
+									<div class="font-semibold text-sm">{ep.display_name}</div>
+									<div class="text-xs text-muted-foreground font-mono truncate">{ep.base_url}</div>
+									<div class="text-xs text-muted-foreground mt-0.5">
+										{ep.models.length} {t('settings_custom_models_count')}
+										{#if ep.status !== 'active'} · <span class="text-destructive">{t('settings_provider_invalid')}</span>{/if}
+									</div>
+								</div>
+							</div>
+							<div class="flex items-center gap-x-2">
+								<Button variant="ghost" size="sm" class="h-8 px-3 text-xs gap-x-1.5"
+									disabled={customBusy === ep.slug} onclick={() => testCustomEndpoint(ep)}>
+									{#if customBusy === ep.slug}<Loader2 class="w-3.5 h-3.5 animate-spin" />{:else}<RefreshCw class="w-3.5 h-3.5" />{/if}
+									{t('settings_provider_test')}
+								</Button>
+								<Button variant="ghost" size="sm"
+									class="h-8 px-3 text-xs text-destructive hover:text-destructive gap-x-1.5"
+									disabled={customBusy === ep.slug} onclick={() => deleteCustomEndpoint(ep)}>
+									<Trash2 class="w-3.5 h-3.5" />
+									{t('settings_provider_delete')}
+								</Button>
+							</div>
+						</div>
+					{:else}
+						<div class="text-xs text-muted-foreground">{t('settings_custom_empty')}</div>
+					{/each}
+					<div class="rounded-xl border border-dashed border-border px-5 py-4 space-y-3">
+						{#if customError}
+							<div class="text-xs text-destructive flex items-center gap-x-1.5">
+								<XCircle class="w-3.5 h-3.5 flex-shrink-0" />{customError}
+							</div>
+						{/if}
+						<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+							<input type="text" bind:value={customForm.name} placeholder={t('settings_custom_name')}
+								class="h-9 px-3 text-sm rounded-lg border border-input bg-background focus:outline-none focus:ring-2 focus:ring-ring" />
+							<input type="text" bind:value={customForm.base_url} placeholder={t('settings_custom_base_url')}
+								class="h-9 px-3 text-sm rounded-lg border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-ring" />
+							<input type="password" bind:value={customForm.api_key} placeholder={t('settings_custom_token')}
+								class="h-9 px-3 text-sm rounded-lg border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-ring" />
+							<input type="text" bind:value={customForm.models} placeholder={t('settings_custom_models')}
+								class="h-9 px-3 text-sm rounded-lg border border-input bg-background font-mono focus:outline-none focus:ring-2 focus:ring-ring" />
+						</div>
+						<Button size="sm" class="h-9 px-4 text-xs gap-x-1.5"
+							disabled={customSaving || !customForm.name.trim() || !customForm.base_url.trim()}
+							onclick={addCustomEndpoint}>
+							{#if customSaving}<Loader2 class="w-3.5 h-3.5 animate-spin" />{:else}<Plus class="w-3.5 h-3.5" />{/if}
+							{t('settings_custom_add')}
+						</Button>
+					</div>
 				</div>
 			{/if}
 		</div>

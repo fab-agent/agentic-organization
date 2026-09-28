@@ -109,6 +109,7 @@ def _personnel_to_dict(p: Personnel, session) -> dict:
             "id": cfg.id,
             "model": cfg.model,
             "model_version": cfg.model_version,
+            "provider": cfg.provider,
             "status": cfg.status,
             "responsible_id": cfg.responsible_id,
             "responsible_name": responsible.name if responsible else None,
@@ -369,6 +370,7 @@ def get_agent_config(person_id: str, current_user: User = Depends(get_current_us
             "personnel_id": cfg.personnel_id,
             "model": cfg.model,
             "model_version": cfg.model_version,
+            "provider": cfg.provider,
             "status": cfg.status,
             "responsible_id": cfg.responsible_id,
             "skills": [
@@ -402,6 +404,7 @@ def create_agent_config(
             personnel_id=person_id,
             model=body.model,
             model_version=body.model_version,
+            provider=body.provider or None,
             status=body.status,
             responsible_id=body.responsible_id,
         )
@@ -423,6 +426,7 @@ def create_agent_config(
             "personnel_id": cfg.personnel_id,
             "model": cfg.model,
             "model_version": cfg.model_version,
+            "provider": cfg.provider,
             "status": cfg.status,
             "responsible_id": cfg.responsible_id,
             "skills": [],
@@ -446,6 +450,8 @@ def update_agent_config(
             cfg.model = body.model
         if body.model_version is not None:
             cfg.model_version = body.model_version
+        if "provider" in body.model_fields_set:
+            cfg.provider = body.provider or None
         if body.status is not None:
             cfg.status = body.status
         if body.responsible_id is not None:
@@ -466,6 +472,7 @@ def update_agent_config(
             "id": cfg.id,
             "model": cfg.model,
             "model_version": cfg.model_version,
+            "provider": cfg.provider,
             "status": cfg.status,
             "responsible_id": cfg.responsible_id,
             "skills": [

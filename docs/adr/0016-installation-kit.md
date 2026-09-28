@@ -81,7 +81,12 @@ be settled on the main server before people start working:
   expose more data than intended; the installer review step and the audit log are
   the controls.
 - **Follow-ups:**
-  1. `openai_compatible` provider type (backend + Settings UI + validation).
+  1. ~~`openai_compatible` provider type (backend + Settings UI + validation)~~
+     done: custom endpoints are `ProviderKey` rows named `custom:<slug>` (base
+     URL, token, last-seen model ids); `AgentConfig.provider` pins an agent to an
+     endpoint; `services/model_routing.py` is the single resolver for the web
+     runtime, flows, task requests, session summaries and the gateway (no more
+     cross-provider key fallback); gateway clients may send `custom:<slug>/<model>`.
   2. OIDC login for web + TUI (auth-code + device-code), Google preset.
   3. `setup` flow skeleton that runs the four steps and stores a versioned config.
   4. Read-only MCP server template + ERP mapping checklist in `docs/`.

@@ -224,6 +224,8 @@ def _apply_proposed_to_db(session, cr: ChangeRequest) -> None:
             for field in ("model", "model_version", "status", "responsible_id"):
                 if field in proposed:
                     setattr(agent_cfg, field, proposed[field])
+            if "provider" in proposed:
+                agent_cfg.provider = proposed["provider"] or None
             agent_cfg.updated_at = datetime.utcnow()
             session.add(agent_cfg)
 

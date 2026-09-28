@@ -54,6 +54,9 @@ class AgentConfig(SQLModel, table=True):
     personnel_id: str = Field(foreign_key="personnel.id", unique=True)
     model: str
     model_version: str | None = None
+    # Explicit provider (a ProviderKey.provider, e.g. "openai", "ollama",
+    # "custom:vllm"). None = infer from the model name (services.model_routing).
+    provider: str | None = None
     status: str = Field(default="draft")  # "active" | "draft" | "inactive"
     responsible_id: str | None = Field(default=None, foreign_key="personnel.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -87,6 +90,10 @@ class ProviderKey(SQLModel, table=True):
     encrypted_key: str
     status: str = Field(default="unconfigured")  # "active" | "invalid" | "unconfigured"
     base_url: str | None = None  # override endpoint (e.g. dashscope-intl vs dashscope)
+    # Custom OpenAI-compatible endpoints ("custom:<slug>") carry a display name and
+    # the model ids seen at the last test, used to route bare model names to them.
+    display_name: str | None = None
+    models_json: str | None = None
     last_tested: datetime | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

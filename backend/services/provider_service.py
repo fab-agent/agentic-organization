@@ -103,6 +103,20 @@ def _with_pricing(model_id: str, base: dict) -> dict:
 
 LOCAL_PROVIDERS: set[str] = {"ollama", "lmstudio"}
 
+# Any OpenAI-compatible server the installer adds by base URL + token (vLLM,
+# LiteLLM, an in-house gateway, a cloud API). Stored as ProviderKey rows named
+# "custom:<slug>" (ADR-0016).
+CUSTOM_PREFIX = "custom:"
+
+
+def is_custom_provider(provider: str | None) -> bool:
+    return (provider or "").startswith(CUSTOM_PREFIX)
+
+
+def _bearer_headers(k: str | None) -> dict:
+    return {"Authorization": f"Bearer {k}"} if k else {}
+
+
 PROVIDER_CONFIGS: dict[str, dict] = {
     "ollama": {
         "display_name": "Ollama (Lokal)",
@@ -220,6 +234,55 @@ PROVIDER_CONFIGS: dict[str, dict] = {
 SUPPORTED_PROVIDERS = list(PROVIDER_CONFIGS.keys())
 
 
+def provider_config(provider: str) -> dict:
+    """PROVIDER_CONFIGS entry, or a synthesized one for a custom endpoint."""
+    if is_custom_provider(provider):
+        return {
+            "display_name": provider.removeprefix(CUSTOM_PREFIX),
+            "url": "__local__",
+            "method": "get",
+            "headers": _bearer_headers,
+            "body": None,
+            "models": [],
+            "models_url": "__local_dynamic__",
+            "default_base_url": "",
+        }
+    return PROVIDER_CONFIGS.get(provider, {})
+
+
+def list_openai_compatible_models(
+    base_url: str, api_key: str | None
+) -> list[str] | None:
+    """Model ids from GET {base_url}/models, or None if the server can't be listed."""
+    url = base_url.rstrip("/") + "/models"
+    try:
+        with httpx.Client(timeout=10) as client:
+            resp = client.get(url, headers=_bearer_headers(api_key))
+        if not resp.is_success:
+            return None
+        data = resp.json()
+    except Exception:
+        return None
+    raw = data.get("data", []) if isinstance(data, dict) else []
+    return [m.get("id") for m in raw if isinstance(m, dict) and m.get("id")]
+
+
+def probe_chat_completion(base_url: str, api_key: str | None, model: str) -> bool:
+    """One-token chat completion — for servers that don't implement /models."""
+    url = base_url.rstrip("/") + "/chat/completions"
+    body = {
+        "model": model,
+        "messages": [{"role": "user", "content": "ping"}],
+        "max_tokens": 1,
+    }
+    try:
+        with httpx.Client(timeout=20) as client:
+            resp = client.post(url, json=body, headers=_bearer_headers(api_key))
+        return resp.status_code in (200, 201)
+    except Exception:
+        return False
+
+
 _QWEN_ENDPOINTS = [
     "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
     "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
@@ -264,6 +327,11 @@ def test_provider_key(
         resolved = base_url or PROVIDER_CONFIGS[provider].get("default_base_url", "")
         return test_local_provider(resolved)
 
+    if is_custom_provider(provider):
+        return bool(base_url) and (
+            list_openai_compatible_models(base_url, plain_key) is not None
+        )
+
     cfg = PROVIDER_CONFIGS.get(provider)
     if not cfg:
         return False
@@ -287,7 +355,9 @@ def fetch_live_models(
     Returns None if the provider has no models endpoint or the call fails.
     Each model dict has: id, name, tier, input_per_m, output_per_m.
     """
-    cfg = PROVIDER_CONFIGS.get(provider, {})
+    cfg = provider_config(provider)
+    if not cfg:
+        return None
     headers = cfg["headers"](plain_key)
 
     # Resolve models URL
@@ -346,7 +416,7 @@ def fetch_live_models(
             result.append(_with_pricing(mid, {"id": mid, "name": mid}))
         return result or None
 
-    if provider in LOCAL_PROVIDERS:
+    if provider in LOCAL_PROVIDERS or is_custom_provider(provider):
         raw = data.get("data", [])
         result = []
         for m in raw:
@@ -378,7 +448,7 @@ def get_provider_models(
     Falls back to the curated list when live fetch is unavailable or fails.
     base_url is used for providers like qwen where the endpoint varies per key.
     """
-    cfg = PROVIDER_CONFIGS.get(provider, {})
+    cfg = provider_config(provider)
     curated = [
         _with_pricing(m["id"], {"provider": provider, **m})
         for m in cfg.get("models", [])

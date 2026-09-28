@@ -17,7 +17,6 @@ from pydantic import BaseModel
 from sqlmodel import select
 
 from api.auth import get_current_user
-from core.security import decrypt
 from database import get_session
 from models import (
     AgentConfig,
@@ -26,7 +25,6 @@ from models import (
     Department,
     InboxMessage,
     Personnel,
-    ProviderKey,
     Skill,
     TaskRequest,
     User,
@@ -45,21 +43,6 @@ async def _emit(task_id: str, event: dict) -> None:
     q = _task_queues.get(task_id)
     if q:
         await q.put(event)
-
-
-def _model_to_provider(model: str) -> str:
-    m = model.lower()
-    if m.startswith("claude"):
-        return "anthropic"
-    if m.startswith(("gpt-", "o1", "o3", "dall-e")):
-        return "openai"
-    if m.startswith("gemini"):
-        return "google"
-    if m.startswith(("mistral", "codestral")):
-        return "mistral"
-    if m.startswith(("qwen", "wanx", "flux")):
-        return "qwen"
-    return ""
 
 
 class TaskRequestCreate(BaseModel):
@@ -270,40 +253,19 @@ async def run_task(
             if not agent or not agent_cfg:
                 raise ValueError("Agent or config not found")
 
-            # Find active provider key — prefer agent's own provider, then fallback list
-            provider_key = None
-            agent_provider = _model_to_provider(agent_cfg.model or "")
-            for prov in ([agent_provider] if agent_provider else []) + [
-                "anthropic",
-                "openai",
-                "google",
-                "mistral",
-                "qwen",
-            ]:
-                if not prov:
-                    continue
-                pk = session.exec(
-                    select(ProviderKey)
-                    .where(ProviderKey.provider == prov)
-                    .where(ProviderKey.status == "active")
-                ).first()
-                if pk:
-                    provider_key = pk
-                    break
+            from services.model_routing import resolve_model
 
-            if not provider_key:
-                raise ValueError("No active provider key")
+            resolved = resolve_model(agent_cfg.model, agent_cfg.provider)
 
             await _emit(
                 task_id,
                 {
                     "type": "step",
                     "step": "model_ready",
-                    "label": f"Model: {agent_cfg.model} · Provider: {provider_key.provider}",
+                    "label": f"Model: {resolved.model} · Provider: {resolved.provider}",
                 },
             )
 
-            api_key = decrypt(provider_key.encrypted_key)
             system_prompt = _build_system_prompt(agent, agent_cfg)
             user_prompt = task.body
             if task.human_note:
@@ -330,12 +292,13 @@ async def run_task(
 
             result = await asyncio.to_thread(
                 _call_llm_streaming,
-                provider_key.provider,
-                agent_cfg.model,
+                resolved.provider,
+                resolved.model,
                 system_prompt,
                 user_prompt,
-                api_key,
+                resolved.api_key,
                 on_chunk,
+                resolved.base_url,
             )
 
             task.result = result
