@@ -129,6 +129,29 @@ Constraints, all tested:
 - The workspace (opencode) path does not use this assembly yet: it needs an endpoint
   that serves the assembled context to the plugin.
 
+## Trial status
+
+A trial harness exists — `backend/scripts/intent_trial.py`, with its own tests — but
+**it has not been run against the real API**: the session's network policy blocked
+`api.typesafe.ai` (and the OpenAI-compatible endpoint used for token calibration), so
+nothing has been measured. Run it from a session that can reach the services:
+
+```sh
+cd backend
+TYPESAFE_API_KEY=... python scripts/intent_trial.py --repeat 3
+# token-estimate calibration against a real tokenizer (any OpenAI-compatible endpoint):
+OPENAI_COMPAT_BASE_URL=... OPENAI_COMPAT_API_KEY=... OPENAI_COMPAT_MODEL=... \
+  python scripts/intent_trial.py --calibrate
+```
+
+It sends 20 synthetic English and Turkish requests (no company data) and reports
+latency (p50 / p95), the fixed input-token cost of the questions, how often a choice
+is confident, chit-chat recognised, **real work wrongly trimmed as chit-chat** (the
+harmful direction — should be 0 before this is wired in), and how the `noul`
+probability separates "needs company knowledge" from "does not". Decisions to take
+from the numbers: `INTENT_MIN_PROMPT_TOKENS`, the 0.6 confidence floor, the 0.25
+knowledge threshold, and the estimator's divisor for Turkish.
+
 ## Follow-ups
 
 1. Trial Jev against real requests: latency, cost per call, calibration of the
