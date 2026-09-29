@@ -210,8 +210,10 @@ Desktop) that `fab` keeps in step with the server-side workspace (ADR-0018):
 
 1. **Retention** of review rows and summaries (proposal: 12 months, per-company
    configurable) and who may export them.
-2. **Authoring criteria:** how goals, values and policies become typed
-   questions (draft by an LLM, approved through a change request — ADR-0017).
+2. ~~**Authoring criteria:**~~ Decided in [ADR-0021](0021-fit-rubric.md):
+   criteria are single yes/no questions with a mandatory source quote, drafted by a
+   model, linted, approved by change request, calibrated and run in shadow before
+   going live; no per-person score.
 3. **Hard-signal list** and the minimum group size for aggregates.
 4. **Legal review:** employee-related scoring should be reviewed by counsel
    (KVKK / GDPR) before it is enabled at any customer.
@@ -316,8 +318,8 @@ Choices made where this ADR was silent, to confirm or change:
   differenced against other groups' totals; the floor limits, not removes, that.
 - Disabling stops collection but does not erase what was collected (retention does).
 
-**Not built:** rating fit against goals, values and policies (needs the rubric and typed
-questions); a *corrections* signal (nothing records that a person corrected the agent);
+**Not built:** rating fit against goals, values and policies (rubric designed in
+ADR-0021, not implemented); a *corrections* signal (nothing records that a person corrected the agent);
 any UI (the TUI's "My review"); telling employees (the acknowledgement is a flag, not a
 notification); a per-person "who looked at my review" list (it is in the audit chain);
 an HR viewer; PostgreSQL (SQLite only here). The tags exist only where `intent.enabled`
