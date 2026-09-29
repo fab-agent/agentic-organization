@@ -217,8 +217,10 @@ on and the same acknowledgement, and stops when work review is switched off.
 - Only sessions with an LLM summary are rated; a session too short to be summarised
   (fewer than two messages) or whose summary failed is never rated.
 - **Team / department aggregates do not include ratings yet**, and there is no
-  training-need signal, calibration tool, rubric view or `fab` screen for ratings or the
-  contest — only the API. The shadow period is a status of the criterion; nothing yet
+  training-need signal, calibration tool or rubric view. `fab`'s "My review" shows the
+  person's ratings and lets them contest and withdraw (unit tests, plus a pty end-to-end
+  run against the real backend); there is no screen for the person who resolves. The
+  shadow period is a status of the criterion; nothing yet
   promotes a criterion from `shadow` to `live` after calibration (it is edited in the
   rubric file).
 - The rubric lives in an `AppConfig` row, not in the policy repo behind a change
