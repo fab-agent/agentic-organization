@@ -38,11 +38,12 @@ placement table, with no change to the API in section 3.
 
 ### 2. Workspace model
 
-One workspace per human `Personnel` (`personnel_id`). The person's agents
-(ADR-0019) run as sessions **inside** it; each agent session gets its own persona
-token (ADR-0007), minted by the backend when the session starts and injected as
-`FABAGENT_TOKEN` / `FABAGENT_BASE_URL`, exactly as `sandbox/` does. A token never
-carries more than the owning person's scope.
+One workspace per human `Personnel` (`personnel_id`). The person's single agent
+(ADR-0019) runs **inside** it, together with any subagents it starts. The agent
+gets a persona token (ADR-0007) minted by the backend when the session starts and
+injected as `FABAGENT_TOKEN` / `FABAGENT_BASE_URL`, exactly as `sandbox/` does;
+runs it spawns receive narrower, derived tokens. A token never carries more than
+the owning person's scope.
 
 State machine: `creating → running ⇄ suspended`, plus `failed` and `deleted`.
 `suspended` keeps the home volume and stops the container; `resume` starts it and
@@ -123,8 +124,8 @@ sidebar, and lists `/workspace/out` in the files strip.
 2. **Retention:** a deleted workspace's volume is kept **7 days**, then purged.
    Audit logs (ADR-0006) are kept independently; the volume exists so that
    material can still be recovered when someone asks after the fact.
-3. **Persona binding:** not one persona per person — agents are task-scoped and
-   created automatically, see ADR-0019.
+3. **Persona binding:** one agent persona per person, created with the workspace;
+   subagents are runs, not personas — see ADR-0019.
 
 ## Open question
 
