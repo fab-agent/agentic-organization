@@ -446,7 +446,7 @@ pub fn recent_files(root: &Path, n: usize) -> Vec<String> {
     }
     let mut v = Vec::new();
     walk(root, root, &mut v);
-    v.sort_by(|a, b| b.0.cmp(&a.0));
+    v.sort_by_key(|a| std::cmp::Reverse(a.0));
     v.into_iter().take(n).map(|(_, p)| p).collect()
 }
 

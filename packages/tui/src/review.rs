@@ -382,11 +382,10 @@ impl ReviewState {
                 KeyCode::Char(c)
                     if !k
                         .modifiers
-                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+                        && buf.chars().count() < NOTE_MAX =>
                 {
-                    if buf.chars().count() < NOTE_MAX {
-                        buf.push(c);
-                    }
+                    buf.push(c);
                 }
                 _ => {}
             }
