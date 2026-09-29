@@ -17,6 +17,8 @@ daemon. Build it and run the smoke checks at the end before relying on it.
 | `session-start.sh` | Idempotent creation of the tmux session with `remain-on-exit` (shared by the entrypoint and `attach.sh`). |
 | `attach.sh` | Installed as `workspace-attach`. Restarts a dead agent pane, then `tmux attach`. The workspace-controller runs it via `docker exec -it`. |
 | `chrome-headless.sh` | `chromium --headless=new --no-sandbox …`; exported as `CHROME_BIN`. |
+| `context-sync.sh` | Installed as `workspace-context-sync`. Fetches the agent's company context (`GET /workstation/context`, ETag-cached, token on stdin) into `/home/agent/.config/fab/context.md`; keeps the previous content on any failure. Run by the entrypoint before the agent starts and periodically. |
+| `opencode.json` | The sandbox's managed config plus that context file in `instructions` (a test guards against drift). |
 | `compose.yaml` | Dev stand-in for the controller: internal-only network, egress proxy, home + files volumes, `cap_drop: ALL`. |
 | `test_entrypoint.sh` | Behavioural test of the scripts without Docker (needs `tmux`). |
 
@@ -62,6 +64,14 @@ docker run --rm fab-workspace docling --version   # only when built with WITH_DO
 LibreOffice as uid 10001 with `cap_drop: ALL` needs a writable profile dir
 (`$HOME/.config/libreoffice`, on the home volume) — if the conversion above fails
 on a read-only rootfs, mount a tmpfs at `/home/agent/.config`.
+
+## Company context
+
+The entrypoint runs `workspace-context-sync` before starting the agent and every
+`WORKSPACE_CONTEXT_REFRESH_SECONDS` (default 300). The file is created empty if it
+cannot be fetched, so opencode's `instructions` path always exists. **Unverified:**
+whether opencode picks the file up while it is running (it may need a new opencode
+session) — see ADR-0020.
 
 ## Known limitations
 

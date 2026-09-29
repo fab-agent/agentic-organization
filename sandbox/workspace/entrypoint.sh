@@ -24,15 +24,28 @@ start_session() {
     workspace-session-start
 }
 
+# Company context for opencode (ADR-0020): fetched before the agent starts, then
+# refreshed periodically. A failure is never fatal — the previous file stays.
+refresh=${WORKSPACE_CONTEXT_REFRESH_SECONDS:-300}
+every=$((refresh / 5))
+[ "$every" -ge 1 ] || every=1
+sync_context() {
+    workspace-context-sync || echo "entrypoint: company context not refreshed" >&2
+}
+
 stop() {
     tmux kill-server 2>/dev/null || true
     exit 0
 }
 trap stop TERM INT
 
+sync_context
 start_session
+i=0
 while :; do
     tmux has-session -t "$SESSION" 2>/dev/null || start_session
+    i=$((i + 1))
+    [ $((i % every)) -eq 0 ] && sync_context
     sleep 5 &
     wait $! || true
 done

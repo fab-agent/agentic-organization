@@ -17,18 +17,16 @@ from sqlmodel import select
 from database import get_session
 from models import (
     AgentConfig,
-    AgentPolicyLink,
     AgentSession,
     Department,
-    DepartmentPolicyLink,
     Personnel,
-    Policy,
     SessionMessage,
     Skill,
 )
 from services.context_assembly import Assembled, assemble
 from services.mcp_client import call_http_tool, call_mcp_sse_tool, execute_builtin
 from services.memory_service import load_agent_memories
+from services.policy_engine import applicable_policies
 
 _log = logging.getLogger("app")
 
@@ -1174,30 +1172,14 @@ async def run_session(
             .order_by(SessionMessage.created_at)
         ).all()
 
-        # Gather policies: dept-inherited + agent-specific (join tables, deduplicated)
-        policy_names: list[str] = []
-        seen_ids: set[str] = set()
-        if dept:
-            dept_pol_rows = session.exec(
-                select(Policy)
-                .join(DepartmentPolicyLink, DepartmentPolicyLink.policy_id == Policy.id)
-                .where(DepartmentPolicyLink.department_id == dept.id)
-                .where(Policy.is_active == True)
-            ).all()
-            for p in dept_pol_rows:
-                if p.id not in seen_ids:
-                    policy_names.append(p.name)
-                    seen_ids.add(p.id)
-        agent_pol_rows = session.exec(
-            select(Policy)
-            .join(AgentPolicyLink, AgentPolicyLink.policy_id == Policy.id)
-            .where(AgentPolicyLink.agent_config_id == cfg.id)
-            .where(Policy.is_active == True)
-        ).all()
-        for p in agent_pol_rows:
-            if p.id not in seen_ids:
-                policy_names.append(p.name)
-                seen_ids.add(p.id)
+        # The policies the engine enforces for this agent — company, the department
+        # and its ancestors, the agent's own — so the prompt names what is enforced.
+        policy_names = [
+            name
+            for name, _ in applicable_policies(
+                person.company_id, dept.id if dept else None, cfg.id
+            )
+        ]
 
         # Off the event loop: building the prompt can call the intent classifier
         # (a network round trip, up to its timeout) and the retrieval, and this is an

@@ -192,11 +192,17 @@ def assemble(
     company_id: str | None = None,
     skip: frozenset[str] | set[str] = frozenset(),
     budget: int | None = None,
+    stable_only: bool = False,
 ) -> Assembled:
     """Build the sections, apply `skip`, then enforce the budget.
 
     `skip` names sections to leave out (an intent classifier will fill this in);
     required sections (`identity`, `rules`, `closing`) are never skipped or dropped.
+
+    `stable_only` builds a *context document* for a client that has its own system
+    prompt and tools (the workspace's opencode): identity, company, department, job
+    and rules only — no tool list, no closing instruction, nothing that varies per
+    turn — so its text changes only when the underlying facts change.
     """
     budget = budget or _budget()
     secs: list[Section] = []
@@ -226,18 +232,21 @@ def assemble(
         if len(policy_names) > len(names):
             lines.append(f"  (+{len(policy_names) - len(names)} more apply)")
         secs.append(Section("rules", "\n".join(lines), 1, required=True))
-    stext = _skills_text(skills)
+    stext = None if stable_only else _skills_text(skills)
     if stext:
         secs.append(Section("skills", stext, 1))
-    secs.append(
-        Section(
-            "closing",
-            "\nRespond helpfully and concisely. Use tools when they would help.",
-            0,
-            required=True,
+    if not stable_only:
+        secs.append(
+            Section(
+                "closing",
+                "\nRespond helpfully and concisely. Use tools when they would help.",
+                0,
+                required=True,
+            )
         )
-    )
     # Per-turn text last, after everything that is identical between turns.
+    if stable_only:
+        memories, knowledge = None, None
     if memories:
         mem = ["\nContext from your previous sessions:"] + [
             f"  - {m}" for m in memories

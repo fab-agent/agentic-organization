@@ -24,7 +24,7 @@ ARG WITH_DOCLING=0
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        git ca-certificates ripgrep less procps tini tmux \
+        git ca-certificates curl ripgrep less procps tini tmux \
         libreoffice-writer libreoffice-calc libreoffice-impress \
         poppler-utils qpdf \
         chromium \
@@ -46,15 +46,19 @@ RUN if [ "${WITH_DOCLING}" = "1" ]; then \
 # Org plugin + managed opencode config (same files the sandbox uses).
 COPY packages/agent-plugin /opt/agent-plugin
 RUN cd /opt/agent-plugin && npm install --omit=dev --no-audit --no-fund
-COPY sandbox/opencode.json /etc/opencode/opencode.json
+# Same managed config as the sandbox, plus the company-context file the entrypoint
+# keeps fresh (ADR-0020); tests/test_workspace_context_sync.py guards against drift.
+COPY sandbox/workspace/opencode.json /etc/opencode/opencode.json
 COPY sandbox/base-prompt.md /etc/opencode/base-prompt.md
 
 COPY sandbox/workspace/entrypoint.sh /usr/local/bin/workspace-entrypoint.sh
 COPY sandbox/workspace/attach.sh /usr/local/bin/workspace-attach
 COPY sandbox/workspace/session-start.sh /usr/local/bin/workspace-session-start
+COPY sandbox/workspace/context-sync.sh /usr/local/bin/workspace-context-sync
 COPY sandbox/workspace/chrome-headless.sh /usr/local/bin/chrome-headless
 RUN chmod +x /usr/local/bin/workspace-entrypoint.sh \
         /usr/local/bin/workspace-attach /usr/local/bin/workspace-session-start \
+        /usr/local/bin/workspace-context-sync \
         /usr/local/bin/chrome-headless
 
 # Non-root. /home/agent is a per-person volume; /workspace/in and /workspace/out

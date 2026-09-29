@@ -342,3 +342,35 @@ def test_build_system_prompt_logs_the_breakdown_without_text(
 def test_drop_order_names_are_real_section_names(name):
     # guards against renaming a section and silently disabling its budget drop
     assert name in {"knowledge", "memory", "department", "job", "company"}
+
+
+# ── stable_only: the context document for a client with its own prompt ─────────
+
+
+def test_stable_only_has_no_tools_closing_or_per_turn_text(client, db_session):
+    co = make_company(db_session)
+    _meta(db_session, co, mission="M")
+    p = _person(db_session, co)
+    skill = models.Skill(
+        agent_id="a", name="web_search", skill_type="builtin", is_active=True
+    )
+    kw = dict(
+        memories=["MEM"],
+        knowledge=[
+            {"created_at": "2026-09-01T00:00", "source_type": "t", "chunk_text": "K"}
+        ],
+        company_id=co.id,
+    )
+    a = assemble(p, None, [skill], ["P"], stable_only=True, **kw)
+    assert _names(a) == ["identity", "company", "rules"]
+    assert "Respond helpfully" not in a.text() and "web_search" not in a.text()
+    assert "MEM" not in a.text()
+    # identical whatever the per-turn inputs are
+    b = assemble(
+        p, None, [], ["P"], stable_only=True, memories=["OTHER"], company_id=co.id
+    )
+    assert a.text() == b.text()
+    # the normal prompt is unchanged
+    assert {"closing", "skills", "memory", "knowledge"} <= set(
+        _names(assemble(p, None, [skill], ["P"], **kw))
+    )

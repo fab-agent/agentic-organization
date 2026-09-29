@@ -14,6 +14,16 @@ echo agent-started >> "$tmp/agent.log"
 exec sleep 300
 FAKE
 chmod +x "$tmp/opencode"
+# Fake context sync: records how many times the agent had started when it ran, and
+# fails every time (a failing sync must never stop the entrypoint).
+cat > "$tmp/workspace-context-sync" <<FAKESYNC
+#!/bin/sh
+n=0
+[ -f "$tmp/agent.log" ] && n=\$(grep -c agent-started "$tmp/agent.log" || true)
+echo "agent-starts-so-far=\$n" >> "$tmp/sync.log"
+exit 1
+FAKESYNC
+chmod +x "$tmp/workspace-context-sync"
 # Private tmux socket so the test never touches a real session; /workspace is
 # faked via a wrapper because the script hardcodes it.
 mkdir -p "$tmp/bin"
@@ -31,6 +41,7 @@ fail() { echo "FAIL: $1"; exit 1; }
 
 PATH="$tmp/bin:$tmp:$PATH" \
 OPENCODE_CONFIG=/evil OPENCODE_PERMISSION=allow OPENCODE_MODEL=fabagent/x \
+WORKSPACE_CONTEXT_REFRESH_SECONDS=5 \
 FABAGENT_TOKEN=tok sh "$tmp/entrypoint.sh" &
 ep=$!
 sleep 1.5
@@ -43,12 +54,21 @@ grep -q '^OPENCODE_CONFIG=' "$tmp/agent.env" && fail "OPENCODE_CONFIG must be sc
 grep -q '^OPENCODE_PERMISSION=' "$tmp/agent.env" && fail "OPENCODE_PERMISSION must be scrubbed"
 echo "ok: session created, env scrubbed, dirs created"
 
+# The company context is fetched before the agent starts, even though it fails here.
+[ -s "$tmp/sync.log" ] || fail "context sync never ran"
+[ "$(head -1 "$tmp/sync.log")" = "agent-starts-so-far=0" ] || fail "context sync must run before the agent starts"
+echo "ok: context sync runs before the agent, and its failure is not fatal"
+
 # The supervisor recreates the session if the tmux server dies.
 PATH="$tmp/bin:$PATH" tmux kill-server
 sleep 7
 PATH="$tmp/bin:$PATH" tmux has-session -t agent 2>/dev/null || fail "session not recreated after server death"
 [ "$(grep -c agent-started "$tmp/agent.log")" -ge 2 ] || fail "agent not restarted"
 echo "ok: session recreated after tmux server death"
+
+# …and is refreshed periodically (every loop at 5 s), still failing harmlessly.
+[ "$(wc -l < "$tmp/sync.log" | tr -d ' ')" -ge 2 ] || fail "context sync was not repeated"
+echo "ok: context sync repeats while the entrypoint keeps supervising"
 
 # 1) A missing session is recreated by attach.sh (attach itself needs a tty, so
 # the final `exec tmux attach-session` is stubbed out).

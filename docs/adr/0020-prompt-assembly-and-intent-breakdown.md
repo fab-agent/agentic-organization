@@ -137,8 +137,8 @@ Constraints, all tested:
   deliberately not done (see the constraint above).
 - No lookup tools, no tool-schema deferral, no MCP token accounting, no digests
   generated from full policy text, no local classifier.
-- The workspace (opencode) path does not use this assembly yet: it needs an endpoint
-  that serves the assembled context to the plugin.
+- The workspace (opencode) path is wired but **unverified against a real opencode**:
+  see "Workspace context" below.
 
 ## Trial status
 
@@ -270,6 +270,41 @@ enable it are the tags for the work-review pipeline and not injecting irrelevant
 retrieved text into a greeting; the token saving becomes real once prompts carry MCP
 and tool schemas (§2).
 
+
+## Workspace context (built)
+
+The workspace's agent runs opencode with its own system prompt and tools, so it gets
+a **context document**, not a full prompt: `GET /workstation/context` (persona token)
+returns identity, company (mission, vision, values, goals), department, the owner's
+job and the policies that apply — built with `assemble(..., stable_only=True)`, so it
+holds no tool list, closing instruction, memory or retrieved knowledge and only changes
+when the underlying facts do. It is scoped to the token's own persona, cacheable
+(`ETag` / `If-None-Match` → 304), negotiable (`Accept: text/markdown` for the bare
+text), and a served version is audited (`context_served`: etag and section sizes,
+never the text; a 304 is not).
+
+In the workspace container `workspace-context-sync` (`sandbox/workspace/context-sync.sh`)
+fetches it into `/home/agent/.config/fab/context.md`, which the workspace's managed
+opencode config lists in `instructions`. The entrypoint fetches it before the agent
+starts and every `WORKSPACE_CONTEXT_REFRESH_SECONDS` (default 300). It never makes
+things worse: the file always exists, and on any failure (rejected token, server down,
+empty or oversized reply) the previous content is kept. The token goes to curl on
+stdin, not the command line.
+
+**Policies now match enforcement.** The chat prompt used to list only the
+department's *direct* links and the agent's; the engine also enforces company-scope
+policies and every ancestor department's. Both the chat prompt and this document now
+take their policy names from the same function the engine uses
+(`applicable_policies`), so the agent is told about what is enforced — a behaviour
+change for chat prompts (they name more policies, capped at 20; policies with an
+empty body, which enforce nothing, are no longer named).
+
+Not verified: that opencode (a) reads an `instructions` file that changes while it
+runs — the document may only take effect for new opencode sessions — and (b) tolerates
+the file being empty. The image itself has still not been built (no Docker daemon),
+and the token-lifetime limitation (README of `sandbox/workspace/`) applies: a 401 keeps
+the previous context. Job descriptions and company metadata are editable text that ends
+up in agent instructions, like policies: whoever can edit them can steer the agent.
 
 ## Review notes (independent review of the wired-in version)
 
