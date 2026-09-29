@@ -2,6 +2,7 @@ import json
 import uuid
 from datetime import datetime
 
+from sqlalchemy import Index, UniqueConstraint, text
 from sqlmodel import Field, SQLModel
 
 
@@ -46,10 +47,24 @@ class Personnel(SQLModel, table=True):
     email: str | None = None
     user_id: str | None = None  # linked User.id (no FK — soft link)
     manager_id: str | None = Field(default=None, foreign_key="personnel.id")
+    # Free text: what this person does day to day. Feeds the agent's context
+    # layer "the person's own job" (ADR-0019 §3).
+    job_description: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class AgentConfig(SQLModel, table=True):
+    # A human has at most one workspace agent (ADR-0019 §1).
+    __table_args__ = (
+        Index(
+            "uq_agentconfig_workspace_agent",
+            "responsible_id",
+            unique=True,
+            sqlite_where=text("is_workspace_agent = 1"),
+            postgresql_where=text("is_workspace_agent"),
+        ),
+    )
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     personnel_id: str = Field(foreign_key="personnel.id", unique=True)
     model: str
@@ -59,6 +74,8 @@ class AgentConfig(SQLModel, table=True):
     provider: str | None = None
     status: str = Field(default="draft")  # "active" | "draft" | "inactive"
     responsible_id: str | None = Field(default=None, foreign_key="personnel.id")
+    # True for the single agent every person gets with their workspace.
+    is_workspace_agent: bool = Field(default=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -651,3 +668,130 @@ class TelegramBotState(SQLModel, table=True):
     selected_agent_name: str | None = None
     active_session_id: str | None = None  # AgentSession.id (persists history)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Workspace(SQLModel, table=True):
+    """
+    A person's server-side workspace (ADR-0014 / ADR-0018). One live workspace per
+    human Personnel; deleted rows are kept until `purge_after` (7 days) so the
+    volume can be restored, then purged.
+    state: creating | running | suspended | failed | deleted
+    """
+
+    __table_args__ = (
+        Index(
+            "uq_workspace_active_person",
+            "personnel_id",
+            unique=True,
+            sqlite_where=text("state != 'deleted'"),
+            postgresql_where=text("state != 'deleted'"),
+        ),
+    )
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    company_id: str = Field(foreign_key="company.id", index=True)
+    personnel_id: str = Field(foreign_key="personnel.id", index=True)
+    user_id: str | None = None  # owner's User.id (soft link)
+    state: str = Field(default="creating", index=True)
+    error: str | None = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    last_active_at: datetime = Field(default_factory=datetime.utcnow)
+    suspended_at: datetime | None = None
+    deleted_at: datetime | None = None
+    purge_after: datetime | None = None
+
+
+class WorkSignal(SQLModel, table=True):
+    """
+    Daily per-person counts derived from the audit chain (ADR-0019 §6): hard signals
+    (policy refusals, approvals asked) and the tags an intent classification produced.
+    One row per (person, day, kind, value); `personnel_id` is the accountable *human*
+    (an agent's events roll up to its responsible person). Recomputed idempotently per
+    day, never written for a company that has not enabled work review, and purged after
+    the company's retention window or when the person is deleted. Soft link to
+    Personnel on purpose: no foreign key, so deleting a person is never blocked.
+    """
+
+    personnel_id: str = Field(primary_key=True)
+    day: str = Field(primary_key=True)  # UTC "YYYY-MM-DD"
+    kind: str = Field(primary_key=True)  # policy_denied | approval_asked | tag_task | …
+    value: str = Field(default="", primary_key=True)  # tag value; "" for plain signals
+    company_id: str = Field(index=True)
+    count: int = Field(default=0)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkNote(SQLModel, table=True):
+    """The person's own annotation on a day of their review; travels with it to
+    whoever may see that review (ADR-0019 §6: a person can contest or annotate)."""
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    personnel_id: str = Field(index=True)
+    company_id: str = Field(index=True)
+    day: str
+    text: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkRating(SQLModel, table=True):
+    """One fit verdict for one run against one rubric criterion (ADR-0021 §7).
+
+    `probability` is the model's probability of "yes" (None when it gave none), and
+    `verdict` (met / not_met / unclear) is derived from it with the criterion's own
+    thresholds. Keyed to the *accountable human*, the day and the run; the criterion
+    is identified by id **and** hash so a reworded criterion never mixes with old rows.
+    The audit chain is never touched. Purged with the other review rows and erased
+    with the person. Soft links, no foreign keys, so deleting a person is never blocked.
+    """
+
+    __table_args__ = (
+        UniqueConstraint(
+            "personnel_id",
+            "run_id",
+            "criterion_id",
+            "criterion_hash",
+            name="uq_workrating_run_criterion",
+        ),
+    )
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    company_id: str = Field(index=True)
+    personnel_id: str = Field(index=True)
+    day: str  # UTC "YYYY-MM-DD"
+    run_id: str
+    criterion_id: str
+    criterion_hash: str
+    rubric_version: str  # short hash of the rubric text the criterion came from
+    criterion_status: str  # "shadow" | "live" at the time of rating
+    verdict: str  # "met" | "not_met" | "unclear"
+    probability: float | None = None
+    model: str | None = None
+    # A person's contest (ADR-0021 §6): excluded from every aggregate until resolved.
+    contest_note: str | None = None
+    contested_at: datetime | None = None
+    resolved_at: datetime | None = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkTrainingShare(SQLModel, table=True):
+    """A person's choice to share one training-need signal with their direct manager
+    (ADR-0021 §6). Off unless the company allows sharing; per criterion wording; revocable
+    (the row is deleted). Whether the signal still holds is checked on every read — this
+    row is consent, not data. Soft links, no foreign keys."""
+
+    __table_args__ = (
+        UniqueConstraint(
+            "personnel_id",
+            "criterion_id",
+            "criterion_hash",
+            name="uq_worktrainingshare",
+        ),
+    )
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    company_id: str = Field(index=True)
+    personnel_id: str = Field(index=True)
+    criterion_id: str
+    criterion_hash: str
+    shared_at: datetime = Field(default_factory=datetime.utcnow)

@@ -3,7 +3,7 @@
 - **Status:** proposed
 - **Date:** 2026-09-28
 - **Deciders:** Fabrika / fab.engineering
-- **Related:** ADR-0001, ADR-0002, ADR-0004, ADR-0005, ADR-0006, ADR-0008 (TUI technology superseded here), ADR-0015, ADR-0016
+- **Related:** ADR-0001, ADR-0002, ADR-0004, ADR-0005, ADR-0006, ADR-0008 (TUI technology superseded here), ADR-0015, ADR-0016, ADR-0018, ADR-0019
 
 ## Context and problem
 
@@ -119,9 +119,51 @@ herdr reference and is revisited here.
   a cloud model or ranking API leave the premises (ADR-0015, ADR-0016 make this a
   per-install choice).
 - **Follow-ups:**
-  1. Spike: herdr code reuse (pane engine, PTY, persistence) vs. own; license check.
+  1. ~~Spike: herdr code reuse (pane engine, PTY, persistence) vs. own; license check.~~ Done — see *Spike outcome* below.
   2. Workspace container image (`sandbox/workspace/`) with the toolchain + a
-     lifecycle API (create / attach / suspend / resume) on the backend.
+     lifecycle API (create / attach / suspend / resume) on the backend — contract
+     proposed in ADR-0018.
   3. `packages/tui` skeleton: login, sidebar from existing APIs, one agent pane.
   4. Capacity model + idle suspension.
   5. Web shrink: switch to `adapter-static` served by FastAPI; remove screens as TUI equivalents ship.
+
+## Spike outcome (follow-up 1): write our own pane engine, do not vendor herdr
+
+**Decision:** keep the own engine in `packages/tui` (`src/pty.rs`). herdr stays a
+UX / architecture reference only — we do not copy or vendor its code.
+
+**Why**
+
+1. **The licence is unresolved, and the ADR's premise may be wrong.** This ADR
+   states herdr is Apache-2.0. While doing the spike the sources disagreed: the
+   `herdrdev/herdr` repository page showed "Apache License 2.0", while a fork's page
+   (`OlivierPelletier/herdr`) showed **AGPL-3.0-or-later with a commercial licence
+   offer**. It could not be settled from this environment (the project site and
+   the GitHub licence API were unreachable). Vendoring AGPL code would put the
+   `fab` client under AGPL, while this repository is MIT. **Before anyone reuses
+   a line of herdr code, read the `LICENSE` at the exact commit in question and
+   any contributor terms.**
+2. **We do not need the parts herdr is best at.** herdr's server/client split
+   exists so agent sessions survive in a background process on the laptop. In
+   this design sessions live in the server-side workspace (decision 1), so the
+   persistence layer is the workspace lifecycle API (follow-up 2) — likely
+   `tmux`/`dtach` inside the container — not client code.
+3. **The engine we need is small.** The local pane is ~250 lines on permissively
+   licensed crates: `portable-pty` (MIT), `vt100` (MIT), `ratatui` (MIT). All 169
+   crates in the dependency tree are permissive (MIT / Apache-2.0 / Unicode-3.0 /
+   Zlib).
+
+**What we give up / watch**
+
+- herdr reportedly parses terminals with a vendored `libghostty-vt`; `vt100` is
+  less complete (rarely used escape sequences, no mouse or bracketed-paste
+  handling in our pane yet). If real agent TUIs (opencode) render wrongly,
+  replace `vt100` behind the `Pty` type before considering any vendoring.
+- Agent-state detection (working / blocked / idle) is a herdr feature we do not
+  have. For workspace agents the state should come from the platform (runs,
+  approvals), not from scraping terminal output.
+- Multiple panes / tabs are out of scope for v1 (one agent pane).
+
+**Reopen if:** the licence turns out to be Apache-2.0 *and* a specific herdr
+module (e.g. terminal parsing) solves a rendering problem `vt100` cannot.
+

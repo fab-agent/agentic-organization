@@ -74,6 +74,7 @@ def _personnel_to_dict(p: Personnel, session) -> dict:
         "department_name": dept.name if dept else None,
         "manager_id": p.manager_id,
         "manager_name": manager.name if manager else None,
+        "job_description": p.job_description,
         "created_at": p.created_at.isoformat(),
     }
 
@@ -177,6 +178,7 @@ def create_personnel(
             company_id=body.company_id,
             department_id=body.department_id,
             manager_id=body.manager_id,
+            job_description=body.job_description,
         )
         session.add(person)
         log_action(
@@ -223,6 +225,8 @@ def update_personnel(
             person.manager_id = body.manager_id
         if body.email is not None:
             person.email = body.email or None
+        if body.job_description is not None:
+            person.job_description = body.job_description or None
         session.add(person)
         log_action(
             session,
@@ -322,6 +326,10 @@ def delete_personnel(person_id: str, current_user: User = Depends(get_current_us
             entity_name=person.name,
             company_id=person.company_id,
         )
+        # Erase what work review holds about this person (ADR-0019 §6).
+        from services.work_review import erase_person
+
+        erase_person(session, person.id)
         session.delete(person)
         session.commit()
 

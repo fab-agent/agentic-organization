@@ -1,0 +1,51 @@
+name: TUI
+
+# `fab` terminal workspace client (packages/tui, ADR-0014) — fmt, clippy, tests.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/tui/**"
+      - ".github/workflows/tui.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/tui/**"
+      - ".github/workflows/tui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tui:
+    name: TUI (fmt + clippy + tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: packages/tui
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/tui
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --locked

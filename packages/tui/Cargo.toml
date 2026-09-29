@@ -1,0 +1,26 @@
+[package]
+name = "fab-tui"
+version = "0.1.0"
+edition = "2021"
+description = "fab — terminal workspace for every department (ADR-0014)"
+license = "MIT"
+publish = false
+
+[[bin]]
+name = "fab"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+dirs = "5"
+portable-pty = "0.8"
+ratatui = "0.29"
+rpassword = "7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+ureq = { version = "2", features = ["json"] }
+vt100 = "0.15"
+
+[dev-dependencies]
+tempfile = "3"

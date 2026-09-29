@@ -547,13 +547,13 @@ def _department_chain(session, department_id: str | None) -> list[str]:
     return chain
 
 
-def applicable_policy_contents(
+def applicable_policies(
     company_id: str | None,
     department_id: str | None,
     agent_config_id: str | None,
-) -> list[str]:
+) -> list[tuple[str, str]]:
     """
-    The policy bodies that apply to one agent: company-scoped policies +
+    `(name, body)` of the policies that apply to one agent: company-scoped policies +
     department-linked (DepartmentPolicyLink) for the department **and every
     ancestor** (ADR-0005) + agent-linked (AgentPolicyLink), active only,
     de-duplicated. Ordered least→most specific so the more-specific rule wins
@@ -567,14 +567,14 @@ def applicable_policy_contents(
         from database import get_session
         from models import AgentPolicyLink, DepartmentPolicyLink, Policy
 
-        contents: list[str] = []
+        found: list[tuple[str, str]] = []
         seen: set[str] = set()
 
         def _add(rows):
             for p in rows:
                 if p.id not in seen and p.is_active and p.content:
                     seen.add(p.id)
-                    contents.append(p.content)
+                    found.append((p.name, p.content))
 
         with get_session() as session:
             _add(
@@ -608,9 +608,21 @@ def applicable_policy_contents(
                         .where(Policy.is_active == True)  # noqa: E712
                     ).all()
                 )
-        return contents
+        return found
     except Exception:
         return []
+
+
+def applicable_policy_contents(
+    company_id: str | None,
+    department_id: str | None,
+    agent_config_id: str | None,
+) -> list[str]:
+    """The bodies of `applicable_policies` — what the engine enforces."""
+    return [
+        body
+        for _, body in applicable_policies(company_id, department_id, agent_config_id)
+    ]
 
 
 def resolve_mode(

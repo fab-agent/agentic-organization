@@ -57,6 +57,8 @@ from api.telegram_config import router as telegram_router
 from api.tenant import router as tenant_router
 from api.users import router as users_router
 from api.well_known import router as well_known_router
+from api.work_review import router as work_review_router
+from api.workspaces import router as workspaces_router
 from api.workstation import router as workstation_router
 from core.runtime import (
     acquire_job_leader,
@@ -116,6 +118,8 @@ app.include_router(personnel_router)
 app.include_router(providers_router)
 app.include_router(gateway_router)
 app.include_router(workstation_router)
+app.include_router(workspaces_router)
+app.include_router(work_review_router)
 app.include_router(mcp_router)
 app.include_router(well_known_router)
 app.include_router(git_router)
@@ -282,6 +286,39 @@ def on_startup():
         )
     except Exception as e:
         logger.warning("audit severity init failed", extra={"extra": {"error": str(e)}})
+
+    # Work review (ADR-0019 §6): refresh signals for companies that enabled it (it
+    # touches no other company) and expire old rows per each company's retention.
+    try:
+        from services.work_review import purge_expired, rollup_recent
+
+        _scheduler.add_job(
+            rollup_recent,
+            "interval",
+            minutes=60,
+            id="work_review_rollup",
+            replace_existing=True,
+        )
+        _scheduler.add_job(
+            purge_expired,
+            "interval",
+            hours=24,
+            id="work_review_purge",
+            replace_existing=True,
+        )
+        # Fit rating (ADR-0021): a no-op unless a company switched rating on and a
+        # scoring key is configured.
+        from services.rating import rate_recent_sessions
+
+        _scheduler.add_job(
+            rate_recent_sessions,
+            "interval",
+            minutes=60,
+            id="work_rating",
+            replace_existing=True,
+        )
+    except Exception as e:
+        logger.warning("work review init failed", extra={"extra": {"error": str(e)}})
 
     # Persona-token revocation housekeeping (ADR-0007/0009): prune expired
     # RevokedToken rows; auto-revoke stale `3pa run` sessions when

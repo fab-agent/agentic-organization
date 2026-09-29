@@ -14,10 +14,12 @@ Auth: persona bearer token (aud includes `audit`), the same token the plugin use
 for the gateway. Identity resolution is shared via `api.deps`.
 """
 
+import hashlib
 import json
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
@@ -27,7 +29,12 @@ from database import get_session
 from models import AgentConfig, CompanyMember, PersonaCommand, Personnel, User
 from services import audit_chain
 from services.auth import create_access_token
-from services.gateway_auth import PersonaPrincipal, create_persona_token
+from services.gateway_auth import (
+    PersonaPrincipal,
+    create_persona_token,
+    create_run_token,
+    run_info,
+)
 
 router = APIRouter(tags=["workstation"])
 
@@ -68,6 +75,8 @@ def ingest_tool_event(
         "error": event.error,
         "client_ts": event.client_ts,
         **({"extra": event.extra} if event.extra else {}),
+        # Attribution comes from the verified token, never from the request body.
+        **({"run": run_info(principal)} if principal.run_id else {}),
     }
     audit_chain.record(
         actor_type="agent",
@@ -94,6 +103,7 @@ def ingest_audit_batch(
         batch.events,
         actor_id=principal.persona_id,
         company_id=principal.company_id,
+        run=run_info(principal),
     )
     return {"accepted": n}
 
@@ -165,6 +175,77 @@ def workstation_policy(principal: PersonaPrincipal = Depends(get_persona_gateway
         "org_policy_count": len(contents),
         "rules": ruleset,
     }
+
+
+@router.get("/workstation/context")
+def workstation_context(
+    accept: str | None = Header(None),
+    if_none_match: str | None = Header(None),
+    principal: PersonaPrincipal = Depends(get_persona_gateway),
+):
+    """
+    The stable context document for the calling persona (ADR-0020): who it is, the
+    company (mission, vision, values, goals), its department, its owner's job and the
+    policies that apply — the same policy set the engine enforces, not a subset.
+
+    Built for a client that has its own system prompt and tools (the workspace's
+    opencode reads it as instructions), so it holds nothing that varies per turn —
+    no memory, no retrieved knowledge, no tool list — and its text only changes when
+    the underlying facts change. Cacheable: `ETag` + `If-None-Match` (304). Send
+    `Accept: text/markdown` for the bare text, otherwise JSON with a size report.
+
+    Scoped to the token's own persona, so one agent can never read another's.
+    """
+    from models import Department
+    from services.context_assembly import assemble
+    from services.policy_engine import applicable_policies, resolve_scope
+
+    company_id, department_id, agent_config_id = resolve_scope(principal.persona_id)
+    company_id = company_id or principal.company_id
+    with get_session() as session:
+        person = session.get(Personnel, principal.persona_id)
+        if not person:
+            raise HTTPException(status_code=404, detail="Persona bulunamadı")
+        dept = session.get(Department, department_id) if department_id else None
+    names = [
+        n for n, _ in applicable_policies(company_id, department_id, agent_config_id)
+    ]
+    assembled = assemble(
+        person, dept, [], names, company_id=company_id, stable_only=True
+    )
+    text = assembled.text()
+    etag = '"' + hashlib.sha256(text.encode()).hexdigest()[:16] + '"'
+    headers = {"ETag": etag, "Cache-Control": "private, no-cache"}
+    if if_none_match and etag in [t.strip() for t in if_none_match.split(",")]:
+        return Response(status_code=304, headers=headers)
+
+    # A new version was served: record which one (sizes only, never the text).
+    audit_chain.record(
+        actor_type="agent",
+        actor_id=principal.persona_id,
+        company_id=principal.company_id,
+        action="context_served",
+        target=etag.strip('"'),
+        reason=f"{assembled.total_tokens} tokens (estimate)",
+        payload={
+            "etag": etag.strip('"'),
+            "prompt": assembled.report(),
+            **({"run": run_info(principal)} if principal.run_id else {}),
+        },
+    )
+    if accept and "text/markdown" in accept:
+        return PlainTextResponse(
+            text, media_type="text/markdown; charset=utf-8", headers=headers
+        )
+    return JSONResponse(
+        {
+            "persona_id": principal.persona_id,
+            "etag": etag,
+            "text": text,
+            "report": assembled.report(),
+        },
+        headers=headers,
+    )
 
 
 @router.get("/workstation/audit/verify")
@@ -263,6 +344,42 @@ def mint_persona_token(
             raise HTTPException(status_code=403, detail="Bu persona için yetkiniz yok")
         person = session.get(Personnel, body.personnel_id)
     return _issue_token_pair(person.id, person.company_id)
+
+
+class RunTokenRequest(BaseModel):
+    # Free-text label for the run ("sales analysis"); sanitised and truncated.
+    role: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/workstation/run-token", status_code=201)
+def mint_run_token(
+    body: RunTokenRequest, principal: PersonaPrincipal = Depends(get_persona_audit)
+):
+    """
+    Token for a subagent run (ADR-0019 §3-4), derived from the caller's own token.
+
+    It can only narrow: same persona, company and scope, one level deeper, and it
+    expires no later than its parent. Nesting is capped (`RUN_MAX_DEPTH`, default
+    2). Every mint is recorded in the audit chain with its parent linkage. There
+    is no refresh token: a run lives at most as long as the token it came from.
+    """
+    try:
+        token, run = create_run_token(principal, body.role)
+    except ValueError as e:
+        code = 403 if "depth" in str(e) else 401
+        raise HTTPException(status_code=code, detail=str(e))
+    audit_chain.record(
+        actor_type="agent",
+        actor_id=principal.persona_id,
+        company_id=principal.company_id,
+        action="run_start",
+        target=run["run_id"],
+        reason=f"depth {run['depth']}",
+        payload={
+            "run": {k: run[k] for k in ("run_id", "parent_run_id", "depth", "role")}
+        },
+    )
+    return {"token": token, "token_type": "bearer", **run}
 
 
 class RefreshRequest(BaseModel):

@@ -34,7 +34,7 @@ from core.security import decrypt
 from database import get_session
 from models import AgentConfig, Personnel, ProviderKey, User
 from services import audit_chain, gateway_limits
-from services.gateway_auth import PersonaPrincipal, create_persona_token
+from services.gateway_auth import PersonaPrincipal, create_persona_token, run_info
 from services.model_routing import ModelRoutingError, resolve_model
 from services.policy_engine import PolicyDecisionRequest, audit_decision, decide
 from services.provider_service import get_provider_models, is_custom_provider
@@ -103,6 +103,7 @@ def _audit_gateway_call(
             "latency_ms": latency_ms,
             "prompt_sha256": hashlib.sha256(prompt_text.encode()).hexdigest(),
             "prompt_preview": prompt_text[:_STORE_PROMPT_PREVIEW_CHARS],
+            **({"run": run_info(principal)} if principal.run_id else {}),
         },
     )
 

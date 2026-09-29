@@ -254,17 +254,31 @@ def verify_all() -> dict:
 
 
 def ingest_batch(
-    events: list[dict], *, actor_id: str | None, company_id: str | None
+    events: list[dict],
+    *,
+    actor_id: str | None,
+    company_id: str | None,
+    run: dict | None = None,
 ) -> int:
     """
     Append a batch from the workstation plugin. Each item:
     `{action, target?, reason?, payload?}`. Returns the number appended.
+
+    `run` is the attribution block from the caller's *verified* token
+    (ADR-0019 §4). A `run` key in a client payload is discarded and replaced, so a
+    client can never claim to be a different run.
     """
     n = 0
     for item in events:
         action = (item or {}).get("action")
         if not action:
             continue
+        payload = item.get("payload")
+        payload = dict(payload) if isinstance(payload, dict) else None
+        if payload is not None:
+            payload.pop("run", None)
+        if run:
+            payload = {**(payload or {}), "run": run}
         append(
             actor_type="agent",
             actor_id=actor_id,
@@ -272,9 +286,7 @@ def ingest_batch(
             action=str(action),
             target=item.get("target"),
             reason=item.get("reason"),
-            payload=item.get("payload")
-            if isinstance(item.get("payload"), dict)
-            else None,
+            payload=payload,
         )
         n += 1
     return n

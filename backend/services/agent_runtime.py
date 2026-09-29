@@ -9,6 +9,7 @@ Supported providers (routed by model name prefix):
 
 import asyncio
 import json
+import logging
 from collections.abc import AsyncGenerator
 
 from sqlmodel import select
@@ -16,17 +17,18 @@ from sqlmodel import select
 from database import get_session
 from models import (
     AgentConfig,
-    AgentPolicyLink,
     AgentSession,
     Department,
-    DepartmentPolicyLink,
     Personnel,
-    Policy,
     SessionMessage,
     Skill,
 )
+from services.context_assembly import Assembled, assemble
 from services.mcp_client import call_http_tool, call_mcp_sse_tool, execute_builtin
 from services.memory_service import load_agent_memories
+from services.policy_engine import applicable_policies
+
+_log = logging.getLogger("app")
 
 # ── Attachment helpers ────────────────────────────────────────────────────────
 
@@ -58,6 +60,115 @@ def _build_message_with_attachments(
 # ── System prompt builder ─────────────────────────────────────────────────────
 
 
+def build_system_prompt_assembled(
+    person: Personnel,
+    dept: Department | None,
+    skills: list[Skill],
+    policy_names: list[str] | None = None,
+    rag_query: str | None = None,
+    company_id: str | None = None,
+    skip: frozenset[str] | set[str] = frozenset(),
+) -> Assembled:
+    """The prompt as named, token-counted sections (see services.context_assembly)."""
+    memories: list[str] = []
+    knowledge: list[dict] = []
+    # Never block session start due to a memory / RAG failure.
+    try:
+        memories = load_agent_memories(person.id, limit=3)
+    except Exception:
+        pass
+    if rag_query:
+        try:
+            from services.rag_service import search as rag_search
+
+            knowledge = rag_search(
+                rag_query, company_id=company_id, personnel_id=person.id, k=4
+            )
+        except Exception:
+            pass
+    return assemble(
+        person,
+        dept,
+        skills,
+        policy_names,
+        memories=memories,
+        knowledge=knowledge,
+        company_id=company_id,
+        skip=skip,
+    )
+
+
+def _company_domains(company_id: str | None) -> dict[str, str] | None:
+    """The company's own departments as the choices for Jev's `domain` question."""
+    if not company_id:
+        return None
+    try:
+        with get_session() as session:
+            rows = session.exec(
+                select(Department)
+                .where(Department.company_id == company_id)
+                .where(Department.status == "Active")
+            ).all()
+        out = {d.slug: (d.description or d.name)[:200] for d in rows if d.slug}
+        return out or None
+    except Exception:  # noqa: BLE001 - the domain is optional
+        return None
+
+
+def _classify_for_prompt(
+    person: Personnel,
+    dept: Department | None,
+    skills: list[Skill],
+    policy_names: list[str] | None,
+    message: str,
+    company_id: str | None,
+    session_ref: str | None,
+) -> frozenset[str]:
+    """Sections Jev lets us leave out of this prompt (ADR-0020). Empty — the complete
+    prompt — whenever the feature is off, the prompt is too small to be worth the
+    call, or anything fails. Only ever narrows; never a security control."""
+    from services.intent import get_classifier, sections_to_skip, worth_it
+
+    try:
+        classifier = get_classifier()
+        if classifier is None:
+            return frozenset()
+        baseline = build_system_prompt_assembled(
+            person, dept, skills, policy_names, None, company_id
+        )
+        if not worth_it(baseline.total_tokens):
+            return frozenset()
+        intent = classifier.classify(message, domains=_company_domains(company_id))
+        if intent is None:
+            return frozenset()
+        skip = sections_to_skip(intent)
+        # Tags, sizes and tokens only — never the message text.
+        from services import audit_chain
+
+        audit_chain.record(
+            actor_type="system",
+            actor_id=person.id,
+            company_id=company_id,
+            action="intent_classified",
+            target=session_ref,
+            reason=f"task={intent.task or 'unknown'}",
+            payload={
+                "tags": intent.tags(),
+                "skipped_sections": sorted(skip),
+                "model": intent.model,
+                "input_tokens": intent.input_tokens,
+                "output_tokens": intent.output_tokens,
+                "prompt_tokens_estimate": baseline.total_tokens,
+            },
+        )
+        return skip
+    except Exception as e:  # noqa: BLE001 - any failure means the complete prompt
+        _log.warning(
+            "intent_wiring_failed", extra={"extra": {"error": type(e).__name__}}
+        )
+        return frozenset()
+
+
 def build_system_prompt(
     person: Personnel,
     dept: Department | None,
@@ -65,83 +176,47 @@ def build_system_prompt(
     policy_names: list[str] | None = None,
     rag_query: str | None = None,
     company_id: str | None = None,
+    *,
+    intent_message: str | None = None,
+    session_ref: str | None = None,
 ) -> str:
-    lines = [
-        f"You are {person.name}.",
-    ]
-    if person.title:
-        lines.append(f"Title: {person.title}")
-    if person.role:
-        lines.append(f"Role: {person.role}")
-    if dept:
-        lines.append(f"Department: {dept.name}")
-        if dept.goals:
-            lines.append(f"\nDepartment Goals:\n{dept.goals}")
-    if policy_names:
-        lines.append("\nPolicies you must follow:")
-        for p in policy_names:
-            lines.append(f"  - {p}")
-
-    if skills:
-        active_skills = [s for s in skills if s.is_active]
-        if active_skills:
-            import json as _json
-
-            delegate_skills = [
-                s
-                for s in active_skills
-                if s.skill_type == "builtin"
-                and s.config_json
-                and _json.loads(s.config_json).get("function_name")
-                == "delegate_to_agent"
-            ]
-            if delegate_skills:
-                lines.append(
-                    "\nYou are an orchestrator agent. When given a task, you MUST call your delegation tools to assign sub-tasks to specialist agents — do NOT just describe what you would do."
-                )
-                lines.append("Delegation tools available (call these):")
-                for s in delegate_skills:
-                    lines.append(f"  - {s.name}: {s.description or s.name}")
-                other = [s for s in active_skills if s not in delegate_skills]
-                if other:
-                    lines.append("Other tools: " + ", ".join(s.name for s in other))
-            else:
-                lines.append(
-                    "\nAvailable tools/skills: "
-                    + ", ".join(s.name for s in active_skills)
-                )
-
-    # Inject agent memory from past sessions
-    try:
-        memories = load_agent_memories(person.id, limit=3)
-        if memories:
-            lines.append("\nContext from your previous sessions:")
-            for mem in memories:
-                lines.append(f"  - {mem}")
-    except Exception:
-        pass  # Never block session start due to memory failure
-
-    # Inject RAG context — semantically relevant past task results and session summaries
-    if rag_query:
-        try:
-            from services.rag_service import search as rag_search
-
-            hits = rag_search(
-                rag_query, company_id=company_id, personnel_id=person.id, k=4
-            )
-            if hits:
-                lines.append("\n--- Relevant knowledge from past work ---")
-                for hit in hits:
-                    date = hit["created_at"][:10]
-                    source = hit["source_type"].replace("_", " ")
-                    snippet = hit["chunk_text"][:300].replace("\n", " ")
-                    lines.append(f"[{date}] ({source}) {snippet}")
-                lines.append("--- End of relevant knowledge ---")
-        except Exception:
-            pass  # Never block session start due to RAG failure
-
-    lines.append("\nRespond helpfully and concisely. Use tools when they would help.")
-    return "\n".join(lines)
+    """`intent_message` is the user's first message of a session: when given, and the
+    classifier is enabled, Jev may narrow the prompt (and skip retrieval). Callers
+    pass it for the first turn only — the prompt is rebuilt every turn, and changing
+    its stable sections mid-conversation would break prompt caching and could drop
+    context from a bare "ok" that continues a task."""
+    skip: frozenset[str] = frozenset()
+    if intent_message:
+        skip = _classify_for_prompt(
+            person,
+            dept,
+            skills,
+            policy_names,
+            intent_message,
+            company_id,
+            session_ref,
+        )
+    assembled = build_system_prompt_assembled(
+        person,
+        dept,
+        skills,
+        policy_names,
+        None if "knowledge" in skip else rag_query,
+        company_id,
+        skip=skip,
+    )
+    # Sizes only, never text: shows where the tokens go for every real prompt.
+    _log.info(
+        "prompt_assembled",
+        extra={
+            "extra": {
+                "persona": person.id,
+                "prompt": assembled.report(),
+                "intent_skipped": sorted(skip),
+            }
+        },
+    )
+    return assembled.text()
 
 
 # ── Tool definition builder ───────────────────────────────────────────────────
@@ -1097,38 +1172,31 @@ async def run_session(
             .order_by(SessionMessage.created_at)
         ).all()
 
-        # Gather policies: dept-inherited + agent-specific (join tables, deduplicated)
-        policy_names: list[str] = []
-        seen_ids: set[str] = set()
-        if dept:
-            dept_pol_rows = session.exec(
-                select(Policy)
-                .join(DepartmentPolicyLink, DepartmentPolicyLink.policy_id == Policy.id)
-                .where(DepartmentPolicyLink.department_id == dept.id)
-                .where(Policy.is_active == True)
-            ).all()
-            for p in dept_pol_rows:
-                if p.id not in seen_ids:
-                    policy_names.append(p.name)
-                    seen_ids.add(p.id)
-        agent_pol_rows = session.exec(
-            select(Policy)
-            .join(AgentPolicyLink, AgentPolicyLink.policy_id == Policy.id)
-            .where(AgentPolicyLink.agent_config_id == cfg.id)
-            .where(Policy.is_active == True)
-        ).all()
-        for p in agent_pol_rows:
-            if p.id not in seen_ids:
-                policy_names.append(p.name)
-                seen_ids.add(p.id)
+        # The policies the engine enforces for this agent — company, the department
+        # and its ancestors, the agent's own — so the prompt names what is enforced.
+        policy_names = [
+            name
+            for name, _ in applicable_policies(
+                person.company_id, dept.id if dept else None, cfg.id
+            )
+        ]
 
-        system_prompt = build_system_prompt(
-            person,
-            dept,
-            list(skills),
-            policy_names or None,
-            rag_query=user_message[:500] if not history_rows else None,
-            company_id=person.company_id,
+        # Off the event loop: building the prompt can call the intent classifier
+        # (a network round trip, up to its timeout) and the retrieval, and this is an
+        # async generator serving every other request in the worker.
+        system_prompt = await asyncio.to_thread(
+            lambda: build_system_prompt(
+                person,
+                dept,
+                list(skills),
+                policy_names or None,
+                rag_query=user_message[:500] if not history_rows else None,
+                company_id=person.company_id,
+                # First turn only (see build_system_prompt); the message without
+                # attachments, so file contents never go to the classifier.
+                intent_message=user_message if not history_rows else None,
+                session_ref=session_id,
+            )
         )
         tool_defs = build_tool_definitions(list(skills))
 
