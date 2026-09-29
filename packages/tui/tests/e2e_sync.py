@@ -181,7 +181,7 @@ r = fab_sync()
 check((folder / "report-v2.xlsx").read_bytes() == b"XLSX-2", "new version by name arrives")
 
 # ── 6. the TUI's files strip shows the sync (needs `pyte`; skipped without it) ──
-def tui_screen(rows=24, cols=110):
+def tui_screen(rows=24, cols=110, keys=None):
     import fcntl
     import pty
     import select
@@ -204,8 +204,20 @@ def tui_screen(rows=24, cols=110):
                 out += os.read(fd, 65536)
             except OSError:
                 break
-    os.write(fd, b"\x0fq")  # Ctrl+O to the sidebar, q to quit
-    time.sleep(0.5)
+    if keys is None:
+        os.write(fd, b"\x0fq")  # Ctrl+O to the sidebar, q to quit
+        time.sleep(0.5)
+    else:
+        for chunk in keys:  # scripted keys; screen is read before quitting
+            os.write(fd, chunk)
+            end = time.time() + 1.5
+            while time.time() < end:
+                if select.select([fd], [], [], 0.1)[0]:
+                    try:
+                        out += os.read(fd, 65536)
+                    except OSError:
+                        break
+        os.write(fd, b"\x03")  # Ctrl+C always quits
     screen = pyte.Screen(cols, rows)
     pyte.Stream(screen).feed(out.decode(errors="replace"))
     return "\n".join(screen.display)
@@ -226,6 +238,31 @@ try:
     check("Workspace: running" in screen, "TUI shows 'Workspace: running' after creating it")
     check(current() is not None and current()["state"] == "running", "TUI created the workspace on first run")
     wid = current()["id"]
+
+    # ── 6b. "My work review" (v in the sidebar) ───────────────────────────────
+    screen = tui_screen(keys=[b"\x0f", b"v"])
+    check("My work review" in screen and "not enabled" in screen, "review view says plainly that work review is off")
+    check("nothing is collected" in screen, "…and that nothing is collected about the person")
+
+    r = requests.put(
+        f"{BASE}/work-review/settings", headers=H, json={"enabled": True, "acknowledge_notice": True}
+    )
+    check(r.status_code == 200, "founder enables work review")
+    screen = tui_screen(keys=[b"\x0f", b"v"])
+    check("never" in screen.lower() or "Never" in screen, "review view shows what is never collected")
+    check("Ayse" in screen, "review view is titled with the person's name")
+
+    screen = tui_screen(keys=[b"\x0f", b"v", b"n", b"e2e note from tui", b"\r"])
+    notes = requests.get(f"{BASE}/work-review/me", headers=H).json()
+    texts = [n["text"] for d in notes.get("days", []) for n in d.get("notes", [])]
+    check("e2e note from tui" in texts, "a note typed in the TUI reached the server")
+    check("e2e note from tui" in screen, "the saved note is shown after the reload")
+
+    screen = tui_screen(keys=[b"\x0f", b"v", b"d"])
+    notes = requests.get(f"{BASE}/work-review/me", headers=H).json()
+    texts = [n["text"] for d in notes.get("days", []) for n in d.get("notes", [])]
+    check("e2e note from tui" not in texts, "d in the TUI deletes the person's own note")
+    requests.put(f"{BASE}/work-review/settings", headers=H, json={"enabled": False})
 except ImportError:
     print("skip: pyte not installed — TUI checks skipped")
 

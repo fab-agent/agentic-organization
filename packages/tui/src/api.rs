@@ -1,6 +1,7 @@
 //! Thin blocking client over the existing backend APIs (ADR-0014 §3).
 
 use crate::model::{Department, Flow, InboxItem, Me, Person};
+use crate::review::{Outcome, Review};
 use crate::session::Session;
 use crate::sync::{Manifest, Remote};
 use crate::workspace::Ws;
@@ -98,6 +99,69 @@ impl Client {
     }
     pub fn inbox(&self, company: &str) -> Result<Vec<InboxItem>> {
         self.get(&format!("/inbox?company_id={company}&unread_only=true"))
+    }
+
+    /// The caller's first company (the only one `fab` works with for now).
+    pub fn first_company_id(&self) -> Result<String> {
+        self.me()?
+            .companies
+            .first()
+            .map(|c| c.company_id.clone())
+            .ok_or_else(|| anyhow!("this account belongs to no company"))
+    }
+
+    /// The caller's own work review (ADR-0019 §6). A 404 is an ordinary answer: the
+    /// company has not enabled it, or the account has no person record.
+    pub fn work_review(&self, company: &str, days: u32) -> Result<Outcome> {
+        let r = self
+            .http
+            .get(&format!(
+                "{}/work-review/me?company_id={company}&days={days}",
+                self.s.base_url
+            ))
+            .set("Authorization", &format!("Bearer {}", self.s.token))
+            .call();
+        match r {
+            Ok(resp) => Ok(Outcome::Ready(resp.into_json::<Review>()?)),
+            Err(ureq::Error::Status(404, resp)) => {
+                let detail = resp
+                    .into_json::<serde_json::Value>()
+                    .ok()
+                    .and_then(|v| v.get("detail").and_then(|d| d.as_str().map(String::from)))
+                    .unwrap_or_default();
+                Ok(if detail.contains("not enabled") {
+                    Outcome::NotEnabled
+                } else {
+                    Outcome::NoPerson
+                })
+            }
+            Err(e) => Err(error_from(e)),
+        }
+    }
+
+    pub fn add_work_note(&self, company: &str, day: &str, text: &str) -> Result<()> {
+        self.http
+            .post(&format!(
+                "{}/work-review/me/notes?company_id={company}",
+                self.s.base_url
+            ))
+            .set("Authorization", &format!("Bearer {}", self.s.token))
+            .send_json(serde_json::json!({ "day": day, "text": text }))
+            .map_err(error_from)?;
+        Ok(())
+    }
+
+    pub fn delete_work_note(&self, company: &str, id: &str) -> Result<()> {
+        self.http
+            .delete(&format!(
+                "{}/work-review/me/notes/{}?company_id={company}",
+                self.s.base_url,
+                encode_path(id)
+            ))
+            .set("Authorization", &format!("Bearer {}", self.s.token))
+            .call()
+            .map_err(error_from)?;
+        Ok(())
     }
 
     /// The caller's live workspace, or `None` if they have none yet.

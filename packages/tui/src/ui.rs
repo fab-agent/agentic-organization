@@ -4,6 +4,7 @@
 use crate::app::{App, Focus};
 use crate::i18n::strings;
 use crate::model::{RunState, Sidebar};
+use crate::review;
 use crate::workspace::Status;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -81,6 +82,11 @@ pub fn draw(f: &mut Frame, app: &App) {
         ),
     };
     f.render_widget(Paragraph::new(Line::from(status)), keys);
+
+    // "My work review" is a full-screen view above everything else.
+    if app.review.open {
+        review::draw(f, f.area(), &app.review, app.lang);
+    }
 }
 
 fn ago(secs: u64, word: &str) -> String {

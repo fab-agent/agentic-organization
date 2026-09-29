@@ -15,8 +15,19 @@ fab logout
 ```
 
 Keys: in the agent pane every key goes to the agent; `Ctrl+O` switches to the
-sidebar, where `r` refreshes (and syncs now), `Enter`/`Tab`/`Ctrl+O` returns to the
-agent, `q` quits.
+sidebar, where `r` refreshes (and syncs now), `v` opens **My review**,
+`Enter`/`Tab`/`Ctrl+O` returns to the agent, `q` quits. `Ctrl+C` always quits.
+
+## My review (ADR-0019 §6)
+
+`v` in the sidebar shows the person their *own* work review: totals and per-day
+signals for the last 7 / 30 / 90 days (`w` cycles), what is collected, what is never
+collected, who can see it, the minimum group size and the retention period. `n` adds
+a note (to the selected day, else today; max 1000 characters), `d` deletes the
+newest note of the selected day, `r` reloads, `Esc`/`v`/`q` closes. While it is open
+it takes every key. If the company has not enabled work review it says so plainly:
+nothing is collected about the person. Limitation: the disclosure sentences come
+from the server in English; the TUI's own labels are TR/EN.
 
 Environment: `FAB_SESSION_FILE`, `FAB_AGENT_CMD` (default `opencode`, else `$SHELL`),
 `FAB_LANG` (`tr`/`en`), `FAB_FOLDER`, `FAB_MAX_DOWNLOAD_MB` (200), `FAB_MAX_UPLOAD_MB` (50).

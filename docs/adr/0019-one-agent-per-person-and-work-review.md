@@ -323,3 +323,14 @@ notification); a per-person "who looked at my review" list (it is in the audit c
 an HR viewer; PostgreSQL (SQLite only here). The tags exist only where `intent.enabled`
 is on, and refusals only where the policy mode is `enforce`.
 
+
+### Person-first view in `fab` (2026-09-29)
+
+`packages/tui` now has a "My review" view (`v` in the sidebar) backed by
+`GET /work-review/me` and the notes endpoints: totals, days, collected / never
+collected / who sees it / retention, own notes (add, delete), and a plain "not
+enabled — nothing is collected about you" when the company has the switch off.
+Verified by 63 unit tests (state machine, key routing, stale answers) and a pty
+end-to-end against the real backend (`tests/e2e_sync.py`: off → on → add note →
+delete note). Not verified: layout on real terminals other than the 24×110 pty.
+Known limit: the disclosure sentences are the server's English strings.

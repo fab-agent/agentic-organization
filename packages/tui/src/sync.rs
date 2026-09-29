@@ -459,12 +459,7 @@ pub struct Pass {
 }
 
 fn first_company(client: &crate::api::Client) -> Result<String> {
-    client
-        .me()?
-        .companies
-        .first()
-        .map(|c| c.company_id.clone())
-        .ok_or_else(|| anyhow!("this account belongs to no company"))
+    client.first_company_id()
 }
 
 /// One background pass: bring the workspace up (create / resume / wait), then

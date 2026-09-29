@@ -4,6 +4,9 @@ use crate::api::Client;
 use crate::i18n::{self, Lang};
 use crate::model::Snapshot;
 use crate::pty::{self, Pty};
+use crate::review::{
+    self, Action as ReviewAction, Backend as ReviewBackend, Msg as ReviewMsg, ReviewState,
+};
 use crate::session;
 use crate::sync::{self, Pass};
 use crate::ui;
@@ -11,10 +14,11 @@ use crate::workspace::Status;
 use anyhow::{bail, Result};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use std::path::PathBuf;
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Focus {
     Sidebar,
     Agent,
@@ -40,6 +44,10 @@ pub struct App {
     pub should_quit: bool,
     pub pty: Option<Pty>,
     pub sync: SyncStatus,
+    pub review: ReviewState,
+    review_backend: Arc<dyn ReviewBackend>,
+    review_tx: Sender<ReviewMsg>,
+    review_rx: Receiver<ReviewMsg>,
     sync_rx: Option<Receiver<Result<Pass, String>>>,
     sync_poke: Option<Sender<()>>,
     client: Client,
@@ -100,7 +108,55 @@ impl App {
         };
     }
 
+    /// Perform what the review state machine asked for, on worker threads.
+    fn run_review_action(&mut self, a: ReviewAction) {
+        match a {
+            ReviewAction::None | ReviewAction::Close => {}
+            ReviewAction::Load => {
+                let id = self.review.begin_load();
+                review::spawn_load(
+                    self.review_backend.clone(),
+                    self.review_tx.clone(),
+                    id,
+                    self.review.window,
+                );
+            }
+            ReviewAction::AddNote { day, text } => review::spawn_add_note(
+                self.review_backend.clone(),
+                self.review_tx.clone(),
+                day,
+                text,
+            ),
+            ReviewAction::DeleteNote { id } => {
+                review::spawn_delete_note(self.review_backend.clone(), self.review_tx.clone(), id)
+            }
+        }
+    }
+
+    /// Apply finished review requests.
+    pub fn poll_review(&mut self) {
+        while let Ok(m) = self.review_rx.try_recv() {
+            match m {
+                ReviewMsg::Loaded(id, res) => self.review.apply_loaded(id, res),
+                ReviewMsg::Saved(res) => {
+                    let next = self.review.apply_saved(res);
+                    self.run_review_action(next);
+                }
+            }
+        }
+    }
+
     fn on_key(&mut self, k: KeyEvent) {
+        if k.code == KeyCode::Char('c') && k.modifiers.contains(KeyModifiers::CONTROL) {
+            self.should_quit = true;
+            return;
+        }
+        // "My review" is a full-screen view: while it is open it gets every key.
+        if self.review.open {
+            let a = self.review.on_key(k);
+            self.run_review_action(a);
+            return;
+        }
         let ctrl_o = k.code == KeyCode::Char('o') && k.modifiers.contains(KeyModifiers::CONTROL);
         if ctrl_o {
             self.toggle_focus();
@@ -127,6 +183,10 @@ impl App {
                         let _ = p.send(());
                     }
                 }
+                KeyCode::Char('v') => {
+                    let a = self.review.open();
+                    self.run_review_action(a);
+                }
                 KeyCode::Tab | KeyCode::Enter => self.focus = Focus::Agent,
                 _ => {}
             },
@@ -137,14 +197,35 @@ impl App {
 #[cfg(test)]
 impl App {
     pub fn test_default() -> Self {
+        struct Off;
+        impl ReviewBackend for Off {
+            fn load(&self, _: u32) -> Result<review::Outcome> {
+                Ok(review::Outcome::NotEnabled)
+            }
+            fn add_note(&self, _: &str, _: &str) -> Result<()> {
+                Ok(())
+            }
+            fn delete_note(&self, _: &str) -> Result<()> {
+                Ok(())
+            }
+        }
+        Self::test_with_review(Arc::new(Off))
+    }
+
+    pub fn test_with_review(backend: Arc<dyn ReviewBackend>) -> Self {
+        let (review_tx, review_rx) = channel();
         App {
             lang: Lang::En,
-            focus: Focus::Agent,
+            focus: Focus::Sidebar,
             snapshot: Snapshot::default(),
             error: None,
             should_quit: false,
             pty: None,
             sync: SyncStatus::default(),
+            review: ReviewState::default(),
+            review_backend: backend,
+            review_tx,
+            review_rx,
             sync_rx: None,
             sync_poke: None,
             client: Client::new(session::Session {
@@ -173,6 +254,7 @@ pub fn run() -> Result<()> {
     let Some(sess) = session::load() else {
         bail!("not signed in — run `fab login` first");
     };
+    let (review_tx, review_rx) = channel();
     let mut app = App {
         lang: i18n::detect(),
         focus: Focus::Agent,
@@ -184,6 +266,12 @@ pub fn run() -> Result<()> {
             folder: sync::default_folder(),
             ..SyncStatus::default()
         },
+        review: ReviewState::default(),
+        review_backend: Arc::new(review::Http {
+            session: sess.clone(),
+        }),
+        review_tx,
+        review_rx,
         sync_rx: None,
         sync_poke: None,
         client: Client::new(sess.clone()),
@@ -198,6 +286,7 @@ pub fn run() -> Result<()> {
     let result = (|| -> Result<()> {
         while !app.should_quit {
             app.poll_sync();
+            app.poll_review();
             terminal.draw(|f| ui::draw(f, &app))?;
             if event::poll(Duration::from_millis(250))? {
                 if let Event::Key(k) = event::read()? {
@@ -211,4 +300,286 @@ pub fn run() -> Result<()> {
     })();
     ratatui::restore();
     result
+}
+
+#[cfg(test)]
+mod review_flow_tests {
+    use super::*;
+    use crate::review::{DayEntry, Note, Outcome, Review, View};
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    fn k(c: KeyCode) -> KeyEvent {
+        KeyEvent::new(c, KeyModifiers::NONE)
+    }
+    fn press(app: &mut App, s: &str) {
+        for c in s.chars() {
+            app.on_key(k(KeyCode::Char(c)));
+        }
+    }
+
+    fn review(tag: &str) -> Review {
+        Review {
+            name: tag.into(),
+            window_days: 30,
+            days: vec![DayEntry {
+                day: "2026-09-29".into(),
+                notes: vec![Note {
+                    id: "n1".into(),
+                    text: "old".into(),
+                }],
+                ..DayEntry::default()
+            }],
+            totals: Default::default(),
+            disclosure: None,
+        }
+    }
+
+    #[derive(Default)]
+    struct Fake {
+        calls: Mutex<Vec<String>>,
+        outcome: Mutex<HashMap<u32, (u64, Outcome)>>, // days -> (delay ms, result)
+        fail_add: Mutex<Option<String>>,
+    }
+    impl Fake {
+        fn calls(&self) -> Vec<String> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+    impl ReviewBackend for Fake {
+        fn load(&self, days: u32) -> Result<Outcome> {
+            self.calls.lock().unwrap().push(format!("load {days}"));
+            let (delay, out) = self
+                .outcome
+                .lock()
+                .unwrap()
+                .get(&days)
+                .cloned()
+                .unwrap_or((0, Outcome::NotEnabled));
+            std::thread::sleep(Duration::from_millis(delay));
+            Ok(out)
+        }
+        fn add_note(&self, day: &str, text: &str) -> Result<()> {
+            self.calls.lock().unwrap().push(format!("add {day} {text}"));
+            match self.fail_add.lock().unwrap().clone() {
+                Some(e) => Err(anyhow::anyhow!(e)),
+                None => Ok(()),
+            }
+        }
+        fn delete_note(&self, id: &str) -> Result<()> {
+            self.calls.lock().unwrap().push(format!("delete {id}"));
+            Ok(())
+        }
+    }
+
+    fn app_with(fake: &Arc<Fake>) -> App {
+        App::test_with_review(fake.clone())
+    }
+
+    /// Poll finished requests until `cond` holds (or fail after two seconds).
+    fn wait(app: &mut App, what: &str, cond: impl Fn(&App) -> bool) {
+        let end = std::time::Instant::now() + Duration::from_secs(2);
+        while std::time::Instant::now() < end {
+            app.poll_review();
+            if cond(app) {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        panic!("timed out waiting for: {what}");
+    }
+
+    fn ready_app(fake: &Arc<Fake>) -> App {
+        fake.outcome
+            .lock()
+            .unwrap()
+            .insert(30, (0, Outcome::Ready(review("A"))));
+        let mut app = app_with(fake);
+        press(&mut app, "v");
+        wait(&mut app, "ready", |a| {
+            matches!(a.review.view, View::Ready(_))
+        });
+        app
+    }
+
+    #[test]
+    fn v_from_the_sidebar_opens_and_loads_off_the_ui_thread() {
+        let fake = Arc::new(Fake::default());
+        let app = ready_app(&fake);
+        assert!(app.review.open);
+        assert_eq!(fake.calls(), vec!["load 30"]);
+        assert!(matches!(&app.review.view, View::Ready(r) if r.name == "A"));
+    }
+
+    #[test]
+    fn v_in_the_agent_pane_is_the_agents_key_not_the_reviews() {
+        let fake = Arc::new(Fake::default());
+        let mut app = app_with(&fake);
+        app.focus = Focus::Agent;
+        press(&mut app, "v");
+        assert!(!app.review.open && fake.calls().is_empty());
+    }
+
+    #[test]
+    fn q_closes_the_review_it_does_not_quit_and_ctrl_c_always_quits() {
+        let fake = Arc::new(Fake::default());
+        let mut app = ready_app(&fake);
+        press(&mut app, "q");
+        assert!(!app.review.open && !app.should_quit);
+        press(&mut app, "q");
+        assert!(
+            app.should_quit,
+            "with the review closed, q is the sidebar's quit again"
+        );
+
+        let mut app = ready_app(&fake);
+        app.on_key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL));
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn while_open_the_review_gets_every_key_even_the_sidebars() {
+        let fake = Arc::new(Fake::default());
+        let mut app = ready_app(&fake);
+        press(&mut app, "r"); // reload, not the sidebar's refresh
+        app.on_key(k(KeyCode::Tab)); // not "focus the agent"
+        assert_eq!(app.focus, Focus::Sidebar);
+        wait(&mut app, "second load", |_| fake.calls().len() >= 2);
+        assert_eq!(fake.calls(), vec!["load 30", "load 30"]);
+    }
+
+    #[test]
+    fn adding_a_note_calls_the_backend_then_reloads() {
+        let fake = Arc::new(Fake::default());
+        let mut app = ready_app(&fake);
+        press(&mut app, "n");
+        press(&mut app, "Well done");
+        app.on_key(k(KeyCode::Enter));
+        wait(&mut app, "add + reload", |_| fake.calls().len() >= 3);
+        assert_eq!(
+            fake.calls(),
+            vec!["load 30", "add 2026-09-29 Well done", "load 30"]
+        );
+    }
+
+    #[test]
+    fn a_failed_note_shows_the_reason_and_does_not_reload() {
+        let fake = Arc::new(Fake::default());
+        *fake.fail_add.lock().unwrap() = Some("day must be within the last 90 days".into());
+        let mut app = ready_app(&fake);
+        press(&mut app, "n");
+        press(&mut app, "x");
+        app.on_key(k(KeyCode::Enter));
+        wait(&mut app, "notice", |a| a.review.notice.is_some());
+        assert_eq!(
+            app.review.notice.as_deref(),
+            Some("day must be within the last 90 days")
+        );
+        std::thread::sleep(Duration::from_millis(50));
+        app.poll_review();
+        assert_eq!(
+            fake.calls(),
+            vec!["load 30", "add 2026-09-29 x"],
+            "no reload after a failure"
+        );
+    }
+
+    #[test]
+    fn deleting_a_note_calls_the_backend_then_reloads() {
+        let fake = Arc::new(Fake::default());
+        let mut app = ready_app(&fake);
+        press(&mut app, "d");
+        wait(&mut app, "delete + reload", |_| fake.calls().len() >= 3);
+        assert_eq!(fake.calls(), vec!["load 30", "delete n1", "load 30"]);
+    }
+
+    #[test]
+    fn the_window_key_reloads_with_the_new_window() {
+        let fake = Arc::new(Fake::default());
+        fake.outcome
+            .lock()
+            .unwrap()
+            .insert(90, (0, Outcome::Ready(review("B"))));
+        let mut app = ready_app(&fake);
+        press(&mut app, "w");
+        wait(
+            &mut app,
+            "the 90-day review",
+            |a| matches!(&a.review.view, View::Ready(r) if r.name == "B"),
+        );
+        assert_eq!(fake.calls(), vec!["load 30", "load 90"]);
+    }
+
+    #[test]
+    fn a_slow_old_answer_never_overwrites_a_newer_one() {
+        let fake = Arc::new(Fake::default());
+        fake.outcome
+            .lock()
+            .unwrap()
+            .insert(30, (250, Outcome::Ready(review("SLOW-30"))));
+        fake.outcome
+            .lock()
+            .unwrap()
+            .insert(90, (0, Outcome::Ready(review("FAST-90"))));
+        let mut app = app_with(&fake);
+        press(&mut app, "v"); // the slow 30-day load starts
+        press(&mut app, "w"); // …and the person moves on to 90 days
+        wait(
+            &mut app,
+            "the fast answer",
+            |a| matches!(&a.review.view, View::Ready(r) if r.name == "FAST-90"),
+        );
+        std::thread::sleep(Duration::from_millis(350)); // the slow one lands now
+        app.poll_review();
+        assert!(matches!(&app.review.view, View::Ready(r) if r.name == "FAST-90"));
+    }
+
+    #[test]
+    fn a_company_without_work_review_is_told_nothing_is_collected() {
+        let fake = Arc::new(Fake::default()); // default outcome: NotEnabled
+        let mut app = app_with(&fake);
+        press(&mut app, "v");
+        wait(&mut app, "not enabled", |a| {
+            a.review.view == View::NotEnabled
+        });
+        let mut term = ratatui::Terminal::new(ratatui::backend::TestBackend::new(110, 14)).unwrap();
+        term.draw(|f| crate::ui::draw(f, &app)).unwrap();
+        let buf = term.backend().buffer().clone();
+        let screen: String = (0..14)
+            .map(|y| {
+                (0..110)
+                    .map(|x| buf[(x, y)].symbol().to_string())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            screen.contains("nothing is collected about you"),
+            "{screen}"
+        );
+    }
+
+    #[test]
+    fn the_overlay_only_exists_while_open() {
+        let fake = Arc::new(Fake::default());
+        let mut app = ready_app(&fake);
+        let draw = |app: &App| {
+            let mut term =
+                ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 24)).unwrap();
+            term.draw(|f| crate::ui::draw(f, app)).unwrap();
+            let buf = term.backend().buffer().clone();
+            (0..24)
+                .map(|y| {
+                    (0..100)
+                        .map(|x| buf[(x, y)].symbol().to_string())
+                        .collect::<String>()
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        assert!(draw(&app).contains("My work review"));
+        press(&mut app, "q");
+        let closed = draw(&app);
+        assert!(!closed.contains("My work review") && closed.contains("Agent session"));
+    }
 }

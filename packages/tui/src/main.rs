@@ -10,6 +10,7 @@ mod cron;
 mod i18n;
 mod model;
 mod pty;
+mod review;
 mod session;
 mod sync;
 mod ui;
