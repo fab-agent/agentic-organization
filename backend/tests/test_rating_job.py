@@ -183,10 +183,14 @@ def test_no_criteria_are_sent_for_agent_personas(world):  # noqa: F811
 
 def test_another_sessions_classification_is_not_borrowed(world):  # noqa: F811
     w = world
-    # bot1's session "a" was classified as analysis; bot2's session "b" was never classified.
-    _agent_with_memory(w, session_id="a", tags=ANALYSIS, slug="bot1")
-    _agent_with_memory(w, session_id="b", slug="bot2")
-    rater = FakeRater()
-    assert rt.rate_recent_sessions(rater=rater) == 1
+    # One agent, two sessions: only "a" was classified as analysis.
+    agent = _agent_with_memory(w, session_id="a", tags=ANALYSIS)
+    w.db.add(models.AgentSession(id="b", personnel_id=agent.id, status="closed"))
+    w.db.flush()
+    w.db.add(
+        models.AgentMemory(personnel_id=agent.id, session_id="b", summary="Other work.")
+    )
+    w.db.commit()
+    assert rt.rate_recent_sessions(rater=FakeRater()) == 1
     w.db.expire_all()
     assert [r.run_id for r in stored(w)] == ["a"]

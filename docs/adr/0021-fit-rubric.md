@@ -187,12 +187,22 @@ one Jev call per run with one `Noul` question per applicable criterion, idempote
 keyed by criterion hash, fail-open, and retention / erasure covering the new rows.
 Tested with a faked scorer and a mocked Jev transport (no network here).
 
+Since then (same day): `services/redact.py`, the filter stage, applied inside `rate_run`
+so no caller can skip it, and `rate_recent_sessions`, an hourly job that rates the LLM
+summaries of recently closed agent sessions (`AgentMemory`), taking the tags from the
+session's `intent_classified` audit event and the accountable person from the agent's
+`responsible_id`. It does nothing without a scoring key or for a company that has not
+switched rating on.
+
 **Not built, and why it matters:**
 
-- **Nothing calls `rate_run` yet.** No run-summary source is wired, and the filter /
-  redaction stage of ADR-0019 §6 does not exist. Until it does, callers must pass
-  already-filtered text, and rating stays off by default because the summary goes to
-  the scoring model as given.
+- **The filter recognises identifiers by shape only** (secrets, e-mail, URL, card, IBAN,
+  national id, phone, IP). It does not recognise names, addresses or details written in
+  prose, so it is a floor: the summary still leaves the premises with Jev, and counsel
+  review stays required. Long digit runs that fail their checksum may still be redacted as
+  phone-shaped (the safe side).
+- Only sessions with an LLM summary are rated; a session too short to be summarised
+  (fewer than two messages) or whose summary failed is never rated.
 - No person view, manager view, aggregates, contest endpoint, shadow gating in a view,
   training-need signal, calibration tool or `fab` rubric view. Because no endpoint
   reads ratings, they are visible to nobody today.
