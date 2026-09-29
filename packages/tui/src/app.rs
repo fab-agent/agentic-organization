@@ -5,8 +5,9 @@ use crate::i18n::{self, Lang};
 use crate::model::Snapshot;
 use crate::pty::{self, Pty};
 use crate::session;
-use crate::sync::{self, Outcome};
+use crate::sync::{self, Pass};
 use crate::ui;
+use crate::workspace::Status;
 use anyhow::{bail, Result};
 use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use std::path::PathBuf;
@@ -26,7 +27,7 @@ pub struct SyncStatus {
     pub last: Option<Instant>,
     pub changed: usize,
     pub conflicts: usize,
-    pub no_workspace: bool,
+    pub workspace: Option<Status>,
     pub error: Option<String>,
     pub recent: Vec<String>,
 }
@@ -39,7 +40,7 @@ pub struct App {
     pub should_quit: bool,
     pub pty: Option<Pty>,
     pub sync: SyncStatus,
-    sync_rx: Option<Receiver<Result<Outcome, String>>>,
+    sync_rx: Option<Receiver<Result<Pass, String>>>,
     sync_poke: Option<Sender<()>>,
     client: Client,
 }
@@ -61,16 +62,17 @@ impl App {
         while let Ok(res) = rx.try_recv() {
             self.sync.last = Some(Instant::now());
             match res {
-                Ok(Outcome::NoWorkspace) => {
-                    self.sync.no_workspace = true;
-                    self.sync.error = None;
-                }
-                Ok(Outcome::Synced { report, recent }) => {
-                    self.sync.no_workspace = false;
-                    self.sync.changed = report.changed();
-                    self.sync.conflicts = report.pending_conflicts.len();
-                    self.sync.error = report.errors.first().cloned();
-                    self.sync.recent = recent;
+                Ok(pass) => {
+                    self.sync.workspace = Some(pass.status);
+                    match pass.synced {
+                        Some((report, recent)) => {
+                            self.sync.changed = report.changed();
+                            self.sync.conflicts = report.pending_conflicts.len();
+                            self.sync.error = report.errors.first().cloned();
+                            self.sync.recent = recent;
+                        }
+                        None => self.sync.error = None,
+                    }
                 }
                 Err(e) => self.sync.error = Some(e),
             }

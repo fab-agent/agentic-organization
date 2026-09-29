@@ -9,7 +9,8 @@ attach endpoint exist (ADR-0018).
 cargo build --release          # binary: target/release/fab
 fab login                      # platform URL, email, password
 fab                            # open the workspace
-fab sync                       # sync the local folder once
+fab workspace                  # create / resume your server-side workspace, show its state
+fab sync                       # sync the local folder once (never creates a workspace)
 fab logout
 ```
 
@@ -19,6 +20,19 @@ agent, `q` quits.
 
 Environment: `FAB_SESSION_FILE`, `FAB_AGENT_CMD` (default `opencode`, else `$SHELL`),
 `FAB_LANG` (`tr`/`en`), `FAB_FOLDER`, `FAB_MAX_DOWNLOAD_MB` (200), `FAB_MAX_UPLOAD_MB` (50).
+
+## First run and the workspace (ADR-0018)
+
+Opening `fab` brings the person's server-side workspace up by itself: none yet →
+it is created; suspended → resumed; still starting → checked again every 3 s;
+running → files sync. The sidebar shows `Workspace: running / starting… / failed /
+unavailable`. A **failed** workspace is not retried on a timer (that would hammer a
+broken runtime) — press `r` to retry. `unavailable` means the platform has no
+workspace runtime configured yet (HTTP 503). `fab workspace` does the same from the
+command line and exits non-zero unless the workspace is running.
+
+The agent pane is still a **local** PTY: it does not attach to the workspace yet
+(that needs the controller and the attach endpoint).
 
 ## Local workspace folder (ADR-0019 §8)
 

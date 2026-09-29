@@ -147,7 +147,10 @@ sidebar, and lists `/workspace/out` in the files strip.
    agent turn or flow block idle suspension (needs run state).
 3. WebSocket attach endpoint and ticket store.
 4. `fab`: WebSocket transport for the agent pane, workspace state in the
-   sidebar, files strip.
+   sidebar, files strip. **Partly done:** first-run create / resume, the state in
+   the sidebar and the files strip with local-folder sync work (`packages/tui`);
+   the WebSocket agent-pane transport is still to do.
+
 5. Token refresh for long-lived workspaces: make opencode config and
    `packages/agent-plugin` read the persona token from a file (re-read per
    request) and add a refresh writer in the workspace; today both read

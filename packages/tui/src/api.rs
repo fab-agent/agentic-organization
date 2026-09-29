@@ -3,6 +3,7 @@
 use crate::model::{Department, Flow, InboxItem, Me, Person};
 use crate::session::Session;
 use crate::sync::{Manifest, Remote};
+use crate::workspace::Ws;
 use anyhow::{anyhow, Result};
 use serde::de::DeserializeOwned;
 use std::io::Read;
@@ -14,14 +15,38 @@ fn agent() -> ureq::Agent {
         .build()
 }
 
+/// An HTTP error response from the backend (status kept so callers can react).
+#[derive(Debug)]
+pub struct ApiError {
+    pub status: u16,
+    pub detail: String,
+}
+
+impl std::fmt::Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.detail)
+    }
+}
+
+impl std::error::Error for ApiError {}
+
+/// The HTTP status of an error that came from the backend, if it did.
+pub fn status_of(e: &anyhow::Error) -> Option<u16> {
+    e.downcast_ref::<ApiError>().map(|a| a.status)
+}
+
 fn error_from(e: ureq::Error) -> anyhow::Error {
     match e {
         ureq::Error::Status(code, resp) => {
             let detail = resp
                 .into_json::<serde_json::Value>()
                 .ok()
-                .and_then(|v| v.get("detail").and_then(|d| d.as_str().map(String::from)));
-            anyhow!(detail.unwrap_or_else(|| format!("HTTP {code}")))
+                .and_then(|v| v.get("detail").and_then(|d| d.as_str().map(String::from)))
+                .unwrap_or_else(|| format!("HTTP {code}"));
+            anyhow::Error::new(ApiError {
+                status: code,
+                detail,
+            })
         }
         other => anyhow!(other.to_string()),
     }
@@ -75,8 +100,8 @@ impl Client {
         self.get(&format!("/inbox?company_id={company}&unread_only=true"))
     }
 
-    /// The caller's live workspace id, or `None` if they have none yet.
-    pub fn my_workspace(&self, company: &str) -> Result<Option<String>> {
+    /// The caller's live workspace, or `None` if they have none yet.
+    pub fn workspace_current(&self, company: &str) -> Result<Option<Ws>> {
         let r = self
             .http
             .get(&format!(
@@ -86,13 +111,29 @@ impl Client {
             .set("Authorization", &format!("Bearer {}", self.s.token))
             .call();
         match r {
-            Ok(resp) => {
-                let v: serde_json::Value = resp.into_json()?;
-                Ok(v.get("id").and_then(|i| i.as_str()).map(String::from))
-            }
+            Ok(resp) => Ok(Some(resp.into_json()?)),
             Err(ureq::Error::Status(404, _)) => Ok(None),
             Err(e) => Err(error_from(e)),
         }
+    }
+
+    fn workspace_post(&self, path: &str) -> Result<Ws> {
+        self.http
+            .post(&format!("{}{path}", self.s.base_url))
+            .set("Authorization", &format!("Bearer {}", self.s.token))
+            .call()
+            .map_err(error_from)?
+            .into_json()
+            .map_err(Into::into)
+    }
+
+    /// Create the caller's workspace (idempotent; retries a failed one).
+    pub fn workspace_create(&self, company: &str) -> Result<Ws> {
+        self.workspace_post(&format!("/workspaces?company_id={company}"))
+    }
+
+    pub fn workspace_resume(&self, id: &str) -> Result<Ws> {
+        self.workspace_post(&format!("/workspaces/{id}/resume"))
     }
 }
 

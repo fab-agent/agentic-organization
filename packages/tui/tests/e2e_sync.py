@@ -82,8 +82,6 @@ with database.get_session() as s:
     row.user_id = me["id"]
     s.add(row)
     s.commit()
-ws = requests.post(BASE + "/workspaces", headers=H).json()
-wid = ws["id"]
 fake = wr._fake
 
 session_file = tmp / "session.json"
@@ -94,6 +92,52 @@ env = {**os.environ, "FAB_SESSION_FILE": str(session_file), "FAB_FOLDER": str(fo
 
 def fab_sync():
     return subprocess.run([FAB, "sync"], env=env, capture_output=True, text=True, timeout=60)
+
+
+def fab_ws():
+    return subprocess.run([FAB, "workspace"], env=env, capture_output=True, text=True, timeout=90)
+
+
+def current():
+    r = requests.get(BASE + "/workspaces/me", headers=H)
+    return r.json() if r.status_code == 200 else None
+
+
+# ── 0. workspace first run: `fab sync` never creates, `fab workspace` does ────
+r = fab_sync()
+check("No workspace yet" in r.stdout and r.returncode == 0, "fab sync does not create a workspace")
+check(current() is None, "no workspace exists after fab sync")
+
+r = fab_ws()
+check(r.returncode == 0 and "running" in r.stdout, "fab workspace creates it and reports running")
+first = current()
+check(first is not None and first["state"] == "running", "workspace is running on the server")
+fab_ws()
+check(current()["id"] == first["id"], "fab workspace is idempotent (same workspace)")
+
+requests.post(f"{BASE}/workspaces/{first['id']}/suspend", headers=H)
+check(fake.containers[first["id"]] == "stopped", "workspace suspended")
+r = fab_ws()
+check(r.returncode == 0 and fake.containers[first["id"]] == "running", "fab workspace resumes a suspended workspace")
+
+# runtime failure: reported with the reason, retried on the next explicit run
+requests.delete(f"{BASE}/workspaces/{first['id']}", headers=H)
+fake.fail_next = "create"
+r = fab_ws()
+check(r.returncode == 1 and "create failed" in r.stderr, "runtime failure reported with its reason")
+check(current()["state"] == "failed", "workspace recorded as failed")
+r = fab_ws()
+check(r.returncode == 0 and current()["state"] == "running", "next run retries the failed workspace")
+
+# platform without a runtime: friendly 'unavailable', nothing created
+requests.delete(f"{BASE}/workspaces/{current()['id']}", headers=H)
+os.environ["WORKSPACE_RUNTIME"] = ""
+r = fab_ws()
+check(r.returncode == 1 and "unavailable" in r.stderr.lower(), "no runtime configured → 'unavailable'")
+os.environ["WORKSPACE_RUNTIME"] = "fake"
+r = fab_ws()
+check(r.returncode == 0, "creates once the runtime is available")
+wid = current()["id"]
 
 
 # ── 1. outputs arrive, names with spaces / unicode survive, hostile path skipped ──
@@ -174,11 +218,19 @@ try:
     check("synced" in screen, "TUI files strip shows 'synced'")
     check("deck.pptx" in screen or "report-v2.xlsx" in screen, "TUI files strip lists recent files")
     check("conflict" in screen, "TUI files strip mentions the conflict")
+
+    # first run inside the TUI: no workspace → it creates one and shows the state
+    requests.delete(f"{BASE}/workspaces/{wid}", headers=H)
+    check(current() is None, "workspace removed before the TUI first-run check")
+    screen = tui_screen()
+    check("Workspace: running" in screen, "TUI shows 'Workspace: running' after creating it")
+    check(current() is not None and current()["state"] == "running", "TUI created the workspace on first run")
+    wid = current()["id"]
 except ImportError:
-    print("skip: pyte not installed — TUI files-strip check skipped")
+    print("skip: pyte not installed — TUI checks skipped")
 
 # ── 7. no workspace / signed out behave sanely ────────────────────────────────
-requests.delete(f"{BASE}/workspaces/{wid}", headers=H)
+requests.delete(f"{BASE}/workspaces/{current()['id']}", headers=H)
 r = fab_sync()
 check("No workspace yet" in r.stdout and r.returncode == 0, "no workspace → friendly message")
 session_file.write_text(f'{{"base_url": "{BASE}", "token": "bad"}}')

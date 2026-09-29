@@ -13,6 +13,7 @@ mod pty;
 mod session;
 mod sync;
 mod ui;
+mod workspace;
 
 use anyhow::Result;
 
@@ -26,8 +27,9 @@ fn main() -> Result<()> {
             Ok(())
         }
         Some("sync") => cli_sync(),
+        Some("workspace") => cli_workspace(),
         Some("-h") | Some("--help") | Some("help") => {
-            println!("fab — terminal workspace\n\nUSAGE:\n  fab            open the workspace\n  fab login      sign in to a platform\n  fab logout     forget the stored session\n  fab sync       sync the local workspace folder once (FAB_FOLDER, default ~/Fabrika)");
+            println!("fab — terminal workspace\n\nUSAGE:\n  fab            open the workspace\n  fab login      sign in to a platform\n  fab logout     forget the stored session\n  fab workspace  create / resume your workspace and show its state\n  fab sync       sync the local workspace folder once (FAB_FOLDER, default ~/Fabrika)");
             Ok(())
         }
         None => app::run(),
@@ -41,9 +43,9 @@ fn cli_sync() -> Result<()> {
     };
     let folder = sync::default_folder();
     let client = api::Client::new(sess);
-    match sync::sync_workspace(&client, &folder)? {
-        sync::Outcome::NoWorkspace => println!("No workspace yet — nothing to sync."),
-        sync::Outcome::Synced { report, .. } => {
+    match sync::sync_existing(&client, &folder)? {
+        None => println!("No workspace yet — run `fab workspace` (or open `fab`) to create it."),
+        Some(report) => {
             println!("Folder: {}", folder.display());
             for p in &report.downloaded {
                 println!("  ↓ {p}");
@@ -73,4 +75,51 @@ fn cli_sync() -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// `fab workspace`: create / resume the workspace and report its state. Waits a
+/// short while if it is still starting.
+fn cli_workspace() -> Result<()> {
+    use workspace::Status;
+    let Some(sess) = session::load() else {
+        anyhow::bail!("not signed in — run `fab login` first");
+    };
+    let client = api::Client::new(sess);
+    let me = client.me()?;
+    let Some(co) = me.companies.first() else {
+        anyhow::bail!("this account belongs to no company");
+    };
+    let api = workspace::ClientApi {
+        client: &client,
+        company: co.company_id.clone(),
+    };
+    let mut status = workspace::ensure(&api, true)?;
+    for _ in 0..10 {
+        if !matches!(status, Status::Starting(_)) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        status = workspace::ensure(&api, false)?;
+    }
+    match status {
+        Status::Ready(w) => {
+            println!("Workspace {}: running", w.id);
+            Ok(())
+        }
+        Status::Starting(w) => {
+            println!("Workspace {}: still starting — try again in a moment", w.id);
+            std::process::exit(1);
+        }
+        Status::Failed(w) => {
+            eprintln!(
+                "Workspace failed: {}",
+                w.error.unwrap_or_else(|| "unknown error".into())
+            );
+            std::process::exit(1);
+        }
+        Status::Unavailable(why) => {
+            eprintln!("Workspaces are unavailable: {why}");
+            std::process::exit(1);
+        }
+    }
 }

@@ -4,6 +4,7 @@
 use crate::app::{App, Focus};
 use crate::i18n::strings;
 use crate::model::{RunState, Sidebar};
+use crate::workspace::Status;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -31,7 +32,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     let [left, right] =
         Layout::horizontal([Constraint::Length(34), Constraint::Min(20)]).areas(main);
     let [ident, recurring, runs] = Layout::vertical([
-        Constraint::Length(6),
+        Constraint::Length(7),
         Constraint::Percentage(40),
         Constraint::Min(3),
     ])
@@ -95,13 +96,16 @@ pub fn files_lines(app: &App) -> Vec<Line<'static>> {
     let t = strings(app.lang);
     let dim = Style::default().fg(Color::DarkGray);
     let s = &app.sync;
-    let first = if let Some(e) = &s.error {
-        Line::styled(
-            format!("{}: {e}", t.sync_error),
-            Style::default().fg(Color::Red),
-        )
-    } else if s.no_workspace {
-        Line::styled(t.no_workspace.to_string(), dim)
+    let red = Style::default().fg(Color::Red);
+    let first = if let Some(Status::Failed(w)) = &s.workspace {
+        let why = w.error.as_deref().unwrap_or("?");
+        Line::styled(format!("{}: {why}", t.workspace), red)
+    } else if let Some(Status::Unavailable(why)) = &s.workspace {
+        Line::styled(format!("{} {}: {why}", t.workspace, t.ws_unavailable), red)
+    } else if let Some(Status::Starting(_)) = &s.workspace {
+        Line::styled(format!("{} {}", t.workspace, t.ws_starting), dim)
+    } else if let Some(e) = &s.error {
+        Line::styled(format!("{}: {e}", t.sync_error), red)
     } else if let Some(at) = s.last {
         let mut parts = vec![
             s.folder.display().to_string(),
@@ -146,6 +150,17 @@ fn draw_identity(f: &mut Frame, area: Rect, sb: &Sidebar, app: &App) {
         "  {}: {} {}, {} {}",
         t.team, sb.humans, t.people, sb.agents, t.agents
     )));
+    let (word, color) = match &app.sync.workspace {
+        None => (t.ws_checking, Color::DarkGray),
+        Some(Status::Ready(_)) => (t.ws_running, Color::Green),
+        Some(Status::Starting(_)) => (t.ws_starting, Color::Yellow),
+        Some(Status::Failed(_)) => (t.ws_failed, Color::Red),
+        Some(Status::Unavailable(_)) => (t.ws_unavailable, Color::Red),
+    };
+    lines.push(Line::from(vec![
+        Span::raw(format!("  {}: ", t.workspace)),
+        Span::styled(word, Style::default().fg(color)),
+    ]));
     f.render_widget(
         Paragraph::new(lines).block(block(
             format!(" {} ", sb.company),
@@ -243,10 +258,19 @@ mod tests {
         app.sync.folder = "/home/a/Fabrika".into();
         assert!(text(&files_lines(&app)).contains("/home/a/Fabrika"));
 
-        app.sync.no_workspace = true;
-        assert!(text(&files_lines(&app)).contains("no workspace yet"));
+        let w = |state: &str, err: Option<&str>| crate::workspace::Ws {
+            id: "w1".into(),
+            state: state.into(),
+            error: err.map(Into::into),
+        };
+        app.sync.workspace = Some(Status::Starting(w("creating", None)));
+        assert!(text(&files_lines(&app)).contains("starting"));
+        app.sync.workspace = Some(Status::Failed(w("failed", Some("no disk"))));
+        assert!(text(&files_lines(&app)).contains("Workspace: no disk"));
+        app.sync.workspace = Some(Status::Unavailable("not configured".into()));
+        assert!(text(&files_lines(&app)).contains("unavailable: not configured"));
 
-        app.sync.no_workspace = false;
+        app.sync.workspace = Some(Status::Ready(w("running", None)));
         app.sync.last = Some(std::time::Instant::now());
         app.sync.changed = 2;
         app.sync.conflicts = 1;

@@ -451,60 +451,90 @@ pub fn recent_files(root: &Path, n: usize) -> Vec<String> {
 }
 
 /// What one background pass produced, for the UI.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Outcome {
-    /// The person has no workspace yet.
-    NoWorkspace,
-    Synced {
-        report: Report,
-        recent: Vec<String>,
-    },
+#[derive(Debug, Clone)]
+pub struct Pass {
+    pub status: crate::workspace::Status,
+    /// Present only when the workspace was ready and a sync ran.
+    pub synced: Option<(Report, Vec<String>)>,
 }
 
-/// Resolve the caller's workspace and sync the folder with it.
-pub fn sync_workspace(client: &crate::api::Client, root: &Path) -> Result<Outcome> {
-    let me = client.me()?;
-    let company = me
+fn first_company(client: &crate::api::Client) -> Result<String> {
+    client
+        .me()?
         .companies
         .first()
         .map(|c| c.company_id.clone())
-        .ok_or_else(|| anyhow!("this account belongs to no company"))?;
-    let Some(workspace_id) = client.my_workspace(&company)? else {
-        return Ok(Outcome::NoWorkspace);
+        .ok_or_else(|| anyhow!("this account belongs to no company"))
+}
+
+/// One background pass: bring the workspace up (create / resume / wait), then
+/// sync the folder once it is ready.
+pub fn run_pass(client: &crate::api::Client, root: &Path, retry_failed: bool) -> Result<Pass> {
+    let api = crate::workspace::ClientApi {
+        client,
+        company: first_company(client)?,
+    };
+    let status = crate::workspace::ensure(&api, retry_failed)?;
+    let synced = match status.ready() {
+        Some(ws) => {
+            let remote = crate::api::WorkspaceRemote {
+                client,
+                workspace_id: ws.id.clone(),
+            };
+            let report = sync(root, &remote, Limits::from_env())?;
+            Some((report, recent_files(root, 4)))
+        }
+        None => None,
+    };
+    Ok(Pass { status, synced })
+}
+
+/// `fab sync`: sync an existing workspace once; never creates one.
+/// `None` = the person has no workspace yet.
+pub fn sync_existing(client: &crate::api::Client, root: &Path) -> Result<Option<Report>> {
+    let company = first_company(client)?;
+    let Some(ws) = client.workspace_current(&company)? else {
+        return Ok(None);
     };
     let remote = crate::api::WorkspaceRemote {
         client,
-        workspace_id,
+        workspace_id: ws.id,
     };
-    let report = sync(root, &remote, Limits::from_env())?;
-    Ok(Outcome::Synced {
-        report,
-        recent: recent_files(root, 4),
-    })
+    Ok(Some(sync(root, &remote, Limits::from_env())?))
 }
 
-/// Background sync: runs once immediately, then every `interval` or when poked.
-/// Returns (results, poke). Dropping the poke sender stops the thread.
+/// Background loop: one pass immediately (retrying a failed workspace), then every
+/// `interval` — or every 3 s while the workspace is still starting — or when poked
+/// (a poke also retries a failed workspace). Dropping the poke sender stops it.
 pub fn spawn_loop(
     session: crate::session::Session,
     root: PathBuf,
     interval: std::time::Duration,
 ) -> (
-    std::sync::mpsc::Receiver<std::result::Result<Outcome, String>>,
+    std::sync::mpsc::Receiver<std::result::Result<Pass, String>>,
     std::sync::mpsc::Sender<()>,
 ) {
+    use std::sync::mpsc::RecvTimeoutError;
     let (tx, rx) = std::sync::mpsc::channel();
     let (poke, wake) = std::sync::mpsc::channel::<()>();
     std::thread::spawn(move || {
         let client = crate::api::Client::new(session);
+        let mut retry_failed = true;
         loop {
-            let res = sync_workspace(&client, &root).map_err(|e| format!("{e:#}"));
+            let res = run_pass(&client, &root, retry_failed).map_err(|e| format!("{e:#}"));
+            let wait = match &res {
+                Ok(p) if matches!(p.status, crate::workspace::Status::Starting(_)) => {
+                    std::time::Duration::from_secs(3)
+                }
+                _ => interval,
+            };
             if tx.send(res).is_err() {
                 break;
             }
-            match wake.recv_timeout(interval) {
-                Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            match wake.recv_timeout(wait) {
+                Ok(()) => retry_failed = true,
+                Err(RecvTimeoutError::Timeout) => retry_failed = false,
+                Err(RecvTimeoutError::Disconnected) => break,
             }
         }
     });
