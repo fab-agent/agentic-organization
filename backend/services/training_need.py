@@ -23,7 +23,7 @@ from datetime import date
 
 from sqlmodel import select
 
-from models import Personnel, WorkRating
+from models import Personnel, WorkRating, WorkTrainingShare
 from services import work_review as wr
 
 WINDOW_DAYS = 30
@@ -52,6 +52,19 @@ def bar(session, company_id: str) -> float:
         return DEFAULT_BAR
     lo, hi = BAR_RANGE
     return b if lo <= b <= hi else DEFAULT_BAR
+
+
+def sharing_enabled(session, company_id: str) -> bool:
+    """Whether people may choose to share a signal with their manager. Off by default: it
+    needs a product and legal decision per company (ADR-0019 open question 4)."""
+    v = wr._get(session, f"work_review.training.sharing:{company_id}")
+    return v is not None and v.strip().lower() in wr._TRUE
+
+
+def set_sharing_enabled(session, company_id: str, on: bool) -> None:
+    wr._put(
+        session, f"work_review.training.sharing:{company_id}", "true" if on else "false"
+    )
 
 
 def set_min_rated(session, company_id: str, n: int) -> None:
@@ -155,3 +168,38 @@ def unit_findings(
                 }
             )
     return out
+
+
+def shared_signals(
+    session, subject: Personnel, today: date | None = None
+) -> list[dict]:
+    """The signals this person chose to share with their direct manager — and only those
+    that still hold today, and only while the company allows sharing. The share is
+    consent, not data: a signal that has lapsed disappears from the manager's view."""
+    cid = subject.company_id or ""
+    if not sharing_enabled(session, cid):
+        return []
+    shared = {
+        (r.criterion_id, r.criterion_hash)
+        for r in session.exec(
+            select(WorkTrainingShare).where(
+                WorkTrainingShare.personnel_id == subject.id
+            )
+        ).all()
+    }
+    return [
+        {**e, "kind": "support_requested"}
+        for e in person_signals(session, subject, today)
+        if (e["criterion_id"], e["criterion_hash"]) in shared
+    ]
+
+
+def team_findings(
+    session, leader: Personnel, today: date | None = None
+) -> tuple[int, list[dict] | None]:
+    """The unit finding for a leader's own team (their direct reports): (people, findings),
+    findings None when the team is below the group floor."""
+    members = wr.direct_reports(session, leader)
+    if not members:
+        return 0, []
+    return len(members), unit_findings(session, members, today)

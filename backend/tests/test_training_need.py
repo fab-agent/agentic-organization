@@ -106,6 +106,7 @@ def test_the_company_can_change_the_minimum_and_the_bar(on):
     assert _put(on, on.founder, bar=0.5).json() == {
         "min_rated": 5,
         "bar": 0.5,
+        "sharing_enabled": False,
         "window_days": 30,
     }
     _as(on.client, on.founder)

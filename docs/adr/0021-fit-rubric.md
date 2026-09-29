@@ -241,6 +241,20 @@ when colleagues show the same pattern, and is not returned to their manager or i
 aggregate. The company sets the minimum and the bar (`/training-need/settings`, founder
 only, audited); 10 and 50 % are proposals. Responses carry no score, rank or grade.
 
+Then manager visibility of the training-need signal, decided as option B (the person
+chooses; the leader sees their team). A company must first allow sharing
+(`sharing_enabled` in `/training-need/settings`, founder only, **off by default** until the
+legal review of ADR-0019 open question 4). Then a person can share one of their *current*
+signals with their direct manager (`POST /me/training-need/share`, withdraw with `DELETE`);
+the manager sees it in `GET /people/{id}` as `support_requests`, framed `support_requested`.
+A share is consent per criterion wording, not data: the signal must still hold when read,
+turning sharing off hides shares without deleting the choice, and shares expire with
+retention and are erased with the person. Shares and withdrawals are audited without
+content. Separately, a team leader sees their own team's unit finding
+(`GET /training-need/my-team`: counts only, nothing below the group floor), because they are
+the person who can arrange training or clarify the rule. Nobody receives a person's signal
+automatically.
+
 **Not built, and why it matters:**
 
 - **The filter recognises identifiers by shape only** (secrets, e-mail, URL, card, IBAN,
@@ -250,10 +264,8 @@ only, audited); 10 and 50 % are proposals. Responses carry no score, rank or gra
   phone-shaped (the safe side).
 - Only sessions with an LLM summary are rated; a session too short to be summarised
   (fewer than two messages) or whose summary failed is never rated.
-- There is no rubric view. **When and whether a manager may see a person's training-need
-  signal is undecided**: the ADR says "shown to the person first" but not what follows, and
-  nothing here shows it to anyone else — a product and legal decision (ADR-0019 open
-  question 4). `fab`'s "My review" shows the person's own signal (unit tests and a pty end-to-end run); there is no `fab` screen for the unit findings that rubric owners get. Calibration runs from the command line only
+- There is no rubric view. Manager visibility is decided (above) but **not legally
+  reviewed**, and sharing stays off until it is (ADR-0019 open question 4). `fab`'s "My review" shows the person's own signal (unit tests and a pty end-to-end run); there is no `fab` screen for the unit findings that rubric owners get. Calibration runs from the command line only
   (there is no API or `fab` screen for it), it has been exercised against a faked scorer,
   not the live Jev API, and the 85 % / 30 % / 20 / 14-day numbers are unmeasured. `fab`'s "My review" shows the
   person's ratings and lets them contest and withdraw (unit tests, plus a pty end-to-end

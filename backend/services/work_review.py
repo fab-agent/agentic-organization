@@ -48,6 +48,7 @@ from models import (
     WorkNote,
     WorkRating,
     WorkSignal,
+    WorkTrainingShare,
 )
 from services.workspaces import MANAGER_ROLES, _in_scope
 
@@ -243,6 +244,16 @@ def purge_expired(today: date | None = None) -> int:
                     delete(model).where(model.company_id == cid, model.day < cutoff)
                 )
                 n += res.rowcount or 0
+            cutoff_at = datetime.combine(
+                today - timedelta(days=retention_days(session, cid)), time.min
+            )
+            res = session.execute(
+                delete(WorkTrainingShare).where(
+                    WorkTrainingShare.company_id == cid,
+                    WorkTrainingShare.shared_at < cutoff_at,
+                )
+            )
+            n += res.rowcount or 0
         session.commit()
     return n
 
@@ -250,7 +261,7 @@ def purge_expired(today: date | None = None) -> int:
 def erase_person(session, personnel_id: str) -> int:
     """Erase everything work review holds (signals, notes, ratings) about one person. The caller commits."""
     n = 0
-    for model in (WorkSignal, WorkNote, WorkRating):
+    for model in (WorkSignal, WorkNote, WorkRating, WorkTrainingShare):
         n += (
             session.execute(
                 delete(model).where(model.personnel_id == personnel_id)

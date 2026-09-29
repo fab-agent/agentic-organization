@@ -12,7 +12,15 @@ from sqlmodel import select
 
 from api.auth import get_current_user
 from database import get_session
-from models import CompanyMember, Department, Personnel, User, WorkNote, WorkRating
+from models import (
+    CompanyMember,
+    Department,
+    Personnel,
+    User,
+    WorkNote,
+    WorkRating,
+    WorkTrainingShare,
+)
 from services import audit_chain
 from services import rating as rt
 from services import rubric as rb
@@ -99,8 +107,9 @@ def _annotate(session, company_id: str, view: dict) -> dict:
     for d in view.get("days", []):
         for e in d.get("ratings", []):
             e["question"] = known.get((e["criterion_id"], e["criterion_hash"]))
-    for e in view.get("training_need", []):
-        e["question"] = known.get((e["criterion_id"], e["criterion_hash"]))
+    for key in ("training_need", "support_requests"):
+        for e in view.get(key, []):
+            e["question"] = known.get((e["criterion_id"], e["criterion_hash"]))
     return view
 
 
@@ -118,6 +127,7 @@ def my_review(
         _require_enabled(session, cid)
         view = wr.person_view(session, person, days, as_subject=True)
         view["training_need"] = _training_need_for(session, person)
+        view["training_sharing_enabled"] = tn.sharing_enabled(session, cid)
         _annotate(session, cid, view)
         view["disclosure"] = _disclosure(session, cid)
         return view
@@ -137,8 +147,16 @@ def _training_need_for(session, person: Personnel) -> list[dict]:
     if dept is not None:
         found = tn.unit_findings(session, wr.department_members(session, dept)) or []
         unit = {(f["criterion_id"], f["criterion_hash"]) for f in found}
+    shared = {
+        (r.criterion_id, r.criterion_hash)
+        for r in session.exec(
+            select(WorkTrainingShare).where(WorkTrainingShare.personnel_id == person.id)
+        ).all()
+    }
     for e in signals:
-        e["unit_wide"] = (e["criterion_id"], e["criterion_hash"]) in unit
+        key = (e["criterion_id"], e["criterion_hash"])
+        e["unit_wide"] = key in unit
+        e["shared"] = key in shared
     return signals
 
 
@@ -324,6 +342,8 @@ def person_review(
                 status_code=403, detail="Only a person's direct manager can view this"
             )
         view = wr.person_view(session, subject, days)
+        if tn.sharing_enabled(session, cid):
+            view["support_requests"] = tn.shared_signals(session, subject)
         _annotate(session, cid, view)
         _viewed(viewer.id, cid, "person", subject.id, days)
         return view
@@ -385,6 +405,126 @@ def department_reviews(
         return out
 
 
+class ShareBody(BaseModel):
+    criterion_id: str = Field(min_length=1, max_length=100)
+    criterion_hash: str = Field(min_length=1, max_length=100)
+
+
+def _require_sharing(session, cid: str) -> None:
+    if not tn.sharing_enabled(session, cid):
+        raise HTTPException(
+            status_code=404,
+            detail="Sharing training-need signals is not enabled for this company",
+        )
+
+
+@router.post("/me/training-need/share", status_code=201)
+def share_training_signal(
+    body: ShareBody,
+    company_id: str | None = None,
+    user: User = Depends(get_current_user),
+):
+    """Choose to share one of your own current signals with your direct manager. Only a
+    signal that exists right now can be shared; it can be withdrawn at any time."""
+    with get_session() as session:
+        person, cid = person_for_user(session, user, company_id)
+        _require_enabled(session, cid)
+        _require_sharing(session, cid)
+        current = {
+            (e["criterion_id"], e["criterion_hash"])
+            for e in tn.person_signals(session, person)
+        }
+        key = (body.criterion_id, body.criterion_hash)
+        if key not in current:
+            raise HTTPException(
+                status_code=409, detail="You have no such signal to share"
+            )
+        exists = session.exec(
+            select(WorkTrainingShare).where(
+                WorkTrainingShare.personnel_id == person.id,
+                WorkTrainingShare.criterion_id == key[0],
+                WorkTrainingShare.criterion_hash == key[1],
+            )
+        ).first()
+        if exists is None:
+            session.add(
+                WorkTrainingShare(
+                    company_id=cid,
+                    personnel_id=person.id,
+                    criterion_id=key[0],
+                    criterion_hash=key[1],
+                )
+            )
+            session.commit()
+            audit_chain.record(
+                actor_type="human",
+                actor_id=user.id,
+                company_id=cid,
+                action="work_training_shared",
+                target=person.id,
+                reason=key[0],
+                payload={"with": "direct_manager"},
+            )
+        return {"criterion_id": key[0], "criterion_hash": key[1], "shared": True}
+
+
+@router.delete("/me/training-need/share", status_code=204)
+def withdraw_training_share(
+    criterion_id: str = Query(min_length=1, max_length=100),
+    criterion_hash: str = Query(min_length=1, max_length=100),
+    company_id: str | None = None,
+    user: User = Depends(get_current_user),
+):
+    with get_session() as session:
+        person, cid = person_for_user(session, user, company_id)
+        _require_enabled(session, cid)
+        row = session.exec(
+            select(WorkTrainingShare).where(
+                WorkTrainingShare.personnel_id == person.id,
+                WorkTrainingShare.criterion_id == criterion_id,
+                WorkTrainingShare.criterion_hash == criterion_hash,
+            )
+        ).first()
+        if row is None:
+            return
+        session.delete(row)
+        session.commit()
+        audit_chain.record(
+            actor_type="human",
+            actor_id=user.id,
+            company_id=cid,
+            action="work_training_unshared",
+            target=person.id,
+            reason=criterion_id,
+            payload={},
+        )
+
+
+@router.get("/training-need/my-team")
+def training_need_my_team(
+    company_id: str | None = None, user: User = Depends(get_current_user)
+):
+    """The unit finding for the viewer's own team (their direct reports) — counts only,
+    and nothing at all for a team below the group floor. It points at a rule or its
+    training, not at a person."""
+    with get_session() as session:
+        viewer, cid = person_for_user(session, user, company_id)
+        _require_enabled(session, cid)
+        n, found = tn.team_findings(session, viewer)
+        if n == 0:
+            raise HTTPException(status_code=403, detail="You have no direct reports")
+        _viewed(viewer.id, cid, "training_team", viewer.id, tn.WINDOW_DAYS)
+        if found is None:
+            return {"n_people": n, "suppressed": True, "findings": []}
+        return {
+            "n_people": n,
+            "suppressed": False,
+            "findings": _annotate(session, cid, {"training_need": found})[
+                "training_need"
+            ],
+        }
+
+
 @router.get("/training-need/units")
 def training_need_units(
     company_id: str | None = None, user: User = Depends(get_current_user)
@@ -423,6 +563,7 @@ def training_need_units(
 
 
 class TrainingSettings(BaseModel):
+    sharing_enabled: bool | None = None
     min_rated: int | None = Field(
         default=None, ge=tn.MIN_RATED_RANGE[0], le=tn.MIN_RATED_RANGE[1]
     )
@@ -439,6 +580,7 @@ def get_training_settings(
         return {
             "min_rated": tn.min_rated(session, cid),
             "bar": tn.bar(session, cid),
+            "sharing_enabled": tn.sharing_enabled(session, cid),
             "window_days": tn.WINDOW_DAYS,
         }
 
@@ -456,8 +598,14 @@ def put_training_settings(
             tn.set_min_rated(session, cid, body.min_rated)
         if body.bar is not None:
             tn.set_bar(session, cid, body.bar)
+        if body.sharing_enabled is not None:
+            tn.set_sharing_enabled(session, cid, body.sharing_enabled)
         session.commit()
-        after = {"min_rated": tn.min_rated(session, cid), "bar": tn.bar(session, cid)}
+        after = {
+            "min_rated": tn.min_rated(session, cid),
+            "bar": tn.bar(session, cid),
+            "sharing_enabled": tn.sharing_enabled(session, cid),
+        }
     audit_chain.record(
         actor_type="human",
         actor_id=user.id,

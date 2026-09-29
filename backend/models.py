@@ -772,3 +772,26 @@ class WorkRating(SQLModel, table=True):
     contested_at: datetime | None = None
     resolved_at: datetime | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkTrainingShare(SQLModel, table=True):
+    """A person's choice to share one training-need signal with their direct manager
+    (ADR-0021 §6). Off unless the company allows sharing; per criterion wording; revocable
+    (the row is deleted). Whether the signal still holds is checked on every read — this
+    row is consent, not data. Soft links, no foreign keys."""
+
+    __table_args__ = (
+        UniqueConstraint(
+            "personnel_id",
+            "criterion_id",
+            "criterion_hash",
+            name="uq_worktrainingshare",
+        ),
+    )
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    company_id: str = Field(index=True)
+    personnel_id: str = Field(index=True)
+    criterion_id: str
+    criterion_hash: str
+    shared_at: datetime = Field(default_factory=datetime.utcnow)
