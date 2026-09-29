@@ -32,6 +32,7 @@ def _build_agent_yaml_content(
             f"title: {agent.title or ''}",
             f"model: {proposed.get('model', '')}",
             f"model_version: {proposed.get('model_version') or ''}",
+            f"provider: {proposed.get('provider') or ''}",
             f"status: {proposed.get('status', 'draft')}",
             f"updated_at: {proposed.get('updated_at', '')}",
         ]

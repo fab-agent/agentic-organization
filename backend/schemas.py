@@ -160,6 +160,9 @@ class PersonnelUpdate(BaseModel):
 class AgentConfigCreate(BaseModel):
     model: str
     model_version: str | None = None
+    # ProviderKey.provider serving `model` ("openai", "ollama", "custom:vllm", …);
+    # None = infer from the model name.
+    provider: str | None = None
     status: str = "draft"
     responsible_id: str | None = None
 
@@ -174,6 +177,8 @@ class AgentConfigCreate(BaseModel):
 class AgentConfigUpdate(BaseModel):
     model: str | None = None
     model_version: str | None = None
+    # Sending "provider": null (or "") clears it back to name-based inference.
+    provider: str | None = None
     status: str | None = None
     responsible_id: str | None = None
 
@@ -252,6 +257,16 @@ class SkillUpdate(BaseModel):
 class SetProviderKey(BaseModel):
     key: str
     base_url: str | None = None
+
+
+class CustomEndpointCreate(BaseModel):
+    """An OpenAI-compatible endpoint added by base URL + token (ADR-0016)."""
+
+    name: str
+    base_url: str
+    api_key: str | None = None
+    # Model ids to use when the server does not implement GET /models.
+    models: list[str] | None = None
 
 
 class ConfigPatch(BaseModel):

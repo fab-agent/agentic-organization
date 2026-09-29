@@ -34,21 +34,12 @@ from core.security import decrypt
 from database import get_session
 from models import AgentConfig, Personnel, ProviderKey, User
 from services import audit_chain, gateway_limits
-from services.agent_runtime import detect_provider
 from services.gateway_auth import PersonaPrincipal, create_persona_token
+from services.model_routing import ModelRoutingError, resolve_model
 from services.policy_engine import PolicyDecisionRequest, audit_decision, decide
-from services.provider_service import get_provider_models
+from services.provider_service import get_provider_models, is_custom_provider
 
 router = APIRouter(tags=["gateway"])
-
-# Upstream base URLs by provider when the ProviderKey row has no explicit base_url.
-_DEFAULT_UPSTREAM = {
-    "openai": "https://api.openai.com/v1",
-    "qwen": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-    "mistral": "https://api.mistral.ai/v1",
-    "ollama": "http://localhost:11434/v1",
-    "lmstudio": "http://localhost:1234/v1",
-}
 
 # Faz 4: raw prompt/response retention becomes a per-company setting (ADR-0004).
 _STORE_PROMPT_PREVIEW_CHARS = 2000
@@ -60,32 +51,23 @@ _STORE_PROMPT_PREVIEW_CHARS = 2000
 # ── Upstream resolution ───────────────────────────────────────────────────────
 
 
-def _resolve_upstream(model: str) -> tuple[str, str]:
+def _resolve_upstream(model: str, provider: str | None = None) -> tuple[str, str, str]:
     """
-    Return (base_url, api_key) for the org's configured upstream that serves
-    `model`. The org enters its own OpenAI-compatible endpoint as the
-    ProviderKey.base_url for the matching provider (ADR-0004).
+    Return (base_url, api_key, upstream_model) for the org's configured upstream
+    that serves `model` (services.model_routing, ADR-0004 / ADR-0016). A
+    `<provider>/<model>` reference is resolved to that provider and the prefix is
+    stripped before the request is forwarded.
     """
-    provider = detect_provider(model)
-    with get_session() as session:
-        row = session.exec(
-            select(ProviderKey).where(
-                ProviderKey.provider == provider,
-                ProviderKey.status == "active",
-            )
-        ).first()
-    if not row:
+    try:
+        resolved = resolve_model(model, provider)
+    except ModelRoutingError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    if not resolved.base_url:
         raise HTTPException(
             status_code=502,
-            detail=f"'{provider}' için aktif upstream yapılandırılmamış "
-            f"(Ayarlar → AI Sağlayıcılar).",
+            detail=f"'{resolved.provider}' için base_url çözümlenemedi",
         )
-    base_url = (row.base_url or _DEFAULT_UPSTREAM.get(provider) or "").rstrip("/")
-    if not base_url:
-        raise HTTPException(
-            status_code=502, detail=f"'{provider}' için base_url çözümlenemedi"
-        )
-    return base_url, decrypt(row.encrypted_key)
+    return resolved.base_url, resolved.api_key, resolved.model
 
 
 # ── Audit ─────────────────────────────────────────────────────────────────────
@@ -175,7 +157,13 @@ async def chat_completions(
         agent_cfg.model if agent_cfg else None,
     )
 
-    base_url, api_key = _resolve_upstream(model)
+    # The persona's own model goes to its configured provider (AgentConfig.provider).
+    own_provider = (
+        agent_cfg.provider if agent_cfg and agent_cfg.model == model else None
+    )
+    base_url, api_key, upstream_model = _resolve_upstream(model, own_provider)
+    if upstream_model != model:
+        body = {**body, "model": upstream_model}
     url = f"{base_url}/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -275,7 +263,14 @@ def list_models(principal: PersonaPrincipal = Depends(get_persona_gateway)):
                 row.provider, plain_key, base_url=row.base_url
             ):
                 # TODO(ADR-0005): filter by this persona/company model allow-list.
-                out.append({"id": m["id"], "object": "model", "owned_by": row.provider})
+                # Custom endpoints are listed as `<provider>/<model>` so two
+                # endpoints serving the same model id stay distinguishable.
+                mid = (
+                    f"{row.provider}/{m['id']}"
+                    if is_custom_provider(row.provider)
+                    else m["id"]
+                )
+                out.append({"id": mid, "object": "model", "owned_by": row.provider})
     return {"object": "list", "data": out}
 
 

@@ -11,6 +11,7 @@ export type AgentConfig = {
 	id: string;
 	model: string;
 	model_version: string | null;
+	provider?: string | null; // ProviderKey serving `model`; null = infer from the name
 	status: 'active' | 'draft' | 'inactive';
 	responsible_id: string | null;
 	responsible_name: string | null;

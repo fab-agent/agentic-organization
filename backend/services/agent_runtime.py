@@ -13,7 +13,6 @@ from collections.abc import AsyncGenerator
 
 from sqlmodel import select
 
-from core.security import decrypt
 from database import get_session
 from models import (
     AgentConfig,
@@ -23,7 +22,6 @@ from models import (
     DepartmentPolicyLink,
     Personnel,
     Policy,
-    ProviderKey,
     SessionMessage,
     Skill,
 )
@@ -439,20 +437,7 @@ async def execute_skill(
     return f"[Unhandled skill type: {skill.skill_type}]"
 
 
-# ── Provider key retrieval ────────────────────────────────────────────────────
-
-
-def get_decrypted_key(provider: str) -> str | None:
-    with get_session() as session:
-        row = session.exec(
-            select(ProviderKey).where(
-                ProviderKey.provider == provider,
-                ProviderKey.status == "active",
-            )
-        ).first()
-        if not row:
-            return None
-        return decrypt(row.encrypted_key)
+# ── Legacy name-based provider guess (see services/model_routing.py) ──────────
 
 
 def detect_provider(model: str) -> str:
@@ -941,18 +926,11 @@ async def _generate_image(
             yield ev
 
 
-# ── OpenAI-compatible streaming (OpenAI + Qwen) ───────────────────────────────
-
-_OPENAI_BASE_URLS = {
-    "openai": "https://api.openai.com/v1",
-    "qwen": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-    "ollama": "http://localhost:11434/v1",
-    "lmstudio": "http://localhost:1234/v1",
-}
+# ── OpenAI-protocol streaming (OpenAI, Qwen, Mistral, local, custom) ───────────
 
 
 async def _stream_openai_compatible(
-    provider: str,
+    base_url: str | None,
     model_name: str,
     api_key: str,
     system_prompt: str,
@@ -965,18 +943,7 @@ async def _stream_openai_compatible(
 ) -> AsyncGenerator[dict, None]:
     from openai import OpenAI
 
-    base_url = _OPENAI_BASE_URLS.get(provider, "https://api.openai.com/v1")
-    if provider == "qwen":
-        from sqlmodel import select as _sel
-
-        from database import get_session as _gs
-        from models import ProviderKey as _PK
-
-        with _gs() as _db:
-            _row = _db.exec(_sel(_PK).where(_PK.provider == "qwen")).first()
-            if _row and _row.base_url:
-                base_url = _row.base_url
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    client = OpenAI(api_key=api_key or "none", base_url=base_url)
 
     messages = [{"role": "system", "content": system_prompt}]
     for msg in history:
@@ -1190,14 +1157,18 @@ async def run_session(
             else (raw_version or raw_model or "gemini-2.0-flash")
         )
 
-        provider = detect_provider(model_name)
-        api_key = get_decrypted_key(provider)
-        if not api_key:
-            yield {
-                "type": "error",
-                "message": f"No active API key for provider '{provider}'. Please configure it in Settings → AI Sağlayıcılar.",
-            }
+        from services.model_routing import ModelRoutingError, resolve_model
+
+        try:
+            resolved = resolve_model(
+                cfg.model if cfg.provider else model_name, cfg.provider
+            )
+        except ModelRoutingError as e:
+            yield {"type": "error", "message": str(e)}
             return
+        provider = resolved.provider
+        model_name = resolved.model
+        api_key = resolved.api_key
 
         gemini_history = _gemini_history(list(history_rows))
 
@@ -1208,7 +1179,7 @@ async def run_session(
 
     if is_image_gen_model(model_name):
         gen = _generate_image(provider, model_name, api_key, full_message)
-    elif provider == "google":
+    elif resolved.protocol == "google":
         gen = _stream_gemini(
             model_name,
             api_key,
@@ -1220,7 +1191,7 @@ async def run_session(
             session_id=session_id,
             agent_id=person.id,
         )
-    elif provider == "anthropic":
+    elif resolved.protocol == "anthropic":
         gen = _stream_anthropic(
             model_name,
             api_key,
@@ -1232,9 +1203,9 @@ async def run_session(
             session_id=session_id,
             agent_id=person.id,
         )
-    elif provider in _OPENAI_BASE_URLS:
+    else:
         gen = _stream_openai_compatible(
-            provider,
+            resolved.base_url,
             model_name,
             api_key,
             system_prompt,
@@ -1245,9 +1216,6 @@ async def run_session(
             session_id=session_id,
             agent_id=person.id,
         )
-    else:
-        yield {"type": "error", "message": f"Provider '{provider}' desteklenmiyor"}
-        return
 
     tokens_used = 0
     async for event in gen:

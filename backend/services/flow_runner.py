@@ -9,7 +9,6 @@ from datetime import datetime
 
 from sqlmodel import Session, select
 
-from core.security import decrypt
 from database import get_session
 from models import (
     AgentConfig,
@@ -17,7 +16,6 @@ from models import (
     Flow,
     InboxMessage,
     Personnel,
-    ProviderKey,
     Skill,
 )
 
@@ -91,10 +89,26 @@ def _generate_image_sync(
     )
 
 
+def _openai_base_url(provider: str, base_url: str | None) -> str | None:
+    from services.model_routing import DEFAULT_OPENAI_BASE_URLS
+
+    return base_url or DEFAULT_OPENAI_BASE_URLS.get(provider)
+
+
 def _call_llm(
-    provider: str, model: str, system_prompt: str, user_prompt: str, api_key: str
+    provider: str,
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+    api_key: str,
+    base_url: str | None = None,
 ) -> str:
-    """Single-turn LLM call. Returns response text."""
+    """Single-turn LLM call. Returns response text.
+
+    `provider` is "anthropic" or "google" for the native clients; anything else
+    (openai, qwen, mistral, ollama, lmstudio, custom:…) goes over the OpenAI
+    protocol to `base_url` (see services.model_routing).
+    """
     if provider == "anthropic":
         import anthropic
 
@@ -107,21 +121,7 @@ def _call_llm(
         )
         return msg.content[0].text
 
-    elif provider == "openai":
-        import openai
-
-        client = openai.OpenAI(api_key=api_key)
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=2048,
-        )
-        return resp.choices[0].message.content or ""
-
-    elif provider == "google":
+    if provider == "google":
         from google import genai
 
         client = genai.Client(api_key=api_key)
@@ -129,44 +129,20 @@ def _call_llm(
         resp = client.models.generate_content(model=model, contents=full_prompt)
         return resp.text or ""
 
-    elif provider in ("qwen", "mistral"):
-        import openai
-        from sqlmodel import select as _select
+    import openai
 
-        from database import get_session as _get_session
-        from models import ProviderKey as _PK
-
-        base_url = None
-        with _get_session() as _sess:
-            pk = _sess.exec(
-                _select(_PK)
-                .where(_PK.provider == provider)
-                .where(_PK.status == "active")
-            ).first()
-            if pk and pk.base_url:
-                base_url = (
-                    f"{pk.base_url}/v1"
-                    if not pk.base_url.endswith("/v1")
-                    else pk.base_url
-                )
-        if provider == "qwen":
-            base_url = (
-                base_url or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-            )
-        elif provider == "mistral":
-            base_url = "https://api.mistral.ai/v1"
-        client = openai.OpenAI(api_key=api_key, base_url=base_url)
-        resp = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            max_tokens=2048,
-        )
-        return resp.choices[0].message.content or ""
-
-    raise ValueError(f"Unsupported provider: {provider}")
+    client = openai.OpenAI(
+        api_key=api_key or "none", base_url=_openai_base_url(provider, base_url)
+    )
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        max_tokens=2048,
+    )
+    return resp.choices[0].message.content or ""
 
 
 def _call_llm_streaming(
@@ -201,16 +177,12 @@ def _call_llm_streaming(
                 full.append(text)
         return "".join(full)
 
-    if provider in ("openai", "qwen", "mistral"):
+    if provider != "google":
         import openai
 
-        if provider == "qwen":
-            base_url = (
-                base_url or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
-            )
-        elif provider == "mistral":
-            base_url = "https://api.mistral.ai/v1"
-        client = openai.OpenAI(api_key=api_key, base_url=base_url)
+        client = openai.OpenAI(
+            api_key=api_key or "none", base_url=_openai_base_url(provider, base_url)
+        )
         stream = client.chat.completions.create(
             model=model,
             messages=[
@@ -227,7 +199,7 @@ def _call_llm_streaming(
                 full.append(delta)
         return "".join(full)
 
-    # Google and others: fall back to non-streaming
+    # Google: fall back to non-streaming
     result = _call_llm(provider, model, system_prompt, user_prompt, api_key)
     on_chunk(result)
     return result
@@ -337,10 +309,13 @@ def _call_llm_with_tools(
     user_prompt: str,
     api_key: str,
     tools: list[dict],
+    base_url: str | None = None,
 ) -> str:
     """Multi-turn LLM call with tool use loop. Returns final text response."""
     if provider != "anthropic" or not tools:
-        return _call_llm(provider, model, system_prompt, user_prompt, api_key)
+        return _call_llm(
+            provider, model, system_prompt, user_prompt, api_key, base_url=base_url
+        )
 
     import anthropic
 
@@ -459,45 +434,10 @@ def run_flow(flow_id: str) -> None:
             if not agent_cfg:
                 raise ValueError(f"AgentConfig not found for {agent.name}")
 
-            # Get provider key — prefer agent's model provider
-            def _infer_prov(model: str) -> str:
-                m = (model or "").lower()
-                if m.startswith("claude"):
-                    return "anthropic"
-                if m.startswith(("gpt-", "o1", "o3", "dall-e")):
-                    return "openai"
-                if m.startswith("gemini"):
-                    return "google"
-                if m.startswith(("mistral", "codestral")):
-                    return "mistral"
-                if m.startswith(("qwen", "wanx", "flux")):
-                    return "qwen"
-                return ""
+            from services.model_routing import resolve_model
 
-            agent_prov = _infer_prov(agent_cfg.model or "")
-            provider_key = None
-            for prov in ([agent_prov] if agent_prov else []) + [
-                "anthropic",
-                "openai",
-                "google",
-                "mistral",
-                "qwen",
-            ]:
-                if not prov:
-                    continue
-                pk = session.exec(
-                    select(ProviderKey)
-                    .where(ProviderKey.provider == prov)
-                    .where(ProviderKey.status == "active")
-                ).first()
-                if pk:
-                    provider_key = pk
-                    break
-
-            if not provider_key:
-                raise ValueError("No active provider key found")
-
-            api_key = decrypt(provider_key.encrypted_key)
+            resolved = resolve_model(agent_cfg.model, agent_cfg.provider)
+            api_key = resolved.api_key
             system_prompt = _build_system_prompt(agent, agent_cfg)
 
             # Load agent skills for tool use
@@ -513,24 +453,25 @@ def run_flow(flow_id: str) -> None:
 
             if _is_img(agent_cfg.model or ""):
                 output = _generate_image_sync(
-                    model=agent_cfg.model,
+                    model=resolved.model,
                     prompt=flow.prompt,
                     api_key=api_key,
-                    base_url=provider_key.base_url,
+                    base_url=resolved.base_url,
                 )
             else:
                 tools = (
                     _get_anthropic_tool_definitions(list(skills))
-                    if provider_key.provider == "anthropic"
+                    if resolved.protocol == "anthropic"
                     else []
                 )
                 output = _call_llm_with_tools(
-                    provider=provider_key.provider,
-                    model=agent_cfg.model,
+                    provider=resolved.provider,
+                    model=resolved.model,
                     system_prompt=system_prompt,
                     user_prompt=flow.prompt,
                     api_key=api_key,
                     tools=tools,
+                    base_url=resolved.base_url,
                 )
 
             # Deliver to inbox
