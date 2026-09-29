@@ -120,3 +120,58 @@ def test_main_refuses_to_run_without_a_key(monkeypatch, capsys):
     monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
     assert trial.main([]) == 2
     assert "TYPESAFE_API_KEY" in capsys.readouterr().err
+
+
+def test_failures_are_explained_by_type_not_hidden():
+    fake = Fake(lambda r: httpx2.Response(500, json={"error": "x"}))
+    clf = JevClassifier(client=client_for(fake))
+    records = trial.run_jev(clf, cases=trial.CASES[:3])
+    assert [r.error for r in records] == ["TypeSafeInternalServerError"] * 3
+    s = trial.summarize_jev(records)
+    assert s["failed_open"] == 3
+    assert s["failure_reasons"] == {"TypeSafeInternalServerError": 3}
+
+
+def test_a_success_clears_the_last_error():
+    calls = iter([500, 200])
+
+    def respond(request):
+        if next(calls) == 500:
+            return httpx2.Response(500, json={})
+        return httpx2.Response(200, json=our_answers())
+
+    clf = JevClassifier(client=client_for(Fake(respond)))
+    assert clf.classify("x") is None and clf.last_error == "TypeSafeInternalServerError"
+    assert clf.classify("x") is not None and clf.last_error is None
+
+
+def test_slow_calls_are_counted_against_the_production_budget():
+    fast = trial.Record(trial.CASES[0], Intent(task="chitchat"), 0.4)
+    slow = trial.Record(trial.CASES[1], Intent(task="chitchat"), 2.5)
+    s = trial.summarize_jev([fast, slow], budget=1.5)
+    assert s["calls_slower_than_production_budget"] == "1/2 (> 1.5s)"
+    assert s["failure_reasons"] == {}
+
+
+def test_main_stops_with_a_clear_message_when_the_api_is_unreachable(
+    monkeypatch, capsys
+):
+    """The preflight must say why, instead of reporting 20 silent failures."""
+    import typesafe_sdk
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "k")
+
+    class Blocked:
+        def __init__(self, **kw):
+            pass
+
+        @property
+        def models(self):
+            raise typesafe_sdk.TypeSafeAPIConnectionError(
+                "Connection error: 403 Forbidden"
+            )
+
+    monkeypatch.setattr(typesafe_sdk, "TypeSafeClient", Blocked)
+    assert trial.main([]) == 3
+    err = capsys.readouterr().err
+    assert "TypeSafeAPIConnectionError" in err and "Network access" in err

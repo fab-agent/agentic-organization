@@ -28,6 +28,7 @@ import os
 import statistics
 import sys
 import time
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -172,6 +173,7 @@ class Record:
     case: Case
     intent: Intent | None
     seconds: float
+    error: str | None = None  # exception type when the call failed
 
 
 def percentile(values: list[float], p: float) -> float | None:
@@ -188,11 +190,21 @@ def run_jev(classifier, cases=CASES, repeat: int = 1) -> list[Record]:
         for c in cases:
             t = time.perf_counter()
             intent = classifier.classify(c.text)
-            out.append(Record(c, intent, time.perf_counter() - t))
+            out.append(
+                Record(
+                    c,
+                    intent,
+                    time.perf_counter() - t,
+                    getattr(classifier, "last_error", None) if intent is None else None,
+                )
+            )
     return out
 
 
-def summarize_jev(records: list[Record]) -> dict:
+BUDGET_SECONDS = 1.5  # the production timeout (INTENT_TIMEOUT_SECONDS default)
+
+
+def summarize_jev(records: list[Record], budget: float = BUDGET_SECONDS) -> dict:
     n = len(records)
     got = [r for r in records if r.intent is not None]
     lat = [r.seconds for r in records]
@@ -238,6 +250,14 @@ def summarize_jev(records: list[Record]) -> dict:
     return {
         "requests": n,
         "failed_open": n - len(got),
+        "failure_reasons": dict(
+            Counter(r.error or "unknown" for r in records if r.intent is None)
+        ),
+        # The trial runs with a generous timeout so slow answers are measured, not
+        # lost. In production anything slower than the budget would fail open.
+        "calls_slower_than_production_budget": (
+            f"{sum(1 for r in records if r.seconds > budget)}/{n} (> {budget}s)"
+        ),
         "latency_seconds": {
             "p50": round(percentile(lat, 50), 3) if lat else None,
             "p95": round(percentile(lat, 95), 3) if lat else None,
@@ -314,7 +334,28 @@ def main(argv: list[str]) -> int:
         return 2
     from services.intent import JevClassifier
 
-    report: dict = {"jev": summarize_jev(run_jev(JevClassifier(), repeat=args.repeat))}
+    # Preflight (free: lists models): tell "cannot reach / bad key" apart from a
+    # classifier that merely answered slowly or not at all.
+    try:
+        from typesafe_sdk import TypeSafeClient
+
+        models = TypeSafeClient(timeout=15).models.list()
+        print(f"Reached TypeSafe: {models}", file=sys.stderr)
+    except Exception as e:  # noqa: BLE001
+        print(
+            f"Cannot use the TypeSafe API: {type(e).__name__}: {str(e)[:200]}\n"
+            "If this is a 403 on connect, the environment's network policy blocks "
+            "api.typesafe.ai (allow it under the environment's Network access).",
+            file=sys.stderr,
+        )
+        return 3
+
+    # A generous timeout here (measure slow answers); production uses 1.5 s.
+    trial = JevClassifier(timeout=args.timeout)
+    report: dict = {
+        "trial_timeout_seconds": args.timeout,
+        "jev": summarize_jev(run_jev(trial, repeat=args.repeat)),
+    }
     if args.calibrate:
         base, key = (
             os.getenv("OPENAI_COMPAT_BASE_URL"),

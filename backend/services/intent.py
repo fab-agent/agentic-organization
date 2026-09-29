@@ -139,6 +139,9 @@ class JevClassifier:
     def __init__(self, client: Any = None, timeout: float | None = None):
         quiet_sdk_logs()
         self._client = client
+        # Exception type of the last failure (None after a success). Type only —
+        # used by the trial harness to tell "blocked" from "slow" from "invalid".
+        self.last_error: str | None = None
         self._timeout = timeout or _timeout()
 
     def _get_client(self):
@@ -189,8 +192,11 @@ class JevClassifier:
                 timeout=self._timeout,
                 retry=RetryPolicy(max_retries=0, timeout=self._timeout),
             )
-            return _parse(resp)
+            intent = _parse(resp)
+            self.last_error = None
+            return intent
         except Exception as e:  # noqa: BLE001 - any failure means "no intent"
+            self.last_error = type(e).__name__
             # Type only: the message and the API key must never reach the logs.
             logger.warning(
                 "intent_classify_failed",

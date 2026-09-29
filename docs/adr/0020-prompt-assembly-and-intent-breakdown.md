@@ -152,6 +152,26 @@ probability separates "needs company knowledge" from "does not". Decisions to ta
 from the numbers: `INTENT_MIN_PROMPT_TOKENS`, the 0.6 confidence floor, the 0.25
 knowledge threshold, and the estimator's divisor for Turkish.
 
+### Criteria for wiring the classifier in (set before seeing any numbers)
+
+Proposals, to be confirmed or changed by the owner — written down first so the data
+cannot quietly move the goalposts:
+
+1. **Real work wrongly trimmed as chit-chat: 0** over at least 3 repeats of the
+   whole set (both languages). Anything above 0 means more or better-worded
+   criteria, not a lower bar.
+2. **Calls slower than the 1.5 s production budget: rare** (say under 5 %).
+   Otherwise raise `INTENT_TIMEOUT_SECONDS` knowingly or drop the feature — a
+   classifier that mostly times out is pure overhead.
+3. **`failed_open` from real errors (not from timeouts): near 0.** Investigate any
+   `failure_reasons` other than timeouts before enabling.
+4. **`INTENT_MIN_PROMPT_TOKENS` set from the measured fixed cost** (the `min` of
+   `input_tokens`): only classify prompts several times larger than that.
+5. **`noul` must separate** the "needs company knowledge" and "does not" means
+   clearly before its 0.25 threshold is trusted; otherwise skip only on chit-chat.
+6. Wire it behind `intent.enabled`, off by default, and log tags plus tokens spent
+   (never text) so cost and effect stay visible.
+
 ## Follow-ups
 
 1. Trial Jev against real requests: latency, cost per call, calibration of the
