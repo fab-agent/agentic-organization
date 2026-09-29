@@ -168,6 +168,101 @@ CASES: tuple[Case, ...] = (
 )
 
 
+# Knowledge probes: the `needs_company_knowledge` question, without ambiguity. In the
+# main set two messages ("summarise this contract clause…") never included the text,
+# and a classifier that sees only the message cannot know a document is attached — so
+# a high score there is defensible and the labels could not settle anything.
+# Here the text is either IN the message (no company knowledge needed) or the answer
+# can only come from company data (needed). Enforced by a test: inline probes carry
+# quoted text, data probes carry none.
+PROBES: tuple[Case, ...] = (
+    Case(
+        "Summarise this: 'Payment is due within 45 days of the invoice date. Late payments incur a 2% monthly fee.'",
+        "en",
+        "analysis",
+        "financial",
+        False,
+    ),
+    Case(
+        "Translate to German: 'Please send the signed invoice by Friday.'",
+        "en",
+        "document",
+        "internal",
+        False,
+    ),
+    Case(
+        "Fix the grammar in this sentence: 'The report were finished yesterday and me send it to they.'",
+        "en",
+        "document",
+        "public",
+        False,
+    ),
+    Case(
+        "What is our limit for travel expenses without manager approval?",
+        "en",
+        "lookup",
+        "internal",
+        True,
+    ),
+    Case(
+        "How many invoices from Acme Ltd are still unpaid?",
+        "en",
+        "lookup",
+        "financial",
+        True,
+    ),
+    Case(
+        "Which supplier had the largest overdue balance last quarter?",
+        "en",
+        "lookup",
+        "financial",
+        True,
+    ),
+    Case(
+        "Şunu özetle: 'Ödeme, fatura tarihinden itibaren 45 gün içinde yapılır. Geciken ödemelere aylık %2 gecikme bedeli uygulanır.'",
+        "tr",
+        "analysis",
+        "financial",
+        False,
+    ),
+    Case(
+        "Şu cümleyi Almancaya çevir: 'Lütfen imzalı faturayı cuma gününe kadar gönderin.'",
+        "tr",
+        "document",
+        "internal",
+        False,
+    ),
+    Case(
+        "Bu cümledeki yazım hatalarını düzelt: 'Yarın toplantıya gelemiyecegim, ozür dilerim.'",
+        "tr",
+        "document",
+        "public",
+        False,
+    ),
+    Case(
+        "Yönetici onayı olmadan seyahat harcaması limitimiz nedir?",
+        "tr",
+        "lookup",
+        "internal",
+        True,
+    ),
+    Case(
+        "Acme Ltd şirketinin kaç faturası hâlâ ödenmedi?",
+        "tr",
+        "lookup",
+        "financial",
+        True,
+    ),
+    Case(
+        "Geçen çeyrekte en yüksek gecikmiş bakiyeye sahip tedarikçi hangisi?",
+        "tr",
+        "lookup",
+        "financial",
+        True,
+    ),
+)
+
+
 @dataclass
 class Record:
     case: Case
@@ -277,6 +372,54 @@ def summarize_jev(records: list[Record], budget: float = BUDGET_SECONDS) -> dict
     }
 
 
+def summarize_probes(records: list[Record], threshold: float | None = None) -> dict:
+    """How `needs_company_knowledge` behaves on the unambiguous probes, per language.
+
+    `would_skip_*` counts calls whose score is below the threshold the wiring uses to
+    drop retrieved knowledge. On inline-text tasks that is the saving; on
+    needs-company-data tasks any hit is the **harmful** direction and must be 0.
+    `clean_separation` is true when every needs-data score is above every inline score.
+    """
+    from services.intent import LOW_KNOWLEDGE_NEED
+
+    threshold = LOW_KNOWLEDGE_NEED if threshold is None else threshold
+    out: dict = {}
+    for lang in sorted({r.case.lang for r in records}):
+        mine = [r for r in records if r.case.lang == lang]
+        scored = [
+            r
+            for r in mine
+            if r.intent is not None and r.intent.needs_company_knowledge is not None
+        ]
+
+        def group(needs: bool):
+            vals = [
+                r.intent.needs_company_knowledge
+                for r in scored
+                if r.case.needs_knowledge is needs
+            ]
+            below = sum(1 for v in vals if v < threshold)
+            return vals, below
+
+        inline, inline_below = group(False)
+        data, data_below = group(True)
+        out[lang] = {
+            "unanswered": len(mine) - len(scored),
+            "inline_text_tasks": {
+                "n": len(inline),
+                "mean_noul": round(statistics.mean(inline), 3) if inline else None,
+                "would_skip_knowledge": f"{inline_below}/{len(inline)}",
+            },
+            "needs_company_data": {
+                "n": len(data),
+                "mean_noul": round(statistics.mean(data), 3) if data else None,
+                "wrongly_would_skip_knowledge": f"{data_below}/{len(data)}",
+            },
+            "clean_separation": (min(data) > max(inline)) if inline and data else None,
+        }
+    return out
+
+
 def calibrate_estimates(pairs: list[tuple[str, str, int]]) -> dict:
     """pairs = (lang, text, actual_prompt_tokens) → how far `estimate_tokens` is off."""
     by_lang: dict[str, list[float]] = {}
@@ -366,6 +509,11 @@ def main(argv: list[str]) -> int:
         "--calibrate", action="store_true", help="also calibrate estimate_tokens"
     )
     ap.add_argument(
+        "--probes",
+        action="store_true",
+        help="also run the unambiguous needs_company_knowledge probes",
+    )
+    ap.add_argument(
         "--timeout",
         type=float,
         default=10.0,
@@ -400,6 +548,10 @@ def main(argv: list[str]) -> int:
         "trial_timeout_seconds": args.timeout,
         "jev": summarize_jev(run_jev(trial, repeat=args.repeat)),
     }
+    if args.probes:
+        report["knowledge_probes"] = summarize_probes(
+            run_jev(trial, cases=PROBES, repeat=args.repeat)
+        )
     if args.calibrate:
         base, key = (
             os.getenv("OPENAI_COMPAT_BASE_URL"),

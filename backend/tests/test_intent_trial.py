@@ -175,3 +175,73 @@ def test_main_stops_with_a_clear_message_when_the_api_is_unreachable(
     assert trial.main([]) == 3
     err = capsys.readouterr().err
     assert "TypeSafeAPIConnectionError" in err and "Network access" in err
+
+
+# ── the knowledge probes ──────────────────────────────────────────────────────
+
+
+def test_probes_are_balanced_bilingual_and_unambiguous():
+    assert {c.lang for c in trial.PROBES} == {"en", "tr"}
+    assert len({c.text for c in trial.PROBES}) == len(trial.PROBES)
+    assert not {c.text for c in trial.PROBES} & {c.text for c in trial.CASES}
+    for lang in ("en", "tr"):
+        mine = [c for c in trial.PROBES if c.lang == lang]
+        assert (
+            sum(c.needs_knowledge for c in mine)
+            == sum(not c.needs_knowledge for c in mine)
+            == 3
+        )
+    for c in trial.PROBES:
+        quoted = "'" in c.text
+        # inline-text tasks carry their text in the message; data questions carry none
+        assert quoted is (not c.needs_knowledge), c.text
+
+
+def _probe(lang, needs, noul):
+    case = trial.Case("x", lang, "lookup", "internal", needs)
+    return trial.Record(case, Intent(needs_company_knowledge=noul), 0.1)
+
+
+def test_probe_summary_reports_saving_harm_and_separation_per_language():
+    recs = [
+        _probe("en", False, 0.05),
+        _probe("en", False, 0.09),
+        _probe("en", True, 0.6),
+        _probe("en", True, 0.8),
+        _probe("tr", False, 0.7),
+        _probe("tr", False, 0.05),
+        _probe("tr", True, 0.1),
+        _probe("tr", True, 0.9),
+    ]
+    s = trial.summarize_probes(recs, threshold=0.15)
+    en, tr = s["en"], s["tr"]
+    assert en["inline_text_tasks"]["would_skip_knowledge"] == "2/2"
+    assert en["needs_company_data"]["wrongly_would_skip_knowledge"] == "0/2"
+    assert en["clean_separation"] is True
+    assert tr["inline_text_tasks"]["would_skip_knowledge"] == "1/2"
+    assert (
+        tr["needs_company_data"]["wrongly_would_skip_knowledge"] == "1/2"
+    )  # the harmful direction
+    assert tr["clean_separation"] is False
+    assert tr["needs_company_data"]["mean_noul"] == 0.5
+
+
+def test_probe_summary_tolerates_missing_answers():
+    recs = [
+        trial.Record(trial.Case("x", "en", "lookup", "internal", True), None, 0.1),
+        _probe("en", False, 0.2),
+    ]
+    s = trial.summarize_probes(recs)["en"]
+    assert s["unanswered"] == 1 and s["needs_company_data"]["n"] == 0
+    assert s["clean_separation"] is None
+
+
+def test_probes_run_through_the_harness_against_a_fake_jev():
+    fake = Fake(
+        lambda r: httpx2.Response(
+            200, json=our_answers(needs_company_knowledge={"type": "noul", "noul": 0.5})
+        )
+    )
+    recs = trial.run_jev(JevClassifier(client=client_for(fake)), cases=trial.PROBES)
+    assert len(recs) == len(trial.PROBES) == len(fake.requests)
+    assert trial.summarize_probes(recs)["en"]["inline_text_tasks"]["n"] == 3

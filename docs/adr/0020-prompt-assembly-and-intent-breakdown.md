@@ -151,6 +151,8 @@ repeat:
 ```sh
 cd backend
 TYPESAFE_API_KEY=... python scripts/intent_trial.py --repeat 3
+# the unambiguous needs_company_knowledge probes (see the correction under criterion 5):
+TYPESAFE_API_KEY=... python scripts/intent_trial.py --probes
 # token-estimate calibration against a real tokenizer (any OpenAI-compatible endpoint):
 OPENAI_COMPAT_BASE_URL=... OPENAI_COMPAT_API_KEY=... OPENAI_COMPAT_MODEL=... \
   python scripts/intent_trial.py --calibrate
@@ -221,6 +223,18 @@ have dropped retrieval for real work; "yes, go ahead" / "evet, devam et" came ba
    near-inert: the threshold went from 0.25 to **0.15**, below every real-work score
    seen (lowest 0.18), so in practice retrieval is skipped only where small talk is
    already trimmed. It is a margin, not a discriminator.
+
+   *Correction from a later review:* that reading is not supported by this ADR's own
+   data. (a) The end-to-end run below skipped retrieved knowledge on a real,
+   non-small-talk request ("Summarise this clause: Payment is due within 45 days…",
+   `noul` 0.09, 580 → 253 tokens, same answer), so the rule does fire on real work.
+   (b) The verdict rests on two ambiguous labels: neither "summarise this contract
+   clause" message contains the clause, and a classifier that sees only the message
+   cannot know a document is attached — so 0.66–0.70 is defensible, not a miss. The
+   criterion is **undecided, not failed**. `python scripts/intent_trial.py --probes`
+   re-tests it with unambiguous cases (text inline vs. answer only in company data);
+   what to look for is a per-language `clean_separation` and **0** needs-company-data
+   requests that would skip retrieval.
 6. Wired behind `intent.enabled`, off by default, audited without text — done.
 
 **Constants changed from the data**
@@ -326,11 +340,15 @@ up in agent instructions, like policies: whoever can edit them can steer the age
   data, with a greeting) for small talk, and one skipped retrieval round trip. Real
   token savings have to come from elsewhere: the cache-friendly stable prefix,
   tool / MCP schema deferral, lookup tools instead of inlined text.
-- **`needs_company_knowledge` is asked but barely used.** Its separation criterion
-  failed (means 0.557 vs 0.195, ranges overlapping), and after lowering the
-  threshold to 0.15 it only fires on small talk that `task = chitchat` already
-  catches. It still costs input tokens on every call and writes an unreliable tag.
-  Proposal: drop the question (and the tag) unless a later trial shows it separates.
+- **`needs_company_knowledge`: keep it, and settle it with better data.** An earlier
+  version of this note proposed dropping the question because it looked inert (it
+  "only fires on small talk that `task = chitchat` already catches"). That was wrong:
+  the end-to-end run shows it firing on a real request with no harm, and the failed
+  separation criterion rests on two ambiguous labels (see the correction under
+  criterion 5). What is true: the score is not a reliable *tag* across languages on the
+  original set, and the question costs input tokens on every call. The `--probes` set
+  exists to decide with clean data; drop or reword the question only if it fails
+  there.
 - **The token estimator is calibrated to one tokenizer** (Qwen). Other providers'
   tokenizers produce more tokens per English character, so budget and gate figures
   are optimistic for them; a per-provider factor would fix it.
