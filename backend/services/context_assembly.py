@@ -38,13 +38,15 @@ _DEFAULT_BUDGET = 2000  # tokens; a starting value to tune from real reports
 
 
 def estimate_tokens(text: str) -> int:
-    """Rough token count (no tokenizer is installed): ~4 characters per token for
-    mostly-ASCII text, ~3 when accented characters are common (e.g. Turkish).
-    Good for comparing sections and spotting growth, not for billing."""
+    """Rough token count (no tokenizer is installed): ~4.8 characters per token for
+    mostly-ASCII text, ~3.3 when accented characters are common (e.g. Turkish).
+    Measured against Qwen's tokenizer (ADR-0020): English 4.9-5.3, Turkish 3.2-3.7
+    characters per token, so these lean slightly high. Other providers' tokenizers
+    differ. Good for comparing sections and spotting growth, not for billing."""
     if not text:
         return 0
     non_ascii = sum(1 for c in text if ord(c) > 127)
-    per_token = 3.0 if non_ascii / len(text) > 0.05 else 4.0
+    per_token = 3.3 if non_ascii / len(text) > 0.05 else 4.8
     return math.ceil(len(text) / per_token)
 
 

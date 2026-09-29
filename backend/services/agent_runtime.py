@@ -100,6 +100,77 @@ def build_system_prompt_assembled(
     )
 
 
+def _company_domains(company_id: str | None) -> dict[str, str] | None:
+    """The company's own departments as the choices for Jev's `domain` question."""
+    if not company_id:
+        return None
+    try:
+        with get_session() as session:
+            rows = session.exec(
+                select(Department)
+                .where(Department.company_id == company_id)
+                .where(Department.status == "Active")
+            ).all()
+        out = {d.slug: (d.description or d.name)[:200] for d in rows if d.slug}
+        return out or None
+    except Exception:  # noqa: BLE001 - the domain is optional
+        return None
+
+
+def _classify_for_prompt(
+    person: Personnel,
+    dept: Department | None,
+    skills: list[Skill],
+    policy_names: list[str] | None,
+    message: str,
+    company_id: str | None,
+    session_ref: str | None,
+) -> frozenset[str]:
+    """Sections Jev lets us leave out of this prompt (ADR-0020). Empty — the complete
+    prompt — whenever the feature is off, the prompt is too small to be worth the
+    call, or anything fails. Only ever narrows; never a security control."""
+    from services.intent import get_classifier, sections_to_skip, worth_it
+
+    try:
+        classifier = get_classifier()
+        if classifier is None:
+            return frozenset()
+        baseline = build_system_prompt_assembled(
+            person, dept, skills, policy_names, None, company_id
+        )
+        if not worth_it(baseline.total_tokens):
+            return frozenset()
+        intent = classifier.classify(message, domains=_company_domains(company_id))
+        if intent is None:
+            return frozenset()
+        skip = sections_to_skip(intent)
+        # Tags, sizes and tokens only — never the message text.
+        from services import audit_chain
+
+        audit_chain.record(
+            actor_type="system",
+            actor_id=person.id,
+            company_id=company_id,
+            action="intent_classified",
+            target=session_ref,
+            reason=f"task={intent.task or 'unknown'}",
+            payload={
+                "tags": intent.tags(),
+                "skipped_sections": sorted(skip),
+                "model": intent.model,
+                "input_tokens": intent.input_tokens,
+                "output_tokens": intent.output_tokens,
+                "prompt_tokens_estimate": baseline.total_tokens,
+            },
+        )
+        return skip
+    except Exception as e:  # noqa: BLE001 - any failure means the complete prompt
+        _log.warning(
+            "intent_wiring_failed", extra={"extra": {"error": type(e).__name__}}
+        )
+        return frozenset()
+
+
 def build_system_prompt(
     person: Personnel,
     dept: Department | None,
@@ -107,14 +178,45 @@ def build_system_prompt(
     policy_names: list[str] | None = None,
     rag_query: str | None = None,
     company_id: str | None = None,
+    *,
+    intent_message: str | None = None,
+    session_ref: str | None = None,
 ) -> str:
+    """`intent_message` is the user's first message of a session: when given, and the
+    classifier is enabled, Jev may narrow the prompt (and skip retrieval). Callers
+    pass it for the first turn only — the prompt is rebuilt every turn, and changing
+    its stable sections mid-conversation would break prompt caching and could drop
+    context from a bare "ok" that continues a task."""
+    skip: frozenset[str] = frozenset()
+    if intent_message:
+        skip = _classify_for_prompt(
+            person,
+            dept,
+            skills,
+            policy_names,
+            intent_message,
+            company_id,
+            session_ref,
+        )
     assembled = build_system_prompt_assembled(
-        person, dept, skills, policy_names, rag_query, company_id
+        person,
+        dept,
+        skills,
+        policy_names,
+        None if "knowledge" in skip else rag_query,
+        company_id,
+        skip=skip,
     )
     # Sizes only, never text: shows where the tokens go for every real prompt.
     _log.info(
         "prompt_assembled",
-        extra={"extra": {"persona": person.id, "prompt": assembled.report()}},
+        extra={
+            "extra": {
+                "persona": person.id,
+                "prompt": assembled.report(),
+                "intent_skipped": sorted(skip),
+            }
+        },
     )
     return assembled.text()
 
@@ -1104,6 +1206,10 @@ async def run_session(
             policy_names or None,
             rag_query=user_message[:500] if not history_rows else None,
             company_id=person.company_id,
+            # First turn only (see build_system_prompt); the message without
+            # attachments, so file contents never go to the classifier.
+            intent_message=user_message if not history_rows else None,
+            session_ref=session_id,
         )
         tool_defs = build_tool_definitions(list(skills))
 

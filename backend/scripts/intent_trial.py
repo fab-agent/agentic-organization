@@ -295,28 +295,66 @@ def calibrate_estimates(pairs: list[tuple[str, str, int]]) -> dict:
 
 
 CALIBRATION_TEXTS = {
-    "en": "You are an assistant for the finance team. Summarise the quarterly report, "
-    "list the three largest risks, and keep the answer short and factual. " * 6,
-    "tr": "Finans ekibi için bir asistansın. Üç aylık raporu özetle, en büyük üç riski "
-    "listele ve cevabı kısa ve gerçekçi tut. " * 6,
+    "en": (
+        "You are Ada, a senior financial analyst at the company. Your department is "
+        "Finance. Your goals are to close the books on time and to keep the cash "
+        "forecast accurate within two percent. Never share salary data outside HR.",
+        "Company mission: make manufacturing planning simple. Values: honesty, "
+        "ownership, speed, care for customers. Goals: reduce late deliveries by "
+        "thirty percent and keep gross margin above forty percent this year.",
+        "Available skills: web search, chart generation, code execution, delegate to "
+        "another agent, read spreadsheet, send email. Use a skill only when it is "
+        "needed and explain the result briefly in plain language.",
+        "Retrieved knowledge: domestic trips need manager approval above 300 euros, "
+        "and international trips need finance approval before booking. Meals are "
+        "reimbursed up to 40 euros per day with receipts attached.",
+        "Rules you must follow: do not delete records, do not send external emails "
+        "without approval, and always cite the source of any figure you report.",
+    ),
+    "tr": (
+        "Sen Ada'sın, şirketin kıdemli finans analistisin. Departmanın Finans. "
+        "Hedeflerin defterleri zamanında kapatmak ve nakit tahminini yüzde iki "
+        "içinde doğru tutmak. Maaş verilerini İK dışında paylaşma.",
+        "Şirket misyonu: üretim planlamasını kolaylaştırmak. Değerler: dürüstlük, "
+        "sahiplenme, hız, müşteriye özen. Hedefler: geç teslimatları yüzde otuz "
+        "azaltmak ve brüt marjı bu yıl yüzde kırkın üzerinde tutmak.",
+        "Kullanılabilir yetenekler: web araması, grafik oluşturma, kod çalıştırma, "
+        "başka bir ajana devretme, tablo okuma, e-posta gönderme. Bir yeteneği "
+        "yalnızca gerektiğinde kullan ve sonucu sade bir dille kısaca açıkla.",
+        "Getirilen bilgi: yurt içi gezilerde 300 eurodan fazlası için yönetici "
+        "onayı, yurt dışı gezilerde rezervasyondan önce finans onayı gerekir. "
+        "Yemekler fişle günde 40 euroya kadar karşılanır.",
+        "Uymak zorunda olduğun kurallar: kayıtları silme, onaysız dış e-posta "
+        "gönderme ve bildirdiğin her rakamın kaynağını her zaman belirt.",
+    ),
 }
 
 
 def run_calibration(
     base_url: str, api_key: str, model: str
 ) -> list[tuple[str, str, int]]:
+    """(lang, text, actual tokens). The endpoint adds a fixed chat-template overhead
+    to every request (about 60 tokens on Qwen), so it is measured with a one-token
+    message and subtracted — otherwise short texts look far more expensive than
+    they are."""
     from openai import OpenAI
 
     client = OpenAI(base_url=base_url, api_key=api_key, timeout=30)
-    pairs = []
-    for lang, text in CALIBRATION_TEXTS.items():
+
+    def prompt_tokens(text: str) -> int:
         resp = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": text}],
             max_tokens=1,
         )
-        pairs.append((lang, text, resp.usage.prompt_tokens))
-    return pairs
+        return resp.usage.prompt_tokens
+
+    overhead = prompt_tokens("a") - 1
+    return [
+        (lang, text, prompt_tokens(text) - overhead)
+        for lang, texts in CALIBRATION_TEXTS.items()
+        for text in texts
+    ]
 
 
 def main(argv: list[str]) -> int:
@@ -326,6 +364,12 @@ def main(argv: list[str]) -> int:
     )
     ap.add_argument(
         "--calibrate", action="store_true", help="also calibrate estimate_tokens"
+    )
+    ap.add_argument(
+        "--timeout",
+        type=float,
+        default=10.0,
+        help="per-call timeout in seconds for the trial (production uses 1.5)",
     )
     args = ap.parse_args(argv)
 

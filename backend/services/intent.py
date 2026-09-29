@@ -49,7 +49,7 @@ def quiet_sdk_logs() -> None:
 MAX_MESSAGE_CHARS = 2000
 MAX_DOMAINS = 12
 MIN_CONFIDENCE = 0.6  # choice answers below this are treated as "unknown"
-LOW_KNOWLEDGE_NEED = 0.25  # below this, skip retrieved knowledge
+LOW_KNOWLEDGE_NEED = 0.15  # below this, skip retrieved knowledge (ADR-0020 trial)
 
 # Per-turn and stable sections an intent may leave out (never the required ones).
 ALL_OPTIONAL = frozenset({"knowledge", "memory", "department", "job", "company"})
@@ -111,12 +111,12 @@ def sections_to_skip(intent: Intent | None) -> frozenset[str]:
 
 def worth_it(prompt_tokens: int) -> bool:
     """Only classify when the prompt is big enough for savings to beat the fixed
-    cost of the questions (`INTENT_MIN_PROMPT_TOKENS`, default 800: a starting
-    value — measure against real usage before trusting it)."""
+    cost of the questions (`INTENT_MIN_PROMPT_TOKENS`, default 1500: about three
+    times the ~520 input tokens Jev measured per call in the ADR-0020 trial)."""
     try:
-        floor = int(os.getenv("INTENT_MIN_PROMPT_TOKENS", "800"))
+        floor = int(os.getenv("INTENT_MIN_PROMPT_TOKENS", "1500"))
     except ValueError:
-        floor = 800
+        floor = 1500
     return prompt_tokens >= floor
 
 

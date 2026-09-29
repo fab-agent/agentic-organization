@@ -57,7 +57,7 @@ gateway that prunes `tools[]` mid-conversation would break prompt caching and ca
 make a provider reject a turn that calls a tool no longer listed, so any pruning
 happens only at session start.
 
-### 3. Intent breakdown with TypeSafe Jev (client built, not wired)
+### 3. Intent breakdown with TypeSafe Jev (built, wired behind `intent.enabled`)
 
 `services/intent.py`. Jev answers typed questions (choice / score / noul) with
 calibrated probabilities (`POST /v1/systemone`; the SDK `typesafe-sdk` sends
@@ -78,12 +78,22 @@ Constraints, all tested:
 - **Fail open and fast.** 1.5 s timeout (`INTENT_TIMEOUT_SECONDS`), **no retries**
   (the SDK default is a 10 s timeout and two retries — wrong for a pre-model step),
   and any failure returns "no intent", i.e. the complete prompt. Choice answers below
-  0.6 confidence count as unknown.
-- **Cost gate.** TypeSafe's example used 392 input tokens for a ~25-word message: the
-  questions themselves cost a few hundred tokens. So the call only pays off for
-  prompts large enough to save more than that (`INTENT_MIN_PROMPT_TOKENS`, default
-  800 — a guess to replace with measurements). Send only the user's message (capped
-  at 2000 characters), never the assembled context.
+  0.6 confidence count as unknown (kept: see Trial results).
+- **Cost gate.** Measured: the questions cost ~520 input + ~120 output tokens per
+  call, ~550 + ~140 with the company-department `domain` question. So the call only
+  pays off for prompts large enough to save more than that
+  (`INTENT_MIN_PROMPT_TOKENS`, default 1500 — about three times the fixed input
+  cost; see Trial results for why even that is not a token win by itself). Send only
+  the user's message (capped at 2000 characters, without attachments), never the
+  assembled context.
+- **First turn of a session only.** The chat prompt is rebuilt every turn, so
+  narrowing it on a later turn would change the stable prefix (breaking prompt
+  caching) and a bare "ok" / "tamam" that continues a task is classified as small
+  talk (measured: 0.99 / 0.86). Classifying only the first message (the same turn
+  that runs retrieval) avoids both, and costs one call per session.
+- **Audited without text.** `intent_classified` in the audit chain: tags, skipped
+  section names, model, input/output tokens and the prompt-size estimate — never the
+  message. The prompt-assembly log adds `intent_skipped`.
 - **No text in logs.** Errors log the exception type only; the SDK's DEBUG logging of
   request bodies (which contains the message) is filtered out.
 - **Opt-in per install.** Requests leave the premises: off unless
@@ -117,13 +127,14 @@ Constraints, all tested:
 
 ## Not done yet
 
-- **Nothing calls the classifier.** `build_system_prompt` does not use
-  `sections_to_skip`; wiring it (and skipping the retrieval itself when knowledge is
-  not needed) waits for a trial against the real API.
-- **The real API has not been called** (no key, no egress here): confidence
-  semantics, latency and per-call cost are unmeasured. The `noul` answer has no
-  `confidence` field in the example; we read its value as a probability of "true" —
-  verify against TypeSafe's documentation.
+- **Jev's price per call is unknown** (the trial measured tokens, not money), so
+  whether the call is cheaper than the tokens it saves is not settled — see Trial
+  results. The `noul` answer has no `confidence` field; we read its value as a
+  probability of "true". The measurements are consistent with that (small talk
+  0.04–0.12, "which policy covers …" 0.76–0.90) but TypeSafe's documentation was not
+  checked.
+- Only the first turn is classified; skipping optional sections on later turns is
+  deliberately not done (see the constraint above).
 - No lookup tools, no tool-schema deferral, no MCP token accounting, no digests
   generated from full policy text, no local classifier.
 - The workspace (opencode) path does not use this assembly yet: it needs an endpoint
@@ -131,10 +142,11 @@ Constraints, all tested:
 
 ## Trial status
 
-A trial harness exists — `backend/scripts/intent_trial.py`, with its own tests — but
-**it has not been run against the real API**: the session's network policy blocked
-`api.typesafe.ai` (and the OpenAI-compatible endpoint used for token calibration), so
-nothing has been measured. Run it from a session that can reach the services:
+Run on 2026-09-29 against the real APIs (TypeSafe `jev-latest`; Qwen `qwen3.8-flash`
+through an OpenAI-compatible endpoint for the tokenizer): `backend/scripts/intent_trial.py
+--repeat 3 --calibrate` (20 synthetic English and Turkish requests × 3 = 60 calls, no
+company data), plus two extra probes and one end-to-end run described below. To
+repeat:
 
 ```sh
 cd backend
@@ -144,13 +156,12 @@ OPENAI_COMPAT_BASE_URL=... OPENAI_COMPAT_API_KEY=... OPENAI_COMPAT_MODEL=... \
   python scripts/intent_trial.py --calibrate
 ```
 
-It sends 20 synthetic English and Turkish requests (no company data) and reports
-latency (p50 / p95), the fixed input-token cost of the questions, how often a choice
-is confident, chit-chat recognised, **real work wrongly trimmed as chit-chat** (the
-harmful direction — should be 0 before this is wired in), and how the `noul`
-probability separates "needs company knowledge" from "does not". Decisions to take
-from the numbers: `INTENT_MIN_PROMPT_TOKENS`, the 0.6 confidence floor, the 0.25
-knowledge threshold, and the estimator's divisor for Turkish.
+Two defects in the harness itself surfaced only on the first real run and are fixed:
+`--timeout` was read but never defined, and the calibration compared prompt tokens
+that include the endpoint's fixed chat-template overhead (62 tokens on Qwen's default
+template, 26 with thinking off) — it reported the estimate as *too low* (×1.12 en,
+×1.22 tr) when it is in fact too high. The overhead is now measured with a one-token
+message and subtracted, over five texts per language.
 
 ### Criteria for wiring the classifier in (set before seeing any numbers)
 
@@ -172,12 +183,105 @@ cannot quietly move the goalposts:
 6. Wire it behind `intent.enabled`, off by default, and log tags plus tokens spent
    (never text) so cost and effect stay visible.
 
+### Trial results (2026-09-29)
+
+**Measured** (60 calls, 20 cases × 3):
+
+| | result |
+|---|---|
+| calls that failed open | 0 / 60 |
+| latency | p50 0.24 s, p95 0.27 s, max 0.43 s; 0 / 60 slower than 1.5 s |
+| tokens per call | 512–538 in (mean 520), 119–121 out; with the `domain` question 547–574 in, 140–142 out |
+| `task` | 60 / 60 confident and correct; confidence 1.0 on clear requests, 0.86–0.99 on short small talk |
+| `sensitivity` | 45 / 60 confident, 36 / 45 matching our labels; tags only, never used to trim |
+| small talk recognised and trimmed | 12 / 12 |
+| **real work wrongly trimmed as small talk** | **0 / 48** |
+| `noul` when knowledge needed / not | mean 0.557 (range 0.24–0.87) / 0.195 |
+
+Extra probe (14 mixed, short and confirmation messages, not part of the harness set):
+"Good. Please proceed with the payment run." scored 0.19 and "Thanks! Now delete the
+salary column…" 0.24 on `needs_company_knowledge`, so the old 0.25 threshold would
+have dropped retrieval for real work; "yes, go ahead" / "evet, devam et" came back as
+`action` at only 0.50 / 0.52, so the 0.6 floor correctly left them unknown; "ok" /
+"tamam" came back as small talk (0.99 / 0.86); "What can you do?" as small talk
+(0.86), which drops company and job context but keeps identity and skills.
+
+**Against the criteria**
+
+1. Real work trimmed as small talk: **0 / 48** over 3 repeats, both languages — met.
+   (The set is synthetic and easy; the extra probe found nothing either, but mid-task
+   confirmations are only safe because of the first-turn-only rule.)
+2. Slower than 1.5 s: **0 / 60** (< 5 %) — met.
+3. Failed open from real errors: **0** — met.
+4. `INTENT_MIN_PROMPT_TOKENS` from the measured cost — **set to 1500** (from 800).
+5. `noul` separates clearly — **not met**. The means differ, but individual cases
+   overlap both ways: the Turkish "summarise this contract clause" (no knowledge
+   needed) scored 0.66–0.70 while the English "send the overdue reminders" (needs the
+   customer list) scored 0.24–0.26. Per the criterion the knowledge-only skip must be
+   near-inert: the threshold went from 0.25 to **0.15**, below every real-work score
+   seen (lowest 0.18), so in practice retrieval is skipped only where small talk is
+   already trimmed. It is a margin, not a discriminator.
+6. Wired behind `intent.enabled`, off by default, audited without text — done.
+
+**Constants changed from the data**
+
+- `INTENT_MIN_PROMPT_TOKENS` 800 → 1500.
+- `LOW_KNOWLEDGE_NEED` 0.25 → 0.15.
+- `MIN_CONFIDENCE` 0.6 **kept**: task answers were either ≥ 0.86 or ≈ 0.5 with
+  nothing in between, so any value in that gap is equally supported and none of the
+  measurements argues for moving it (raising it would only turn correct sensitivity
+  tags at 0.54–0.66 into "unknown").
+- `estimate_tokens` divisor: English 4.0 → 4.8, accented (Turkish) 3.0 → 3.3
+  characters per token. Measured with Qwen's tokenizer over 10 texts: English
+  4.92–5.25 (mean 5.06), Turkish 3.21–3.73 (mean 3.39). Set just below the measured
+  minimum so the estimate still leans high. One tokenizer only — Claude's and GPT's
+  differ.
+
+### End-to-end (2026-09-29)
+
+Real Jev + real Qwen through `build_system_prompt`, with `intent.enabled` set in
+AppConfig and the audit chain on: a company with mission, vision, five values and five
+goals, a department with goals, eight policy names, five skills and four (synthetic)
+retrieved knowledge chunks. The same chat message answered once with the complete
+prompt and once with the narrowed one; `prompt_tokens` is Qwen's, net of overhead.
+
+| message | narrowed | prompt tokens full → narrowed |
+|---|---|---|
+| "Merhaba, günaydın!" | company, department, job, knowledge, memory | 557 → 102 |
+| "Hi! Thanks, that was helpful." | same | 556 → 101 |
+| "Sen kimsin, ne yapabilirsin?" | same | 558 → 103 |
+| "What can you do?" | same | 553 → 98 |
+| "Summarise this clause: Payment is due within 45 days…" | knowledge (`noul` 0.09) | 580 → 253 |
+| "Which of our policies covers travel expenses above 500 euros?" | nothing (`noul` 0.84) | 562 → 562 |
+
+The narrowed answers were correct and on topic in every case (the clause summary was
+the same in both). One difference in the other direction: with the complete prompt the
+reply to "Hi! Thanks, that was helpful." volunteered "since we've been working through
+supplier reconciliation and payment plans…" — history invented from the retrieved
+knowledge chunks (which were synthetic here); the narrowed reply did not.
+
+**What this says about cost.** Each classification costs roughly 690 Jev tokens
+(550 in, 140 out) and saved at most 455 Qwen tokens on this ~560-token prompt, on the
+turns it helps at all. So on prompts this size the call is a net loss in tokens even
+for small talk, which is what the gate is for; at 1500 it is a win only when a large
+share of first turns are small talk or need no knowledge. Jev's price per token is
+unknown here, so this is a comparison of counts, not of money. The steadier reasons to
+enable it are the tags for the work-review pipeline and not injecting irrelevant
+retrieved text into a greeting; the token saving becomes real once prompts carry MCP
+and tool schemas (§2).
+
+
 ## Follow-ups
 
-1. Trial Jev against real requests: latency, cost per call, calibration of the
-   thresholds; decide `INTENT_MIN_PROMPT_TOKENS` from data.
-2. Wire the classifier into the chat path (behind `intent.enabled`), skip retrieval
-   when knowledge is not needed, and store `Intent.tags()` for review.
-3. `lookup_policy` / company-knowledge tools on the MCP server; then digests.
-4. Serve the assembled context to the workspace agent (`/workstation/context`).
-5. Measure real prompts from the `prompt_assembled` logs and tune the budget.
+1. ~~Trial Jev against real requests~~ — done 2026-09-29 (see Trial results). Repeat it
+   on real (anonymised) first messages before turning `intent.enabled` on for a
+   customer; the synthetic set is easy.
+2. ~~Wire the classifier into the chat path~~ — done (first turn only, behind
+   `intent.enabled`). Left: storing `Intent.tags()` on the work-review record (they
+   are in the audit chain today, not yet consumed by the review pipeline).
+3. Find out what a Jev call costs in money; only then is the token comparison above
+   more than a comparison of counts.
+4. `lookup_policy` / company-knowledge tools on the MCP server; then digests.
+5. Serve the assembled context to the workspace agent (`/workstation/context`).
+6. Measure real prompts from the `prompt_assembled` logs and tune the budget; check
+   the estimator against Claude's and GPT's tokenizers, not only Qwen's.

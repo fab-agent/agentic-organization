@@ -349,10 +349,13 @@ def test_low_knowledge_need_skips_only_retrieved_knowledge():
     assert sections_to_skip(Intent(task="analysis", needs_company_knowledge=0.1)) == {
         "knowledge"
     }
-    assert (
-        sections_to_skip(Intent(task="analysis", needs_company_knowledge=0.25))
-        == frozenset()
-    )
+    # Measured in the ADR-0020 trial: real work scored 0.19-0.24 ("proceed with the
+    # payment run", "delete the salary column"), so none of it may be trimmed.
+    for need in (0.15, 0.19, 0.24, 0.25):
+        assert (
+            sections_to_skip(Intent(task="action", needs_company_knowledge=need))
+            == frozenset()
+        )
     assert (
         sections_to_skip(Intent(task="analysis", needs_company_knowledge=0.9))
         == frozenset()
@@ -393,11 +396,11 @@ def test_an_intent_can_only_narrow_never_add(client, db_session):
 
 def test_worth_it_gate(monkeypatch):
     monkeypatch.delenv("INTENT_MIN_PROMPT_TOKENS", raising=False)
-    assert worth_it(800) and not worth_it(799)
+    assert worth_it(1500) and not worth_it(1499)
     monkeypatch.setenv("INTENT_MIN_PROMPT_TOKENS", "100")
     assert worth_it(100) and not worth_it(99)
     monkeypatch.setenv("INTENT_MIN_PROMPT_TOKENS", "banana")
-    assert worth_it(800) and not worth_it(799)
+    assert worth_it(1500) and not worth_it(1499)
 
 
 # ── opt-in gating ─────────────────────────────────────────────────────────────
