@@ -60,17 +60,20 @@ criteria:
 ### 2. What a rating is — and is not
 
 For one run/session summary and each applicable criterion, the scoring model
-returns a probability and a one-line reason (TypeSafe Jev, ADR-0015/0020). The
+returns a probability of "yes" (TypeSafe Jev `Noul`, ADR-0015/0020). Jev answers are
+probabilities, not text, so **a rating carries no free-text reason** in this design —
+which also keeps personal data out of stored rows; the reader sees the criterion and
+the verdict. (An earlier draft of this ADR promised a one-line reason.) The
 probability maps to a **verdict**: `met`, `not_met`, or `unclear` (between the
 thresholds, or the model failed / abstained). `unclear` is a first-class result
 and is never rounded to a side.
 
 - **There is no per-person score and no overall grade.** Views show counts per
-  criterion (met / not met / unclear / not applicable) and the reasons. Averaging
-  unlike questions into one number would hide exactly what the person needs to see.
+  criterion (met / not met / unclear / not applicable) and the criteria themselves.
+  Averaging unlike questions into one number would hide exactly what the person needs
+  to see.
 - The scoring input is the **filtered, redacted** summary (ADR-0019 §6 step 1), not
-  raw content or keystrokes. The reason (≤ 200 characters) must not quote personal
-  data; it is redacted with the same filter before storage.
+  raw content or keystrokes.
 - Scoring is **sampled** (*proposal*: 20 % of runs, all runs that touched a
   personal-data class) and uses a cheap model through the gateway (ADR-0004).
 - Ratings are side rows keyed to audit sequence numbers; the chain is never touched.
@@ -118,7 +121,7 @@ new ratings; old rows follow normal retention.
 
 ### 6. Where the result goes
 
-- **Person:** their ratings and reasons in full, in "My review", before any
+- **Person:** their ratings in full, in "My review", before any
   manager can see anything (ADR-0019 person-first rule).
 - **Contest.** A person can contest a rating with a note. A contested rating is
   marked, **excluded from manager per-person views' summaries, all aggregates and
@@ -138,9 +141,11 @@ new ratings; old rows follow normal retention.
 
 ### 7. Storage (proposal)
 
-`work_rating(id, company_id, personnel_id, day, run_id, audit_seq_from,
-audit_seq_to, criterion_id, criterion_hash, rubric_commit, verdict, probability,
-reason, model, contested_at, resolved_at, created_at)`. Same retention window and
+`workrating(id, company_id, personnel_id, day, run_id, criterion_id, criterion_hash,
+rubric_version, criterion_status, verdict, probability, model, contest_note,
+contested_at, resolved_at, created_at)`, unique per (person, run, criterion, hash).
+The rubric version is a hash of the stored rubric text until the policy repo is wired;
+the audit sequence range is dropped until a summary source exists. Same retention window and
 erasure-with-the-person as the other review rows; covered by the existing daily
 purge. Off by default with the rest of work review.
 
@@ -164,9 +169,34 @@ purge. Off by default with the rest of work review.
 1. ~~Rubric file format + linter~~ — done: `services/rubric.py` (parse, lint, hash, verdict, applicability; refs are positional: `company.goals.2`, `department.<slug>.goals.1`, `policy.<slug>`). Not yet wired to the policy repo or an API.
 2. Drafting pass added to the ADR-0017 import; rubric change goes through the
    existing change-request flow.
-3. `work_rating` table + scoring job (sampled, gateway, redaction) reusing the Jev
-   client from ADR-0020; verdict mapping and versioning.
+3. ~~`work_rating` table + scoring job~~ — first slice done (see *Implementation
+   status*); still to do: the summary source, the redaction stage, and running it
+   from the scheduler.
 4. Calibration tool (`labelled sample → agreement report`), `shadow` gating.
 5. `fab`: rubric view, ratings in "My review", contest action.
 6. Measure the thresholds, sample rate and batching on real summaries; replace the
    *proposal* numbers.
+
+## Implementation status (2026-09-29)
+
+Built: `services/rubric.py` (format, linter, hash, verdict, applicability) and
+`services/rating.py` + the `WorkRating` table (migration `e7b3d9a25c48`): the rubric
+stored behind the linter, a separate per-company switch for rating (off by default, and
+only on top of work review), deterministic sampling (every personal-data run is rated),
+one Jev call per run with one `Noul` question per applicable criterion, idempotent rows
+keyed by criterion hash, fail-open, and retention / erasure covering the new rows.
+Tested with a faked scorer and a mocked Jev transport (no network here).
+
+**Not built, and why it matters:**
+
+- **Nothing calls `rate_run` yet.** No run-summary source is wired, and the filter /
+  redaction stage of ADR-0019 §6 does not exist. Until it does, callers must pass
+  already-filtered text, and rating stays off by default because the summary goes to
+  the scoring model as given.
+- No person view, manager view, aggregates, contest endpoint, shadow gating in a view,
+  training-need signal, calibration tool or `fab` rubric view. Because no endpoint
+  reads ratings, they are visible to nobody today.
+- The rubric lives in an `AppConfig` row, not in the policy repo behind a change
+  request; the 20 % sample rate, thresholds and caps are unmeasured proposals.
+- The Jev call with several `Noul` questions was exercised only against the documented
+  wire format, not the live API.

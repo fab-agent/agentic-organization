@@ -46,6 +46,7 @@ from models import (
     Department,
     Personnel,
     WorkNote,
+    WorkRating,
     WorkSignal,
 )
 from services.workspaces import MANAGER_ROLES, _in_scope
@@ -230,14 +231,14 @@ def rollup_recent(days: int = 2, today: date | None = None) -> dict:
 
 
 def purge_expired(today: date | None = None) -> int:
-    """Delete signals and notes older than each company's retention window (also for
+    """Delete signals, notes and ratings older than each company's retention window (also for
     companies that have since switched work review off). Returns rows deleted."""
     today = today or datetime.utcnow().date()
     n = 0
     with get_session() as session:
         for cid in session.exec(select(Company.id)).all():
             cutoff = (today - timedelta(days=retention_days(session, cid))).isoformat()
-            for model in (WorkSignal, WorkNote):
+            for model in (WorkSignal, WorkNote, WorkRating):
                 res = session.execute(
                     delete(model).where(model.company_id == cid, model.day < cutoff)
                 )
@@ -247,9 +248,9 @@ def purge_expired(today: date | None = None) -> int:
 
 
 def erase_person(session, personnel_id: str) -> int:
-    """Erase everything work review holds about one person. The caller commits."""
+    """Erase everything work review holds (signals, notes, ratings) about one person. The caller commits."""
     n = 0
-    for model in (WorkSignal, WorkNote):
+    for model in (WorkSignal, WorkNote, WorkRating):
         n += (
             session.execute(
                 delete(model).where(model.personnel_id == personnel_id)

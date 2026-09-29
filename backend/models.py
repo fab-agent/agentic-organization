@@ -2,7 +2,7 @@ import json
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Index, text
+from sqlalchemy import Index, UniqueConstraint, text
 from sqlmodel import Field, SQLModel
 
 
@@ -731,4 +731,44 @@ class WorkNote(SQLModel, table=True):
     company_id: str = Field(index=True)
     day: str
     text: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkRating(SQLModel, table=True):
+    """One fit verdict for one run against one rubric criterion (ADR-0021 §7).
+
+    `probability` is the model's probability of "yes" (None when it gave none), and
+    `verdict` (met / not_met / unclear) is derived from it with the criterion's own
+    thresholds. Keyed to the *accountable human*, the day and the run; the criterion
+    is identified by id **and** hash so a reworded criterion never mixes with old rows.
+    The audit chain is never touched. Purged with the other review rows and erased
+    with the person. Soft links, no foreign keys, so deleting a person is never blocked.
+    """
+
+    __table_args__ = (
+        UniqueConstraint(
+            "personnel_id",
+            "run_id",
+            "criterion_id",
+            "criterion_hash",
+            name="uq_workrating_run_criterion",
+        ),
+    )
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    company_id: str = Field(index=True)
+    personnel_id: str = Field(index=True)
+    day: str  # UTC "YYYY-MM-DD"
+    run_id: str
+    criterion_id: str
+    criterion_hash: str
+    rubric_version: str  # short hash of the rubric text the criterion came from
+    criterion_status: str  # "shadow" | "live" at the time of rating
+    verdict: str  # "met" | "not_met" | "unclear"
+    probability: float | None = None
+    model: str | None = None
+    # A person's contest (ADR-0021 §6): excluded from every aggregate until resolved.
+    contest_note: str | None = None
+    contested_at: datetime | None = None
+    resolved_at: datetime | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
