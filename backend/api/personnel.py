@@ -326,6 +326,10 @@ def delete_personnel(person_id: str, current_user: User = Depends(get_current_us
             entity_name=person.name,
             company_id=person.company_id,
         )
+        # Erase what work review holds about this person (ADR-0019 §6).
+        from services.work_review import erase_person
+
+        erase_person(session, person.id)
         session.delete(person)
         session.commit()
 

@@ -271,3 +271,55 @@ Done, with tests (`backend/tests/test_workspace_agent.py`, `test_run_tokens.py`)
 - The partial unique index uses PostgreSQL syntax that was not run against a
   PostgreSQL server here (SQLite only); the `Postgres` CI job covers it.
 
+## Implementation status — work review, first slice (2026-09-29)
+
+Built (`services/work_review.py`, `api/work_review.py`, migration `d4a8c1e93b57`),
+with tests mutation-checked on each guardrail:
+
+- **Signals from the audit chain, per accountable human and UTC day**, no model call:
+  `policy_denied` / `approval_asked` (only *enforced* decisions), `policy_would_deny` /
+  `policy_would_ask` (dry-run, kept apart so a rule that is merely observed is not
+  counted as a refusal), and the intent tags (task, sensitivity, domain). Fail-closed
+  decisions (a broken policy config) are excluded — a system fault, not the person's
+  doing. An agent's events roll up to its responsible person; agents with none, and
+  other companies, are ignored. The day is recomputed idempotently.
+- **Off by default, per company** (`work_review.enabled:<company_id>`; deliberately no
+  global switch). While off nothing is computed or stored for the company. Only a
+  founder can switch it, and **enabling requires `acknowledge_notice: true`** (purpose,
+  access and retention defined, staff informed — KVKK / GDPR); the change is audited
+  with before/after.
+- **Visibility by hierarchy.** A person sees their own review in full
+  (`GET /work-review/me`, with a disclosure of what is collected, what never is, who
+  sees it, the group floor and the retention window). Their *direct* manager gets
+  exactly the same view from the same function (`GET /work-review/people/{id}`) — no
+  richer manager view, and a test asserts equality. The manager above sees per-team
+  totals (`/teams`: the teams led by their direct reports); department heads and
+  executives see per-department totals within their scope, sub-departments included
+  (`/departments`). Groups below `WORK_REVIEW_MIN_GROUP` (default 3, never below 2) are
+  returned as a size only.
+- **Person-first.** A person can annotate a day (`POST /me/notes`, ≤ 1000 characters,
+  last 90 days) and delete their own notes; notes travel with the view to the manager,
+  never into aggregates.
+- **Every look is audited without content** (`work_review_viewed`: who, whose, which
+  scope). A person's look at their own review is not.
+- **Retention and erasure.** Rows expire per company (`work_review.retention_days`,
+  default 365, 1–1825), including for a company that has since switched it off, and are
+  erased with the person (`DELETE /personnel/{id}`). Scheduled: hourly refresh, daily
+  purge.
+
+Choices made where this ADR was silent, to confirm or change:
+
+- A **team** is a leader's direct reports; a **department** aggregate covers people
+  whose department it is (not its sub-departments); department membership is the
+  *current* one, so a transfer moves a person's history with them.
+- The floor of 3 and the 365-day default are proposals. Totals per group can still be
+  differenced against other groups' totals; the floor limits, not removes, that.
+- Disabling stops collection but does not erase what was collected (retention does).
+
+**Not built:** rating fit against goals, values and policies (needs the rubric and typed
+questions); a *corrections* signal (nothing records that a person corrected the agent);
+any UI (the TUI's "My review"); telling employees (the acknowledgement is a flag, not a
+notification); a per-person "who looked at my review" list (it is in the audit chain);
+an HR viewer; PostgreSQL (SQLite only here). The tags exist only where `intent.enabled`
+is on, and refusals only where the policy mode is `enforce`.
+

@@ -700,3 +700,35 @@ class Workspace(SQLModel, table=True):
     suspended_at: datetime | None = None
     deleted_at: datetime | None = None
     purge_after: datetime | None = None
+
+
+class WorkSignal(SQLModel, table=True):
+    """
+    Daily per-person counts derived from the audit chain (ADR-0019 §6): hard signals
+    (policy refusals, approvals asked) and the tags an intent classification produced.
+    One row per (person, day, kind, value); `personnel_id` is the accountable *human*
+    (an agent's events roll up to its responsible person). Recomputed idempotently per
+    day, never written for a company that has not enabled work review, and purged after
+    the company's retention window or when the person is deleted. Soft link to
+    Personnel on purpose: no foreign key, so deleting a person is never blocked.
+    """
+
+    personnel_id: str = Field(primary_key=True)
+    day: str = Field(primary_key=True)  # UTC "YYYY-MM-DD"
+    kind: str = Field(primary_key=True)  # policy_denied | approval_asked | tag_task | …
+    value: str = Field(default="", primary_key=True)  # tag value; "" for plain signals
+    company_id: str = Field(index=True)
+    count: int = Field(default=0)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkNote(SQLModel, table=True):
+    """The person's own annotation on a day of their review; travels with it to
+    whoever may see that review (ADR-0019 §6: a person can contest or annotate)."""
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    personnel_id: str = Field(index=True)
+    company_id: str = Field(index=True)
+    day: str
+    text: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)

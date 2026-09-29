@@ -43,10 +43,9 @@ def safe_relpath(path: str) -> str:
 # ── who is calling ────────────────────────────────────────────────────────────
 
 
-def person_for_user(
-    session, user: User, company_id: str | None = None
-) -> tuple[Personnel, str]:
-    """The caller's human Personnel record and company, or an HTTP error."""
+def resolve_company_id(session, user: User, company_id: str | None = None) -> str:
+    """The company a request is about: the one asked for (membership checked), or the
+    caller's only one. HTTP errors otherwise."""
     members = session.exec(
         select(CompanyMember).where(CompanyMember.user_id == user.id)
     ).all()
@@ -54,12 +53,19 @@ def person_for_user(
     if company_id:
         if company_id not in ids:
             raise HTTPException(status_code=403, detail="Not a member of this company")
-        ids = {company_id}
+        return company_id
     if not ids:
         raise HTTPException(status_code=404, detail="No company membership")
     if len(ids) > 1:
         raise HTTPException(status_code=400, detail="company_id is required")
-    cid = next(iter(ids))
+    return next(iter(ids))
+
+
+def person_for_user(
+    session, user: User, company_id: str | None = None
+) -> tuple[Personnel, str]:
+    """The caller's human Personnel record and company, or an HTTP error."""
+    cid = resolve_company_id(session, user, company_id)
     person = session.exec(
         select(Personnel).where(
             Personnel.user_id == user.id,

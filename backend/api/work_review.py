@@ -1,0 +1,298 @@
+"""Work review API (ADR-0019 §6): who may see what, and the company switch.
+
+Every read is audited (who looked at whom, never what they saw). See
+`services.work_review` for what is collected and the guardrails.
+"""
+
+from datetime import date, datetime, timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlmodel import select
+
+from api.auth import get_current_user
+from database import get_session
+from models import CompanyMember, Personnel, User, WorkNote
+from services import audit_chain
+from services import work_review as wr
+from services.workspaces import person_for_user, resolve_company_id
+
+router = APIRouter(prefix="/work-review", tags=["work-review"])
+
+_DAYS = Query(30, ge=1, le=90)
+
+
+def _require_enabled(session, company_id: str) -> None:
+    if not wr.enabled(session, company_id):
+        raise HTTPException(
+            status_code=404, detail="Work review is not enabled for this company"
+        )
+
+
+def _viewed(
+    viewer_id: str, company_id: str, scope: str, target: str, days: int
+) -> None:
+    """Record that someone looked — the fact, not the content."""
+    audit_chain.record(
+        actor_type="human",
+        actor_id=viewer_id,
+        company_id=company_id,
+        action="work_review_viewed",
+        target=target,
+        reason=scope,
+        payload={"scope": scope, "window_days": days},
+    )
+
+
+def _require_founder(session, user: User, company_id: str) -> None:
+    ok = session.exec(
+        select(CompanyMember).where(
+            CompanyMember.user_id == user.id,
+            CompanyMember.company_id == company_id,
+            CompanyMember.role == "founder",
+        )
+    ).first()
+    if not ok:
+        raise HTTPException(status_code=403, detail="Founder role required")
+
+
+def _disclosure(session, company_id: str) -> dict:
+    """What is collected and who can see it — shown to the person it is about."""
+    floor = wr.min_group()
+    return {
+        "collected": {"signals": list(wr.SIGNAL_KINDS), "tags": list(wr.TAG_KINDS)},
+        "never_collected": [
+            "keystrokes",
+            "time on task",
+            "screenshots",
+            "message contents",
+        ],
+        "visible_to": [
+            "you, in full",
+            "your direct manager, the same per-person view you see",
+            f"managers above you: team and department totals only, for groups of at least {floor}",
+        ],
+        "minimum_group_size": floor,
+        "retention_days": wr.retention_days(session, company_id),
+    }
+
+
+# ── the person's own review ───────────────────────────────────────────────────
+
+
+@router.get("/me")
+def my_review(
+    company_id: str | None = None,
+    days: int = _DAYS,
+    user: User = Depends(get_current_user),
+):
+    with get_session() as session:
+        person, cid = person_for_user(session, user, company_id)
+        _require_enabled(session, cid)
+        view = wr.person_view(session, person, days)
+        view["disclosure"] = _disclosure(session, cid)
+        return view
+
+
+class NoteBody(BaseModel):
+    day: str
+    text: str = Field(min_length=1, max_length=1000)
+
+
+@router.post("/me/notes", status_code=201)
+def add_note(
+    body: NoteBody,
+    company_id: str | None = None,
+    user: User = Depends(get_current_user),
+):
+    try:
+        day = date.fromisoformat(body.day)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="day must be YYYY-MM-DD")
+    today = datetime.utcnow().date()
+    if not (today - timedelta(days=90) <= day <= today):
+        raise HTTPException(
+            status_code=422, detail="day must be within the last 90 days"
+        )
+    with get_session() as session:
+        person, cid = person_for_user(session, user, company_id)
+        _require_enabled(session, cid)
+        note = WorkNote(
+            personnel_id=person.id,
+            company_id=cid,
+            day=day.isoformat(),
+            text=body.text.strip(),
+        )
+        session.add(note)
+        session.commit()
+        return {"id": note.id, "day": note.day, "text": note.text}
+
+
+@router.delete("/me/notes/{note_id}", status_code=204)
+def delete_note(
+    note_id: str, company_id: str | None = None, user: User = Depends(get_current_user)
+):
+    with get_session() as session:
+        person, cid = person_for_user(session, user, company_id)
+        note = session.get(WorkNote, note_id)
+        if not note or note.personnel_id != person.id:
+            raise HTTPException(status_code=404, detail="Note not found")
+        session.delete(note)
+        session.commit()
+
+
+# ── what a manager may see ────────────────────────────────────────────────────
+
+
+@router.get("/people/{personnel_id}")
+def person_review(
+    personnel_id: str,
+    company_id: str | None = None,
+    days: int = _DAYS,
+    user: User = Depends(get_current_user),
+):
+    """Per-person view — only for the person's *direct* manager, and exactly the view
+    the person has of themselves."""
+    with get_session() as session:
+        viewer, cid = person_for_user(session, user, company_id)
+        _require_enabled(session, cid)
+        subject = session.get(Personnel, personnel_id)
+        if not subject or not wr.is_direct_manager(viewer, subject):
+            raise HTTPException(
+                status_code=403, detail="Only a person's direct manager can view this"
+            )
+        view = wr.person_view(session, subject, days)
+        _viewed(viewer.id, cid, "person", subject.id, days)
+        return view
+
+
+@router.get("/teams")
+def team_reviews(
+    company_id: str | None = None,
+    days: int = _DAYS,
+    user: User = Depends(get_current_user),
+):
+    """Aggregates for the teams led by the viewer's direct reports — totals only."""
+    with get_session() as session:
+        viewer, cid = person_for_user(session, user, company_id)
+        _require_enabled(session, cid)
+        out = [
+            {
+                "leader": {"id": leader.id, "name": leader.name},
+                **wr.aggregate(session, members, days),
+            }
+            for leader, members in wr.visible_teams(session, viewer)
+        ]
+        _viewed(viewer.id, cid, "teams", viewer.id, days)
+        return out
+
+
+@router.get("/departments")
+def department_reviews(
+    company_id: str | None = None,
+    days: int = _DAYS,
+    user: User = Depends(get_current_user),
+):
+    """Aggregates per department in the viewer's scope — totals only."""
+    with get_session() as session:
+        cid = resolve_company_id(session, user, company_id)
+        _require_enabled(session, cid)
+        depts = wr.departments_in_scope(session, user, cid)
+        if not depts:
+            raise HTTPException(status_code=403, detail="Manager role required")
+        out = []
+        for d in depts:
+            members = wr.department_members(session, d)
+            if members:
+                out.append(
+                    {
+                        "department": {"id": d.id, "name": d.name},
+                        **wr.aggregate(session, members, days),
+                    }
+                )
+        _viewed(user.id, cid, "departments", cid, days)
+        return out
+
+
+# ── the company switch (founder only) ─────────────────────────────────────────
+
+
+class SettingsBody(BaseModel):
+    enabled: bool | None = None
+    retention_days: int | None = Field(default=None, ge=1, le=1825)
+    # Turning it on is about employees' personal data (KVKK / GDPR): the founder must
+    # confirm that purpose, access and retention are defined and staff are informed.
+    acknowledge_notice: bool = False
+
+
+@router.get("/settings")
+def get_settings(company_id: str | None = None, user: User = Depends(get_current_user)):
+    with get_session() as session:
+        cid = resolve_company_id(session, user, company_id)
+        _require_founder(session, user, cid)
+        return {
+            "enabled": wr.enabled(session, cid),
+            "retention_days": wr.retention_days(session, cid),
+            "minimum_group_size": wr.min_group(),
+        }
+
+
+@router.put("/settings")
+def put_settings(
+    body: SettingsBody,
+    company_id: str | None = None,
+    user: User = Depends(get_current_user),
+):
+    with get_session() as session:
+        cid = resolve_company_id(session, user, company_id)
+        _require_founder(session, user, cid)
+        before = {
+            "enabled": wr.enabled(session, cid),
+            "retention_days": wr.retention_days(session, cid),
+        }
+        if body.enabled and not before["enabled"] and not body.acknowledge_notice:
+            raise HTTPException(
+                status_code=422,
+                detail="acknowledge_notice must be true to enable work review: confirm that purpose, "
+                "access and retention are defined and that employees have been informed",
+            )
+        if body.enabled is not None:
+            wr.set_enabled(session, cid, body.enabled)
+        if body.retention_days is not None:
+            wr.set_retention_days(session, cid, body.retention_days)
+        session.commit()
+        after = {
+            "enabled": wr.enabled(session, cid),
+            "retention_days": wr.retention_days(session, cid),
+        }
+    audit_chain.record(
+        actor_type="human",
+        actor_id=user.id,
+        company_id=cid,
+        action="work_review_settings_changed",
+        reason="enabled" if after["enabled"] and not before["enabled"] else "updated",
+        payload={
+            "before": before,
+            "after": after,
+            "notice_acknowledged": body.acknowledge_notice,
+        },
+    )
+    return after
+
+
+@router.post("/rollup")
+def rollup(
+    company_id: str | None = None,
+    days: int = Query(2, ge=1, le=31),
+    user: User = Depends(get_current_user),
+):
+    """Recompute the last `days` days now (also runs on a schedule). Idempotent."""
+    with get_session() as session:
+        cid = resolve_company_id(session, user, company_id)
+        _require_founder(session, user, cid)
+        _require_enabled(session, cid)
+        today = datetime.utcnow().date()
+        rows = sum(
+            wr.rollup_day(session, cid, today - timedelta(days=i)) for i in range(days)
+        )
+        return {"days": days, "rows": rows}
