@@ -36,7 +36,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         Constraint::Min(3),
     ])
     .areas(left);
-    let [agent, files] = Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).areas(right);
+    let [agent, files] = Layout::vertical([Constraint::Min(3), Constraint::Length(4)]).areas(right);
 
     draw_identity(f, ident, &sb, app);
     draw_recurring(f, recurring, &sb, app);
@@ -61,9 +61,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         ),
     }
     f.render_widget(
-        Paragraph::new(t.no_files)
-            .style(Style::default().fg(Color::DarkGray))
-            .block(block(format!(" {} ", t.files), false)),
+        Paragraph::new(files_lines(app)).block(block(format!(" {} ", t.files), false)),
         files,
     );
 
@@ -82,6 +80,54 @@ pub fn draw(f: &mut Frame, app: &App) {
         ),
     };
     f.render_widget(Paragraph::new(Line::from(status)), keys);
+}
+
+fn ago(secs: u64, word: &str) -> String {
+    if secs < 60 {
+        format!("{secs}s {word}")
+    } else {
+        format!("{}m {word}", secs / 60)
+    }
+}
+
+/// The two lines of the files strip: sync status, then the newest files.
+pub fn files_lines(app: &App) -> Vec<Line<'static>> {
+    let t = strings(app.lang);
+    let dim = Style::default().fg(Color::DarkGray);
+    let s = &app.sync;
+    let first = if let Some(e) = &s.error {
+        Line::styled(
+            format!("{}: {e}", t.sync_error),
+            Style::default().fg(Color::Red),
+        )
+    } else if s.no_workspace {
+        Line::styled(t.no_workspace.to_string(), dim)
+    } else if let Some(at) = s.last {
+        let mut parts = vec![
+            s.folder.display().to_string(),
+            format!("{} {}", t.synced, ago(at.elapsed().as_secs(), t.ago)),
+        ];
+        if s.changed > 0 {
+            parts.push(format!("{} {}", s.changed, t.new_files));
+        }
+        if s.conflicts > 0 {
+            parts.push(format!("{} {}", s.conflicts, t.conflicts));
+        }
+        let color = if s.conflicts > 0 {
+            Color::Yellow
+        } else {
+            Color::Reset
+        };
+        Line::styled(parts.join(" · "), Style::default().fg(color))
+    } else {
+        Line::styled(s.folder.display().to_string(), dim)
+    };
+    let second = if s.recent.is_empty() {
+        Line::styled(t.no_files.to_string(), dim)
+    } else {
+        Line::from(s.recent.join("  "))
+    };
+    vec![first, second]
 }
 
 fn draw_identity(f: &mut Frame, area: Rect, sb: &Sidebar, app: &App) {
@@ -181,5 +227,35 @@ mod tests {
         ] {
             assert!(text.contains(want), "missing {want}");
         }
+    }
+
+    fn text(lines: &[Line]) -> String {
+        lines
+            .iter()
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn files_strip_states() {
+        let mut app = App::test_default();
+        app.sync.folder = "/home/a/Fabrika".into();
+        assert!(text(&files_lines(&app)).contains("/home/a/Fabrika"));
+
+        app.sync.no_workspace = true;
+        assert!(text(&files_lines(&app)).contains("no workspace yet"));
+
+        app.sync.no_workspace = false;
+        app.sync.last = Some(std::time::Instant::now());
+        app.sync.changed = 2;
+        app.sync.conflicts = 1;
+        app.sync.recent = vec!["deck.pptx".into(), "summaries/x.md".into()];
+        let t = text(&files_lines(&app));
+        assert!(t.contains("synced") && t.contains("2 new") && t.contains("1 conflict"));
+        assert!(t.contains("deck.pptx  summaries/x.md"));
+
+        app.sync.error = Some("boom".into());
+        assert!(text(&files_lines(&app)).contains("sync error: boom"));
     }
 }
