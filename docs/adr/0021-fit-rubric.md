@@ -31,9 +31,9 @@ has exactly one question with a stated good answer:
 | `good_answer` | `yes` or `no`. Lets a policy concern read naturally ("Does the reply expose customer data outside its purpose?" → good answer `no`). |
 | `source` | What the company wrote that this comes from: `{kind: goal\|value\|dept_scope\|policy, ref, quote}`. The `quote` is the exact source text. **A criterion without a source quote is invalid.** |
 | `scope` | Company-wide, or department ids it applies to. |
-| `applies_when` | Optional filter on the tags ADR-0019 already stores (task type, data class, domain). If it does not match, the work is **not applicable** and is not rated. |
+| `applies_when` | Optional filter on the tags ADR-0019 already stores — `tasks`, `sensitivities`, `domains` (the intent tags of ADR-0020). A missing tag means not applicable. If it does not match, the work is **not applicable** and is not rated. |
 | `thresholds` | `{met: 0.7, not_met: 0.3}` — *proposal*, per criterion. |
-| `status` | `draft` → `shadow` → `live` (§5). |
+| `status` | `draft` → `shadow` → `live` (§5), later `retired`. |
 
 Example (`rubric/rubric.yaml` in the policy repo):
 
@@ -43,17 +43,17 @@ criteria:
   - id: G2-recurring-revenue
     question: Does this work advance recurring revenue?
     good_answer: "yes"
-    source: {kind: goal, ref: company.goals.G2, quote: "Grow recurring revenue 20% in 2026"}
+    source: {kind: goal, ref: company.goals.2, quote: "Grow recurring revenue 20% in 2026"}
     scope: {departments: [sales, customer-success]}
-    applies_when: {domains: [sales, renewals, pricing]}
+    applies_when: {domains: [sales, renewals]}
     thresholds: {met: 0.7, not_met: 0.3}
     status: live
   - id: P-KVKK-purpose
     question: Does the output expose personal customer data beyond what the task needs?
     good_answer: "no"
-    source: {kind: policy, ref: P-KVKK, quote: "Personal data is used only for the stated purpose"}
+    source: {kind: policy, ref: policy.kvkk, quote: "Personal data is used only for the stated purpose"}
     scope: {company: true}
-    applies_when: {data_classes: [personal]}
+    applies_when: {sensitivities: [personal]}
     status: shadow
 ```
 
@@ -84,8 +84,8 @@ and is never rounded to a side.
 2. **Lint (automatic, blocking).** Reject: no source quote; a quote that is not in
    the cited source; more than one question; question naming a person or trait;
    topics ADR-0019 excludes (keystrokes, time on task, attendance, screenshots) or
-   protected characteristics; `applies_when` that matches everything *and* a
-   `personal` data class with no policy source. Budget caps: ≤ 12 live criteria
+   protected characteristics; a criterion for `personal`-sensitivity work whose
+   source is not a policy. Budget caps: ≤ 12 live criteria
    per department, ≤ 30 company-wide (*proposal*) — each adds scoring cost and
    reading load.
 3. **Decide.** The whole rubric change is **one change request** (ADR-0017's
@@ -161,7 +161,7 @@ purge. Off by default with the rest of work review.
 
 ## Follow-ups
 
-1. Rubric file format + linter (`services/rubric.py`), with the source-quote check.
+1. ~~Rubric file format + linter~~ — done: `services/rubric.py` (parse, lint, hash, verdict, applicability; refs are positional: `company.goals.2`, `department.<slug>.goals.1`, `policy.<slug>`). Not yet wired to the policy repo or an API.
 2. Drafting pass added to the ADR-0017 import; rubric change goes through the
    existing change-request flow.
 3. `work_rating` table + scoring job (sampled, gateway, redaction) reusing the Jev
