@@ -69,7 +69,10 @@ pub fn login_interactive() -> Result<()> {
     let email = prompt("Email")?;
     let password = rpassword::prompt_password("Password: ")?;
     let token = crate::api::login(&base, &email, &password).context("login failed")?;
-    save(&Session { base_url: base, token })?;
+    save(&Session {
+        base_url: base,
+        token,
+    })?;
     println!("Signed in. Run `fab` to open the workspace.");
     Ok(())
 }

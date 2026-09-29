@@ -126,9 +126,15 @@ impl Snapshot {
         let department = mine
             .and_then(|m| m.department_id.as_deref())
             .and_then(|id| self.departments.iter().find(|d| d.id == id))
-            .map(|d| match d.parent_id.as_deref().and_then(|pid| self.departments.iter().find(|x| x.id == pid)) {
-                Some(parent) => format!("{} › {}", parent.name, d.name),
-                None => d.name.clone(),
+            .map(|d| {
+                match d
+                    .parent_id
+                    .as_deref()
+                    .and_then(|pid| self.departments.iter().find(|x| x.id == pid))
+                {
+                    Some(parent) => format!("{} › {}", parent.name, d.name),
+                    None => d.name.clone(),
+                }
             });
 
         let mine_flows = self
@@ -153,7 +159,14 @@ impl Snapshot {
                     Some("running") | Some("pending") => RunState::Pending,
                     _ => RunState::Failed,
                 };
-                Some((at, RunLine { state, when: short_time(at), text: f.name.clone() }))
+                Some((
+                    at,
+                    RunLine {
+                        state,
+                        when: short_time(at),
+                        text: f.name.clone(),
+                    },
+                ))
             })
             .collect();
         runs.sort_by(|a, b| b.0.cmp(a.0));
@@ -211,8 +224,16 @@ mod tests {
                 }],
             }),
             departments: vec![
-                Department { id: "d1".into(), name: "Finance".into(), parent_id: None },
-                Department { id: "d2".into(), name: "Accounting".into(), parent_id: Some("d1".into()) },
+                Department {
+                    id: "d1".into(),
+                    name: "Finance".into(),
+                    parent_id: None,
+                },
+                Department {
+                    id: "d2".into(),
+                    name: "Accounting".into(),
+                    parent_id: Some("d1".into()),
+                },
             ],
             personnel: vec![
                 person("me", "human", Some("boss")),
@@ -220,10 +241,26 @@ mod tests {
                 person("other", "human", Some("boss")),
             ],
             flows: vec![
-                Flow { name: "Daily cash report".into(), personnel_id: "bot".into(), schedule: "0 9 * * *".into(), enabled: true, last_run_at: Some("2026-09-28T09:00:03".into()), last_run_status: Some("success".into()) },
-                Flow { name: "Not mine".into(), personnel_id: "other".into(), schedule: "0 9 * * *".into(), enabled: true, last_run_at: None, last_run_status: None },
+                Flow {
+                    name: "Daily cash report".into(),
+                    personnel_id: "bot".into(),
+                    schedule: "0 9 * * *".into(),
+                    enabled: true,
+                    last_run_at: Some("2026-09-28T09:00:03".into()),
+                    last_run_status: Some("success".into()),
+                },
+                Flow {
+                    name: "Not mine".into(),
+                    personnel_id: "other".into(),
+                    schedule: "0 9 * * *".into(),
+                    enabled: true,
+                    last_run_at: None,
+                    last_run_status: None,
+                },
             ],
-            inbox: vec![InboxItem { title: "PO #4411".into() }],
+            inbox: vec![InboxItem {
+                title: "PO #4411".into(),
+            }],
         }
     }
 

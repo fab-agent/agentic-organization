@@ -36,8 +36,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         Constraint::Min(3),
     ])
     .areas(left);
-    let [agent, files] =
-        Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).areas(right);
+    let [agent, files] = Layout::vertical([Constraint::Min(3), Constraint::Length(3)]).areas(right);
 
     draw_identity(f, ident, &sb, app);
     draw_recurring(f, recurring, &sb, app);
@@ -85,7 +84,10 @@ fn draw_identity(f: &mut Frame, area: Rect, sb: &Sidebar, app: &App) {
         t.team, sb.humans, t.people, sb.agents, t.agents
     )));
     f.render_widget(
-        Paragraph::new(lines).block(block(format!(" {} ", sb.company), app.focus == Focus::Sidebar)),
+        Paragraph::new(lines).block(block(
+            format!(" {} ", sb.company),
+            app.focus == Focus::Sidebar,
+        )),
         area,
     );
 }
@@ -146,7 +148,13 @@ mod tests {
         let app = App::test_default();
         let mut term = Terminal::new(TestBackend::new(100, 20)).unwrap();
         term.draw(|f| draw(f, &app)).unwrap();
-        let text: String = term.backend().buffer().content().iter().map(|c| c.symbol()).collect();
+        let text: String = term
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
         for want in ["Recurring", "Recent runs", "Agent session", "Files", "quit"] {
             assert!(text.contains(want), "missing {want}");
         }

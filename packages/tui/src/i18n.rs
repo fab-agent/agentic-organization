@@ -11,7 +11,11 @@ pub fn detect() -> Lang {
         .or_else(|_| std::env::var("LANG"))
         .unwrap_or_default()
         .to_lowercase();
-    if v.starts_with("tr") { Lang::Tr } else { Lang::En }
+    if v.starts_with("tr") {
+        Lang::Tr
+    } else {
+        Lang::En
+    }
 }
 
 pub struct T {

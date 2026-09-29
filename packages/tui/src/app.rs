@@ -60,7 +60,10 @@ impl App {
             snapshot: Snapshot::default(),
             error: None,
             should_quit: false,
-            client: Client::new(session::Session { base_url: String::new(), token: String::new() }),
+            client: Client::new(session::Session {
+                base_url: String::new(),
+                token: String::new(),
+            }),
         }
     }
 }
