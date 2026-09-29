@@ -40,7 +40,11 @@ resolves it), `u` withdraws a contest. A day with a contested rating is marked `
 live ratings of the last 30 days clear the company's bar: plain counts ("7 of 10 rated
 work did not meet it"), never a score or a percentage, marked "only you see this". If
 colleagues in your department show the same pattern it says the rule or its training may
-be unclear. Your manager does not receive it (whether they ever should is undecided).
+be unclear. Your manager does not receive it unless you choose to share it: `t` picks a
+signal, `s` offers to share it with your direct manager (only that one; `y` confirms, any
+other key cancels), and `s` on a shared signal withdraws it at once. Each signal says
+whether it is shared. Sharing exists only if your company has enabled it; otherwise `s`
+says so and nothing is sent.
 
 Environment: `FAB_SESSION_FILE`, `FAB_AGENT_CMD` (default `opencode`, else `$SHELL`),
 `FAB_LANG` (`tr`/`en`), `FAB_FOLDER`, `FAB_MAX_DOWNLOAD_MB` (200), `FAB_MAX_UPLOAD_MB` (50).

@@ -136,6 +136,24 @@ impl App {
                 id,
                 note,
             ),
+            ReviewAction::ShareSignal {
+                criterion_id,
+                criterion_hash,
+            } => review::spawn_share_signal(
+                self.review_backend.clone(),
+                self.review_tx.clone(),
+                criterion_id,
+                criterion_hash,
+            ),
+            ReviewAction::UnshareSignal {
+                criterion_id,
+                criterion_hash,
+            } => review::spawn_unshare_signal(
+                self.review_backend.clone(),
+                self.review_tx.clone(),
+                criterion_id,
+                criterion_hash,
+            ),
             ReviewAction::WithdrawContest { id } => review::spawn_withdraw_contest(
                 self.review_backend.clone(),
                 self.review_tx.clone(),
@@ -223,6 +241,12 @@ impl App {
                 Ok(())
             }
             fn withdraw_contest(&self, _: &str) -> Result<()> {
+                Ok(())
+            }
+            fn share_signal(&self, _: &str, _: &str) -> Result<()> {
+                Ok(())
+            }
+            fn unshare_signal(&self, _: &str, _: &str) -> Result<()> {
                 Ok(())
             }
         }
@@ -372,6 +396,7 @@ mod review_flow_tests {
             totals: Default::default(),
             ratings: vec![],
             training_need: vec![],
+            training_sharing_enabled: false,
             disclosure: None,
         }
     }
@@ -420,6 +445,14 @@ mod review_flow_tests {
         }
         fn withdraw_contest(&self, id: &str) -> Result<()> {
             self.calls.lock().unwrap().push(format!("withdraw {id}"));
+            Ok(())
+        }
+        fn share_signal(&self, c: &str, h: &str) -> Result<()> {
+            self.calls.lock().unwrap().push(format!("share {c} {h}"));
+            Ok(())
+        }
+        fn unshare_signal(&self, c: &str, h: &str) -> Result<()> {
+            self.calls.lock().unwrap().push(format!("unshare {c} {h}"));
             Ok(())
         }
     }
@@ -544,6 +577,75 @@ mod review_flow_tests {
         app.focus = Focus::Agent;
         press(&mut app, "c");
         assert!(!app.review.open && fake.calls().is_empty());
+    }
+
+    fn signal_app(fake: &Arc<Fake>, shared: bool, enabled: bool) -> App {
+        let mut r = review("A");
+        r.training_need = vec![review::TrainingSignal {
+            criterion_id: "G1".into(),
+            criterion_hash: "h1".into(),
+            rated: 10,
+            not_met: 7,
+            window_days: 30,
+            unit_wide: false,
+            shared,
+            question: None,
+        }];
+        r.training_sharing_enabled = enabled;
+        fake.outcome
+            .lock()
+            .unwrap()
+            .insert(30, (0, Outcome::Ready(r)));
+        let mut app = app_with(fake);
+        press(&mut app, "v");
+        wait(&mut app, "ready", |a| {
+            matches!(a.review.view, View::Ready(_))
+        });
+        app
+    }
+
+    #[test]
+    fn sharing_a_signal_asks_first_then_calls_the_backend_and_reloads() {
+        let fake = Arc::new(Fake::default());
+        let mut app = signal_app(&fake, false, true);
+        press(&mut app, "s");
+        assert_eq!(fake.calls(), vec!["load 30"], "s alone shares nothing");
+        press(&mut app, "y");
+        wait(&mut app, "share + reload", |_| fake.calls().len() >= 3);
+        assert_eq!(fake.calls(), vec!["load 30", "share G1 h1", "load 30"]);
+    }
+
+    #[test]
+    fn declining_the_question_sends_nothing() {
+        let fake = Arc::new(Fake::default());
+        let mut app = signal_app(&fake, false, true);
+        press(&mut app, "s");
+        press(&mut app, "n");
+        press(&mut app, "y");
+        std::thread::sleep(Duration::from_millis(100));
+        app.poll_review();
+        assert_eq!(fake.calls(), vec!["load 30"]);
+    }
+
+    #[test]
+    fn withdrawing_a_share_calls_the_backend_then_reloads() {
+        let fake = Arc::new(Fake::default());
+        let mut app = signal_app(&fake, true, true);
+        press(&mut app, "s");
+        wait(&mut app, "unshare + reload", |_| fake.calls().len() >= 3);
+        assert_eq!(fake.calls(), vec!["load 30", "unshare G1 h1", "load 30"]);
+    }
+
+    #[test]
+    fn with_sharing_off_nothing_is_sent_and_the_person_is_told() {
+        let fake = Arc::new(Fake::default());
+        let mut app = signal_app(&fake, false, false);
+        press(&mut app, "s");
+        assert!(app.review.notice.is_some(), "the person is told why");
+        press(&mut app, "y");
+        std::thread::sleep(Duration::from_millis(100));
+        app.poll_review();
+        assert_eq!(fake.calls(), vec!["load 30"]);
     }
 
     #[test]

@@ -79,6 +79,8 @@ pub struct RatingTotal {
 pub struct TrainingSignal {
     pub criterion_id: String,
     #[serde(default)]
+    pub criterion_hash: String,
+    #[serde(default)]
     pub rated: i64,
     #[serde(default)]
     pub not_met: i64,
@@ -87,6 +89,9 @@ pub struct TrainingSignal {
     /// Colleagues in the same department show the same pattern.
     #[serde(default)]
     pub unit_wide: bool,
+    /// The person has chosen to share this one with their direct manager.
+    #[serde(default)]
+    pub shared: bool,
     #[serde(default)]
     pub question: Option<String>,
 }
@@ -146,6 +151,9 @@ pub struct Review {
     pub ratings: Vec<RatingTotal>,
     #[serde(default)]
     pub training_need: Vec<TrainingSignal>,
+    /// Whether the company lets people share a signal with their manager.
+    #[serde(default)]
+    pub training_sharing_enabled: bool,
     #[serde(default)]
     pub disclosure: Option<Disclosure>,
 }
@@ -180,10 +188,28 @@ pub enum Action {
     None,
     Close,
     Load,
-    AddNote { day: String, text: String },
-    DeleteNote { id: String },
-    ContestRating { id: String, note: String },
-    WithdrawContest { id: String },
+    AddNote {
+        day: String,
+        text: String,
+    },
+    DeleteNote {
+        id: String,
+    },
+    ContestRating {
+        id: String,
+        note: String,
+    },
+    WithdrawContest {
+        id: String,
+    },
+    ShareSignal {
+        criterion_id: String,
+        criterion_hash: String,
+    },
+    UnshareSignal {
+        criterion_id: String,
+        criterion_hash: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -199,6 +225,10 @@ pub struct ReviewState {
     pub contest_target: Option<String>,
     /// Which of the selected day's ratings is highlighted.
     pub sel_rating: usize,
+    /// Which training signal `s` acts on.
+    pub sel_signal: usize,
+    /// A share waiting for the person's `y` (criterion id, hash).
+    pub pending_share: Option<(String, String)>,
     /// Latest load request; answers to older ones are ignored.
     pub req_id: u64,
     pub notice: Option<String>,
@@ -214,6 +244,8 @@ impl Default for ReviewState {
             input: None,
             contest_target: None,
             sel_rating: 0,
+            sel_signal: 0,
+            pending_share: None,
             req_id: 0,
             notice: None,
         }
@@ -225,6 +257,8 @@ impl ReviewState {
         self.open = true;
         self.selected = 0;
         self.sel_rating = 0;
+        self.sel_signal = 0;
+        self.pending_share = None;
         self.input = None;
         self.contest_target = None;
         self.notice = None;
@@ -255,6 +289,8 @@ impl ReviewState {
         self.sel_rating = self
             .sel_rating
             .min(self.day_ratings().len().saturating_sub(1));
+        self.sel_signal = self.sel_signal.min(self.signals().len().saturating_sub(1));
+        self.pending_share = None; // the ground moved: ask again rather than act on a stale question
     }
 
     /// After adding / deleting a note: reload on success, say why on failure.
@@ -278,6 +314,17 @@ impl ReviewState {
         }
     }
 
+    fn signals(&self) -> &[TrainingSignal] {
+        match &self.view {
+            View::Ready(r) => &r.training_need,
+            _ => &[],
+        }
+    }
+
+    fn sharing_enabled(&self) -> bool {
+        matches!(&self.view, View::Ready(r) if r.training_sharing_enabled)
+    }
+
     fn day_ratings(&self) -> &[RatingItem] {
         self.days()
             .get(self.selected)
@@ -298,6 +345,17 @@ impl ReviewState {
     }
 
     pub fn on_key(&mut self, k: KeyEvent) -> Action {
+        if let Some((criterion_id, criterion_hash)) = self.pending_share.take() {
+            // Sharing tells someone else: only an explicit `y` does it.
+            return if k.code == KeyCode::Char('y') {
+                Action::ShareSignal {
+                    criterion_id,
+                    criterion_hash,
+                }
+            } else {
+                Action::None
+            };
+        }
         if let Some(buf) = self.input.as_mut() {
             match k.code {
                 KeyCode::Esc => {
@@ -372,6 +430,30 @@ impl ReviewState {
                 }
                 Action::None
             }
+            KeyCode::Char('t') if ready => {
+                let n = self.signals().len();
+                if n > 0 {
+                    self.sel_signal = (self.sel_signal + 1) % n;
+                }
+                Action::None
+            }
+            KeyCode::Char('s') if ready => {
+                let Some(sig) = self.signals().get(self.sel_signal).cloned() else {
+                    return Action::None;
+                };
+                if sig.shared {
+                    return Action::UnshareSignal {
+                        criterion_id: sig.criterion_id,
+                        criterion_hash: sig.criterion_hash,
+                    };
+                }
+                if !self.sharing_enabled() {
+                    self.notice = Some(strings(Lang::En).rv_sharing_off.to_string());
+                    return Action::None;
+                }
+                self.pending_share = Some((sig.criterion_id, sig.criterion_hash));
+                Action::None
+            }
             KeyCode::Char('u') if ready => self
                 .selected_rating()
                 .filter(|r| r.contested)
@@ -432,6 +514,8 @@ pub trait Backend: Send + Sync + 'static {
     fn delete_note(&self, id: &str) -> Result<()>;
     fn contest_rating(&self, id: &str, note: &str) -> Result<()>;
     fn withdraw_contest(&self, id: &str) -> Result<()>;
+    fn share_signal(&self, criterion_id: &str, criterion_hash: &str) -> Result<()>;
+    fn unshare_signal(&self, criterion_id: &str, criterion_hash: &str) -> Result<()>;
 }
 
 pub struct Http {
@@ -467,6 +551,14 @@ impl Backend for Http {
         let (c, co) = self.client()?;
         c.withdraw_work_rating_contest(&co, id)
     }
+    fn share_signal(&self, criterion_id: &str, criterion_hash: &str) -> Result<()> {
+        let (c, co) = self.client()?;
+        c.share_training_signal(&co, criterion_id, criterion_hash)
+    }
+    fn unshare_signal(&self, criterion_id: &str, criterion_hash: &str) -> Result<()> {
+        let (c, co) = self.client()?;
+        c.withdraw_training_share(&co, criterion_id, criterion_hash)
+    }
 }
 
 #[derive(Debug)]
@@ -501,6 +593,18 @@ pub fn spawn_delete_note(b: Arc<dyn Backend>, tx: Sender<Msg>, id: String) {
 pub fn spawn_contest(b: Arc<dyn Backend>, tx: Sender<Msg>, id: String, note: String) {
     std::thread::spawn(move || {
         let _ = tx.send(Msg::Saved(b.contest_rating(&id, &note).map_err(err)));
+    });
+}
+
+pub fn spawn_share_signal(b: Arc<dyn Backend>, tx: Sender<Msg>, crit: String, hash: String) {
+    std::thread::spawn(move || {
+        let _ = tx.send(Msg::Saved(b.share_signal(&crit, &hash).map_err(err)));
+    });
+}
+
+pub fn spawn_unshare_signal(b: Arc<dyn Backend>, tx: Sender<Msg>, crit: String, hash: String) {
+    std::thread::spawn(move || {
+        let _ = tx.send(Msg::Saved(b.unshare_signal(&crit, &hash).map_err(err)));
     });
 }
 
@@ -627,7 +731,7 @@ pub fn rating_totals_lines(r: &Review, t: &T) -> Vec<Line<'static>> {
 
 /// The person's own training-need signals: plain counts, a supportive framing, and a
 /// note that nobody else sees them.
-pub fn training_lines(r: &Review, t: &T) -> Vec<Line<'static>> {
+pub fn training_lines(r: &Review, t: &T, sel: usize) -> Vec<Line<'static>> {
     if r.training_need.is_empty() {
         return Vec::new();
     }
@@ -635,25 +739,41 @@ pub fn training_lines(r: &Review, t: &T) -> Vec<Line<'static>> {
         format!("  {} ({})", t.rv_training, t.rv_training_only_you),
         Style::default().add_modifier(Modifier::UNDERLINED),
     )];
-    for e in &r.training_need {
+    for (i, e) in r.training_need.iter().enumerate() {
         let name = e.question.clone().unwrap_or_else(|| e.criterion_id.clone());
         let counts = fill(
             &fill(&fill(t.rv_training_line, "{m}", e.not_met), "{n}", e.rated),
             "{d}",
             e.window_days,
         );
-        lines.push(Line::from(format!("    {name}: {counts}")));
+        let mark = if i == sel { "▸" } else { " " };
+        lines.push(Line::from(format!("  {mark} {name}: {counts}")));
         if e.unit_wide {
             lines.push(Line::styled(
                 format!("      {}", t.rv_training_unit_wide),
                 Style::default().fg(Color::DarkGray),
             ));
         }
+        let share = if e.shared {
+            t.rv_share_on
+        } else if r.training_sharing_enabled {
+            t.rv_share_can
+        } else {
+            t.rv_share_none
+        };
+        lines.push(Line::styled(
+            format!("      {share}"),
+            Style::default().fg(Color::DarkGray),
+        ));
     }
     lines
 }
 
 pub fn totals_lines(r: &Review, t: &T) -> Vec<Line<'static>> {
+    totals_lines_sel(r, t, 0)
+}
+
+pub fn totals_lines_sel(r: &Review, t: &T, sel_signal: usize) -> Vec<Line<'static>> {
     let mut lines = signals_lines(&r.totals.signals, t, "  ");
     lines.extend(tags_lines(&r.totals.tags, t, "  "));
     if lines.is_empty() && r.ratings.is_empty() {
@@ -663,7 +783,7 @@ pub fn totals_lines(r: &Review, t: &T) -> Vec<Line<'static>> {
         ));
     }
     lines.extend(rating_totals_lines(r, t));
-    lines.extend(training_lines(r, t));
+    lines.extend(training_lines(r, t, sel_signal));
     lines
 }
 
@@ -828,7 +948,12 @@ pub fn draw(f: &mut Frame, area: Rect, s: &ReviewState, lang: Lang) {
         View::Ready(r) => draw_ready(f, body, r, s, &t),
     }
 
-    let line = if let Some(buf) = &s.input {
+    let line = if s.pending_share.is_some() {
+        Line::styled(
+            format!(" {}", t.rv_share_confirm),
+            Style::default().fg(Color::Yellow),
+        )
+    } else if let Some(buf) = &s.input {
         let prompt = match &s.contest_target {
             Some(id) => {
                 let name = s
@@ -874,7 +999,7 @@ fn draw_ready(f: &mut Frame, area: Rect, r: &Review, s: &ReviewState, t: &T) {
     .areas(area);
 
     f.render_widget(
-        Paragraph::new(totals_lines(r, t)).block(
+        Paragraph::new(totals_lines_sel(r, t, s.sel_signal)).block(
             Block::default()
                 .borders(Borders::BOTTOM)
                 .title(format!(" {} ", t.rv_totals)),
@@ -982,6 +1107,7 @@ mod tests {
             totals,
             ratings: vec![],
             training_need: vec![],
+            training_sharing_enabled: false,
             disclosure: Some(Disclosure {
                 collected: Collected {
                     signals: vec!["policy_denied".into(), "approval_asked".into()],
@@ -1656,6 +1782,8 @@ mod tests {
     fn signal(unit_wide: bool) -> TrainingSignal {
         TrainingSignal {
             criterion_id: "G1".into(),
+            criterion_hash: "h1".into(),
+            shared: false,
             rated: 10,
             not_met: 7,
             window_days: 30,
@@ -1746,14 +1874,18 @@ mod tests {
     fn without_signals_the_section_is_absent() {
         let out = text(&totals_lines(&review(), &strings(Lang::En)));
         assert!(!out.contains("more support") && !out.contains("only you see this"));
-        assert!(training_lines(&review(), &strings(Lang::En)).is_empty());
+        assert!(training_lines(&review(), &strings(Lang::En), 0).is_empty());
     }
 
     #[test]
     fn a_signal_without_a_known_question_names_its_criterion() {
         let mut sg = signal(false);
         sg.question = None;
-        let out = text(&training_lines(&with_signals(vec![sg]), &strings(Lang::En)));
+        let out = text(&training_lines(
+            &with_signals(vec![sg]),
+            &strings(Lang::En),
+            0,
+        ));
         assert!(out.contains("G1: 7 of 10"), "{out}");
     }
 
@@ -1789,15 +1921,233 @@ mod tests {
         let en = text(&training_lines(
             &with_signals(vec![sg.clone()]),
             &strings(Lang::En),
+            0,
         ));
         assert!(
             en.contains("9 of 14 rated work did not meet it in the last 45 days"),
             "{en}"
         );
-        let tr = text(&training_lines(&with_signals(vec![sg]), &strings(Lang::Tr)));
+        let tr = text(&training_lines(
+            &with_signals(vec![sg]),
+            &strings(Lang::Tr),
+            0,
+        ));
         assert!(
             tr.contains("son 45 günde puanlanan 14 işten 9 tanesi"),
             "{tr}"
         );
+    }
+
+    // ── sharing a signal with the manager (ADR-0021 §6, option B) ─────────────
+
+    fn sig(id: &str, shared: bool) -> TrainingSignal {
+        TrainingSignal {
+            criterion_id: id.into(),
+            criterion_hash: format!("hash-{id}"),
+            rated: 10,
+            not_met: 7,
+            window_days: 30,
+            unit_wide: false,
+            shared,
+            question: None,
+        }
+    }
+
+    fn sharing(enabled: bool, signals: Vec<TrainingSignal>) -> ReviewState {
+        let mut r = review();
+        r.training_need = signals;
+        r.training_sharing_enabled = enabled;
+        let mut s = ReviewState::default();
+        s.open();
+        let id = s.begin_load();
+        s.apply_loaded(id, Ok(Outcome::Ready(r)));
+        s
+    }
+
+    fn share_action(id: &str) -> Action {
+        Action::ShareSignal {
+            criterion_id: id.into(),
+            criterion_hash: format!("hash-{id}"),
+        }
+    }
+
+    #[test]
+    fn sharing_needs_an_explicit_y_and_anything_else_cancels() {
+        let mut s = sharing(true, vec![sig("G1", false)]);
+        assert_eq!(s.on_key(ch('s')), Action::None, "s only asks");
+        assert!(s.pending_share.is_some());
+        assert_eq!(s.on_key(ch('y')), share_action("G1"));
+        assert!(s.pending_share.is_none());
+        for cancel in [
+            ch('n'),
+            key(KeyCode::Esc),
+            key(KeyCode::Enter),
+            ch('s'),
+            ch('Y'),
+        ] {
+            let mut s = sharing(true, vec![sig("G1", false)]);
+            s.on_key(ch('s'));
+            assert_eq!(s.on_key(cancel), Action::None);
+            assert!(s.pending_share.is_none(), "the question is gone either way");
+            assert_eq!(
+                s.on_key(ch('y')),
+                Action::None,
+                "a stray y later shares nothing"
+            );
+        }
+    }
+
+    #[test]
+    fn the_confirmation_swallows_the_key_so_it_does_nothing_else() {
+        let mut s = sharing(true, vec![sig("G1", false)]);
+        s.on_key(ch('s'));
+        assert_eq!(s.on_key(ch('q')), Action::None);
+        assert!(
+            s.open,
+            "q cancelled the question; it did not close the view"
+        );
+    }
+
+    #[test]
+    fn a_shared_signal_is_withdrawn_at_once_without_a_question() {
+        let mut s = sharing(true, vec![sig("G1", true)]);
+        assert_eq!(
+            s.on_key(ch('s')),
+            Action::UnshareSignal {
+                criterion_id: "G1".into(),
+                criterion_hash: "hash-G1".into()
+            }
+        );
+        assert!(s.pending_share.is_none());
+    }
+
+    #[test]
+    fn withdrawing_still_works_after_the_company_turned_sharing_off() {
+        let mut s = sharing(false, vec![sig("G1", true)]);
+        assert!(matches!(s.on_key(ch('s')), Action::UnshareSignal { .. }));
+    }
+
+    #[test]
+    fn when_the_company_has_not_enabled_sharing_s_explains_and_shares_nothing() {
+        let mut s = sharing(false, vec![sig("G1", false)]);
+        assert_eq!(s.on_key(ch('s')), Action::None);
+        assert!(s.pending_share.is_none());
+        assert_eq!(
+            s.notice.as_deref(),
+            Some("Your company has not enabled sharing these")
+        );
+    }
+
+    #[test]
+    fn t_picks_which_signal_s_acts_on() {
+        let mut s = sharing(true, vec![sig("G1", false), sig("G2", false)]);
+        s.on_key(ch('t'));
+        assert_eq!(s.sel_signal, 1);
+        s.on_key(ch('s'));
+        assert_eq!(s.on_key(ch('y')), share_action("G2"));
+        s.on_key(ch('t'));
+        assert_eq!(s.sel_signal, 0, "t wraps around");
+    }
+
+    #[test]
+    fn s_and_t_do_nothing_without_a_signal_or_before_the_review_is_ready() {
+        let mut s = sharing(true, vec![]);
+        assert_eq!(s.on_key(ch('s')), Action::None);
+        assert_eq!(s.on_key(ch('t')), Action::None);
+        assert!(s.pending_share.is_none());
+        let mut loading = ReviewState::default();
+        loading.open();
+        assert_eq!(loading.on_key(ch('s')), Action::None);
+        assert!(loading.pending_share.is_none());
+    }
+
+    #[test]
+    fn a_reload_clears_a_pending_question_and_keeps_the_selection_in_range() {
+        let mut s = sharing(true, vec![sig("G1", false), sig("G2", false)]);
+        s.on_key(ch('t'));
+        s.on_key(ch('s'));
+        let mut r = review();
+        r.training_need = vec![sig("G1", true)];
+        let id = s.begin_load();
+        s.apply_loaded(id, Ok(Outcome::Ready(r)));
+        assert!(s.pending_share.is_none());
+        assert_eq!(s.sel_signal, 0);
+    }
+
+    #[test]
+    fn typing_a_note_is_not_mistaken_for_sharing() {
+        let mut s = sharing(true, vec![sig("G1", false)]);
+        s.on_key(ch('n'));
+        for c in "sy".chars() {
+            s.on_key(ch(c));
+        }
+        assert!(s.pending_share.is_none());
+        assert!(matches!(
+            s.on_key(key(KeyCode::Enter)),
+            Action::AddNote { .. }
+        ));
+    }
+
+    #[test]
+    fn each_signal_shows_whether_and_how_it_is_shared_in_both_languages() {
+        for (lang, on, can, none) in [
+            (
+                Lang::En,
+                "shared with your manager — s withdraws it",
+                "not shared — s shares it with your manager",
+                "not shared with anyone",
+            ),
+            (
+                Lang::Tr,
+                "yöneticinizle paylaşıldı — s geri çeker",
+                "paylaşılmadı — s yöneticinizle paylaşır",
+                "kimseyle paylaşılmadı",
+            ),
+        ] {
+            let t = strings(lang);
+            let mut r = review();
+            r.training_need = vec![sig("G1", true), sig("G2", false)];
+            r.training_sharing_enabled = true;
+            let out = text(&training_lines(&r, &t, 0));
+            assert!(out.contains(on) && out.contains(can), "{out}");
+            r.training_sharing_enabled = false;
+            r.training_need = vec![sig("G2", false)];
+            assert!(text(&training_lines(&r, &t, 0)).contains(none));
+        }
+    }
+
+    #[test]
+    fn the_selected_signal_is_marked() {
+        let mut r = review();
+        r.training_need = vec![sig("G1", false), sig("G2", false)];
+        let out = text(&training_lines(&r, &strings(Lang::En), 1));
+        assert!(out.contains("▸ G2:") && !out.contains("▸ G1:"), "{out}");
+    }
+
+    #[test]
+    fn the_question_names_what_is_shared_and_says_it_can_be_withdrawn() {
+        let mut s = sharing(true, vec![sig("G1", false)]);
+        s.on_key(ch('s'));
+        let out = screen(&s, Lang::En, 160, 30);
+        assert!(
+            out.contains("Share this with your manager? Only this one"),
+            "{out}"
+        );
+        assert!(out.contains("you can withdraw it"), "{out}");
+        let tr = screen(&s, Lang::Tr, 160, 30);
+        assert!(tr.contains("Bunu yöneticinizle paylaşalım mı?"), "{tr}");
+    }
+
+    #[test]
+    fn sharing_fields_are_parsed_and_default_to_off() {
+        let r: Review = serde_json::from_str(
+            r#"{"name":"A","window_days":30,"training_sharing_enabled":true,
+                "training_need":[{"criterion_id":"G1","criterion_hash":"h","shared":true}]}"#,
+        )
+        .unwrap();
+        assert!(r.training_sharing_enabled && r.training_need[0].shared);
+        assert_eq!(r.training_need[0].criterion_hash, "h");
+        let old: Review = serde_json::from_str(r#"{"name":"A","window_days":30}"#).unwrap();
+        assert!(!old.training_sharing_enabled);
     }
 }

@@ -309,6 +309,30 @@ try:
     check("Where more support may help" in screen and "only you see this" in screen,
           "the TUI shows the training-need signal and says only the person sees it")
     check("10 rated work did not meet it" in screen or "of 10 rated" in screen, "the signal is shown as counts")
+
+    # ── 6e. sharing the signal with the manager: off by default, then y-confirmed ──
+    def shared_now():
+        me = requests.get(f"{BASE}/work-review/me", headers=H).json()
+        return [t for t in me["training_need"] if t["criterion_id"] == "G3"][0]["shared"]
+
+    tui_screen(keys=[b"\x0f", b"v", b"s", b"y"], rows=40)
+    check(not shared_now(), "with sharing off, s and y share nothing")
+    screen = tui_screen(keys=[b"\x0f", b"v", b"s"], rows=40)
+    check("has not enabled sharing" in screen, "the TUI says the company has not enabled sharing")
+    requests.put(f"{BASE}/work-review/training-need/settings", headers=H, json={"sharing_enabled": True})
+    screen = tui_screen(keys=[b"\x0f", b"v"], rows=40)
+    check("not shared" in screen and "s shares it with your manager" in screen, "the TUI offers to share once allowed")
+    screen = tui_screen(keys=[b"\x0f", b"v", b"s"], rows=40)
+    check("Share this with your manager?" in screen, "s asks for confirmation first")
+    check(not shared_now(), "asking shares nothing")
+    tui_screen(keys=[b"\x0f", b"v", b"s", b"n"], rows=40)
+    check(not shared_now(), "declining shares nothing")
+    tui_screen(keys=[b"\x0f", b"v", b"s", b"y"], rows=40)
+    check(shared_now(), "y shares the signal")
+    screen = tui_screen(keys=[b"\x0f", b"v"], rows=40)
+    check("shared with your manager" in screen, "the TUI shows it as shared")
+    tui_screen(keys=[b"\x0f", b"v", b"s"], rows=40)
+    check(not shared_now(), "s withdraws it at once")
     requests.put(f"{BASE}/work-review/settings", headers=H, json={"enabled": False})
 except ImportError:
     print("skip: pyte not installed — TUI checks skipped")

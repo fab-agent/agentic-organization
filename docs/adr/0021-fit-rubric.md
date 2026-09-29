@@ -265,7 +265,7 @@ automatically.
 - Only sessions with an LLM summary are rated; a session too short to be summarised
   (fewer than two messages) or whose summary failed is never rated.
 - There is no rubric view. Manager visibility is decided (above) but **not legally
-  reviewed**, and sharing stays off until it is (ADR-0019 open question 4). `fab`'s "My review" shows the person's own signal (unit tests and a pty end-to-end run); there is no `fab` screen for the unit findings that rubric owners get. Calibration runs from the command line only
+  reviewed**, and sharing stays off until it is (ADR-0019 open question 4). `fab`'s "My review" shows the person's own signal (unit tests and a pty end-to-end run); there is no `fab` screen for the unit findings that rubric owners and team leaders get. `fab` also lets the person share a signal with their manager (`t` picks, `s` asks, `y` confirms, `s` withdraws) and says when the company has not enabled sharing; verified by unit tests and a pty end-to-end run against the real backend. Calibration runs from the command line only
   (there is no API or `fab` screen for it), it has been exercised against a faked scorer,
   not the live Jev API, and the 85 % / 30 % / 20 / 14-day numbers are unmeasured. `fab`'s "My review" shows the
   person's ratings and lets them contest and withdraw (unit tests, plus a pty end-to-end

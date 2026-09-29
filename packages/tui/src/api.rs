@@ -190,6 +190,32 @@ impl Client {
         Ok(())
     }
 
+    pub fn share_training_signal(&self, company: &str, crit: &str, hash: &str) -> Result<()> {
+        self.http
+            .post(&format!(
+                "{}/work-review/me/training-need/share?company_id={company}",
+                self.s.base_url
+            ))
+            .set("Authorization", &format!("Bearer {}", self.s.token))
+            .send_json(serde_json::json!({ "criterion_id": crit, "criterion_hash": hash }))
+            .map_err(error_from)?;
+        Ok(())
+    }
+
+    pub fn withdraw_training_share(&self, company: &str, crit: &str, hash: &str) -> Result<()> {
+        self.http
+            .delete(&format!(
+                "{}/work-review/me/training-need/share?company_id={company}&criterion_id={}&criterion_hash={}",
+                self.s.base_url,
+                encode_path(crit),
+                encode_path(hash)
+            ))
+            .set("Authorization", &format!("Bearer {}", self.s.token))
+            .call()
+            .map_err(error_from)?;
+        Ok(())
+    }
+
     /// The caller's live workspace, or `None` if they have none yet.
     pub fn workspace_current(&self, company: &str) -> Result<Option<Ws>> {
         let r = self
