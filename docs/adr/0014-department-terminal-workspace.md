@@ -3,7 +3,7 @@
 - **Status:** proposed
 - **Date:** 2026-09-28
 - **Deciders:** Fabrika / fab.engineering
-- **Related:** ADR-0001, ADR-0002, ADR-0004, ADR-0005, ADR-0006, ADR-0008 (TUI technology superseded here), ADR-0015, ADR-0016
+- **Related:** ADR-0001, ADR-0002, ADR-0004, ADR-0005, ADR-0006, ADR-0008 (TUI technology superseded here), ADR-0015, ADR-0016, ADR-0018
 
 ## Context and problem
 
@@ -121,7 +121,8 @@ herdr reference and is revisited here.
 - **Follow-ups:**
   1. ~~Spike: herdr code reuse (pane engine, PTY, persistence) vs. own; license check.~~ Done — see *Spike outcome* below.
   2. Workspace container image (`sandbox/workspace/`) with the toolchain + a
-     lifecycle API (create / attach / suspend / resume) on the backend.
+     lifecycle API (create / attach / suspend / resume) on the backend — contract
+     proposed in ADR-0018.
   3. `packages/tui` skeleton: login, sidebar from existing APIs, one agent pane.
   4. Capacity model + idle suspension.
   5. Web shrink: switch to `adapter-static` served by FastAPI; remove screens as TUI equivalents ship.
