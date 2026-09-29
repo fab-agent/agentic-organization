@@ -15,7 +15,8 @@ from sqlmodel import select
 from api.audit import log_action
 from api.auth import get_current_user
 from database import get_session
-from models import CompanyMember, User, Workspace
+from models import CompanyMember, Personnel, User, Workspace
+from services.workspace_agent import ensure_workspace_agent, find_workspace_agent
 from services.workspace_runtime import (
     FileNotFound,
     WorkspaceRuntime,
@@ -81,6 +82,22 @@ def _runtime_failed(ws: Workspace, session, e: Exception, *, mark: bool) -> None
     raise HTTPException(status_code=502, detail=f"Workspace runtime error: {e}")
 
 
+def _view(session, ws: Workspace, person: Personnel | None = None) -> dict:
+    """Workspace dict plus the person's workspace-agent persona id.
+
+    With `person` given the agent is created if missing (create path); without it
+    only an existing one is reported.
+    """
+    d = to_dict(ws)
+    if person is not None:
+        d["agent_persona_id"] = ensure_workspace_agent(session, person).id
+        session.commit()
+    else:
+        agent = find_workspace_agent(session, ws.personnel_id)
+        d["agent_persona_id"] = agent.id if agent else None
+    return d
+
+
 # ── lifecycle ─────────────────────────────────────────────────────────────────
 
 
@@ -101,7 +118,7 @@ def create_workspace(
             stale = ws.state == "creating" and now - ws.updated_at > STALE_CREATING
             if ws.state in ("running", "suspended", "creating") and not stale:
                 response.status_code = 200
-                return to_dict(ws)
+                return _view(session, ws, person)
             # failed, or a creation that died half-way: retry (runtime.create is idempotent)
             ws.state = "creating"
             ws.error = None
@@ -117,7 +134,7 @@ def create_workspace(
             if existing is None:
                 raise
             response.status_code = 200
-            return to_dict(existing)
+            return _view(session, existing, person)
 
         try:
             runtime.create(
@@ -133,7 +150,7 @@ def create_workspace(
         session.add(ws)
         _audit(session, ws, user, "workspace_create")
         session.commit()
-        return to_dict(ws)
+        return _view(session, ws, person)
 
 
 @router.get("/me")
@@ -143,7 +160,7 @@ def my_workspace(user: User = Depends(get_current_user), company_id: str | None 
         ws = live_workspace(session, person.id)
         if not ws:
             raise HTTPException(status_code=404, detail="No workspace yet")
-        return to_dict(ws)
+        return _view(session, ws)
 
 
 @router.get("")

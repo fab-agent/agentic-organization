@@ -39,7 +39,11 @@ _TYP_REFRESH = "persona_refresh"
 
 
 class PersonaPrincipal:
-    """Decoded identity of a workstation agent acting as one persona."""
+    """Decoded identity of a workstation agent acting as one persona.
+
+    A *run token* (ADR-0019 §3-4) additionally carries `run_id`, `parent_run_id`,
+    `depth` and `role`. The root persona token has no `run_id` and `depth == 0`.
+    """
 
     def __init__(
         self,
@@ -48,12 +52,22 @@ class PersonaPrincipal:
         scope: str | None,
         jti: str | None = None,
         issued_at: datetime | None = None,
+        run_id: str | None = None,
+        parent_run_id: str | None = None,
+        depth: int = 0,
+        role: str | None = None,
+        expires_at: datetime | None = None,
     ):
         self.persona_id = persona_id
         self.company_id = company_id
         self.scope = scope
         self.jti = jti
         self.issued_at = issued_at
+        self.run_id = run_id
+        self.parent_run_id = parent_run_id
+        self.depth = depth
+        self.role = role
+        self.expires_at = expires_at
 
 
 def _new_jti() -> str:
@@ -125,12 +139,22 @@ def decode_persona_token(token: str, expected_audience: str) -> PersonaPrincipal
     payload = _decode(token, expected_audience)
     if payload.get("typ") != _TYP_ACCESS:
         raise ValueError("not a persona access token")
+    exp = payload.get("exp")
     return PersonaPrincipal(
         persona_id=payload["sub"],
         company_id=payload["company_id"],
         scope=payload.get("scope"),
         jti=payload.get("jti"),
         issued_at=_issued_at(payload),
+        run_id=payload.get("run_id"),
+        parent_run_id=payload.get("parent_run_id"),
+        depth=int(payload.get("depth") or 0),
+        role=payload.get("role"),
+        expires_at=(
+            exp if isinstance(exp, datetime) else datetime.utcfromtimestamp(exp)
+        )
+        if exp is not None
+        else None,
     )
 
 
@@ -146,3 +170,79 @@ def decode_persona_refresh_token(token: str) -> PersonaPrincipal:
         jti=payload.get("jti"),
         issued_at=_issued_at(payload),
     )
+
+
+# ── run tokens (ADR-0019 §3-4) ────────────────────────────────────────────────
+
+_ROLE_MAX = 80
+
+
+def max_run_depth() -> int:
+    """Deepest subagent nesting allowed (`RUN_MAX_DEPTH`, default 2)."""
+    try:
+        return max(0, int(os.getenv("RUN_MAX_DEPTH", "2")))
+    except ValueError:
+        return 2
+
+
+def sanitize_role(role: str | None) -> str | None:
+    """A free-text label for a run ("sales analysis"): printable, one line, short."""
+    if not role:
+        return None
+    cleaned = " ".join("".join(c if c.isprintable() else " " for c in role).split())
+    return cleaned[:_ROLE_MAX] or None
+
+
+def run_info(principal: PersonaPrincipal) -> dict | None:
+    """Attribution block for audit events, taken from a *verified* token only."""
+    if not principal.run_id:
+        return None
+    return {
+        "run_id": principal.run_id,
+        "parent_run_id": principal.parent_run_id,
+        "depth": principal.depth,
+        "role": principal.role,
+    }
+
+
+def create_run_token(
+    parent: PersonaPrincipal, role: str | None = None, ttl_minutes: int | None = None
+) -> tuple[str, dict]:
+    """Mint a token for a subagent run derived from `parent` (root or run).
+
+    Narrowing only: same persona, company and scope; deeper by one; and it never
+    outlives the parent. Raises ValueError when the depth limit is reached or the
+    parent has no time left. Quota and rate limits are keyed by persona, so
+    subagents share — and cannot multiply — the persona's budget.
+    """
+    depth = parent.depth + 1
+    if depth > max_run_depth():
+        raise ValueError("maximum subagent depth reached")
+    now = datetime.utcnow()
+    ttl = PERSONA_TOKEN_TTL_MINUTES if ttl_minutes is None else ttl_minutes
+    exp = now + timedelta(minutes=ttl)
+    if parent.expires_at is not None:
+        exp = min(exp, parent.expires_at)
+    if exp <= now:
+        raise ValueError("parent token has expired")
+    run = {
+        "run_id": uuid.uuid4().hex,
+        "parent_run_id": parent.run_id,
+        "depth": depth,
+        "role": sanitize_role(role),
+    }
+    payload = {
+        "sub": parent.persona_id,
+        "company_id": parent.company_id,
+        "scope": parent.scope,
+        "aud": [AUD_GATEWAY, AUD_AUDIT],
+        "typ": _TYP_ACCESS,
+        "jti": _new_jti(),
+        "iat": now,
+        "exp": exp,
+        **run,
+    }
+    return jwt.encode(payload, _SECRET, algorithm=_ALG), {
+        **run,
+        "expires_in": int((exp - now).total_seconds()),
+    }

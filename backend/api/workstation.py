@@ -27,7 +27,12 @@ from database import get_session
 from models import AgentConfig, CompanyMember, PersonaCommand, Personnel, User
 from services import audit_chain
 from services.auth import create_access_token
-from services.gateway_auth import PersonaPrincipal, create_persona_token
+from services.gateway_auth import (
+    PersonaPrincipal,
+    create_persona_token,
+    create_run_token,
+    run_info,
+)
 
 router = APIRouter(tags=["workstation"])
 
@@ -68,6 +73,8 @@ def ingest_tool_event(
         "error": event.error,
         "client_ts": event.client_ts,
         **({"extra": event.extra} if event.extra else {}),
+        # Attribution comes from the verified token, never from the request body.
+        **({"run": run_info(principal)} if principal.run_id else {}),
     }
     audit_chain.record(
         actor_type="agent",
@@ -94,6 +101,7 @@ def ingest_audit_batch(
         batch.events,
         actor_id=principal.persona_id,
         company_id=principal.company_id,
+        run=run_info(principal),
     )
     return {"accepted": n}
 
@@ -263,6 +271,42 @@ def mint_persona_token(
             raise HTTPException(status_code=403, detail="Bu persona için yetkiniz yok")
         person = session.get(Personnel, body.personnel_id)
     return _issue_token_pair(person.id, person.company_id)
+
+
+class RunTokenRequest(BaseModel):
+    # Free-text label for the run ("sales analysis"); sanitised and truncated.
+    role: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/workstation/run-token", status_code=201)
+def mint_run_token(
+    body: RunTokenRequest, principal: PersonaPrincipal = Depends(get_persona_audit)
+):
+    """
+    Token for a subagent run (ADR-0019 §3-4), derived from the caller's own token.
+
+    It can only narrow: same persona, company and scope, one level deeper, and it
+    expires no later than its parent. Nesting is capped (`RUN_MAX_DEPTH`, default
+    2). Every mint is recorded in the audit chain with its parent linkage. There
+    is no refresh token: a run lives at most as long as the token it came from.
+    """
+    try:
+        token, run = create_run_token(principal, body.role)
+    except ValueError as e:
+        code = 403 if "depth" in str(e) else 401
+        raise HTTPException(status_code=code, detail=str(e))
+    audit_chain.record(
+        actor_type="agent",
+        actor_id=principal.persona_id,
+        company_id=principal.company_id,
+        action="run_start",
+        target=run["run_id"],
+        reason=f"depth {run['depth']}",
+        payload={
+            "run": {k: run[k] for k in ("run_id", "parent_run_id", "depth", "role")}
+        },
+    )
+    return {"token": token, "token_type": "bearer", **run}
 
 
 class RefreshRequest(BaseModel):

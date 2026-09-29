@@ -47,10 +47,24 @@ class Personnel(SQLModel, table=True):
     email: str | None = None
     user_id: str | None = None  # linked User.id (no FK — soft link)
     manager_id: str | None = Field(default=None, foreign_key="personnel.id")
+    # Free text: what this person does day to day. Feeds the agent's context
+    # layer "the person's own job" (ADR-0019 §3).
+    job_description: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class AgentConfig(SQLModel, table=True):
+    # A human has at most one workspace agent (ADR-0019 §1).
+    __table_args__ = (
+        Index(
+            "uq_agentconfig_workspace_agent",
+            "responsible_id",
+            unique=True,
+            sqlite_where=text("is_workspace_agent = 1"),
+            postgresql_where=text("is_workspace_agent"),
+        ),
+    )
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     personnel_id: str = Field(foreign_key="personnel.id", unique=True)
     model: str
@@ -60,6 +74,8 @@ class AgentConfig(SQLModel, table=True):
     provider: str | None = None
     status: str = Field(default="draft")  # "active" | "draft" | "inactive"
     responsible_id: str | None = Field(default=None, foreign_key="personnel.id")
+    # True for the single agent every person gets with their workspace.
+    is_workspace_agent: bool = Field(default=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

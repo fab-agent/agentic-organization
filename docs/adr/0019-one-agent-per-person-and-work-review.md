@@ -232,3 +232,42 @@ Desktop) that `fab` keeps in step with the server-side workspace (ADR-0018):
 5. `fab`: local workspace folder sync (manifest-based) and session-summary files.
 6. Subagent limits: `maxSteps` in managed config, run sub-quotas at the gateway,
    depth / concurrency check in the plugin.
+
+## Implementation status (2026-09-29) — follow-up 1, backend part
+
+Done, with tests (`backend/tests/test_workspace_agent.py`, `test_run_tokens.py`):
+
+- **One agent per person.** Creating a workspace also creates the person's
+  workspace agent (`AgentConfig.is_workspace_agent`, unique per responsible human
+  by a partial index). It sits in the owner's department and reports to them, so
+  it resolves the same company and department policies; its department is
+  re-synced on every `POST /workspaces`. Model: `workspace.agent_model[:<company>]`
+  in AppConfig, else `WORKSPACE_AGENT_MODEL`, else `gpt-4o-mini`. The owner mints
+  its persona token through the existing `/workstation/persona-token`.
+- **`Personnel.job_description`** on create / update / read.
+- **Run tokens.** `POST /workstation/run-token` derives a token from the caller's
+  own: same persona, company and scope, `depth + 1` (cap `RUN_MAX_DEPTH`, default
+  2, `0` disables subagents), never outliving the parent, no refresh token. Each
+  mint is audited (`run_start`, with parent linkage).
+- **Attribution.** Tool events, batch ingests and gateway calls carry
+  `run = {run_id, parent_run_id, depth, role}` taken from the *verified token*; a
+  client-supplied `run` is discarded. Revoking a persona (ADR-0007) also kills its
+  run tokens.
+- **Shared budget.** Quotas and rate limits are keyed by persona, so subagents
+  share, and cannot multiply, the persona's budget. This replaces the separate
+  per-run sub-quota this ADR first sketched; a sub-quota that only *narrows* the
+  shared one can be added later if a real need appears.
+
+**Not done, and nothing uses the new pieces yet:**
+
+- `packages/agent-plugin` and opencode do not call `run-token` or send run tokens,
+  so no real run is attributed yet. Until the plugin does (and until it is verified
+  which opencode tool launches subagents), the endpoint is exercised only by tests.
+- **Concurrency** is not limited server-side (the plugin was to count it).
+- **Context assembly** (layers 1–6) does not exist; `job_description` is stored but
+  nothing reads it into a prompt yet.
+- The work-review pipeline (filter, tag, fit rating, hierarchical views), "My
+  area", and the person's view of their ratings are untouched.
+- The partial unique index uses PostgreSQL syntax that was not run against a
+  PostgreSQL server here (SQLite only); the `Postgres` CI job covers it.
+

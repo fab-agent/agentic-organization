@@ -127,6 +127,7 @@ class PersonnelCreate(BaseModel):
     company_id: str | None = None
     department_id: str | None = None
     manager_id: str | None = None
+    job_description: str | None = None
 
     @field_validator("type")
     @classmethod
@@ -145,6 +146,7 @@ class PersonnelUpdate(BaseModel):
     email: str | None = None
     department_id: str | None = None
     manager_id: str | None = None
+    job_description: str | None = None
 
     @field_validator("type")
     @classmethod
