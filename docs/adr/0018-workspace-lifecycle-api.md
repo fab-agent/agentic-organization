@@ -134,10 +134,15 @@ sidebar, and lists `/workspace/out` in the files strip.
 
 ## Follow-ups
 
-1. `sandbox/workspace/` image: `sandbox/Dockerfile` base + LibreOffice headless,
-   PDF toolkit, headless Chromium, Docling, `tmux`.
+1. `sandbox/workspace/` image: first cut in place (`sandbox/workspace/`, scripts
+   tested without Docker; the image is **not yet built or run** — do that before
+   depending on it).
 2. `WorkspaceRuntime` interface + Docker driver + `workspaces` table + the REST
    endpoints above, with tests against a fake runtime.
 3. WebSocket attach endpoint and ticket store.
 4. `fab`: WebSocket transport for the agent pane, workspace state in the
    sidebar, files strip.
+5. Token refresh for long-lived workspaces: make opencode config and
+   `packages/agent-plugin` read the persona token from a file (re-read per
+   request) and add a refresh writer in the workspace; today both read
+   `FABAGENT_TOKEN` from the environment once at start.

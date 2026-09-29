@@ -1,0 +1,73 @@
+# Dev stand-in for the workspace-controller (ADR-0018): one workspace container
+# on an internal-only network, egress only through the filtering proxy — the same
+# shape as sandbox/compose.yaml, plus persistent volumes and tmux.
+#
+#   FABAGENT_BASE_URL=https://agents.example.com \
+#   FABAGENT_TOKEN=<persona token> \
+#   docker compose -f sandbox/workspace/compose.yaml up -d --build
+#   docker compose -f sandbox/workspace/compose.yaml exec workspace workspace-attach
+#
+# Build context is the repo root (the Dockerfile copies packages/agent-plugin).
+
+name: agentic-org-workspace
+
+services:
+  egress:
+    build:
+      context: ../egress
+    environment:
+      - FABAGENT_BASE_URL
+      - EGRESS_ALLOWLIST
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - internal
+      - external
+    restart: unless-stopped
+
+  workspace:
+    build:
+      context: ../..
+      dockerfile: sandbox/workspace/Dockerfile
+      args:
+        WITH_DOCLING: ${WITH_DOCLING:-0}
+    depends_on:
+      - egress
+    init: false # the image's ENTRYPOINT already runs tini
+    environment:
+      - FABAGENT_BASE_URL
+      - FABAGENT_TOKEN
+      - FABAGENT_DEBUG
+      - FABAGENT_FAIL_CLOSED
+      - FABAGENT_TAINT_SOURCES
+      - OPENCODE_MODEL=${FABAGENT_MODEL:-fabagent/qwen-turbo}
+      - HTTP_PROXY=http://egress:8888
+      - HTTPS_PROXY=http://egress:8888
+      - http_proxy=http://egress:8888
+      - https_proxy=http://egress:8888
+      - NO_PROXY=localhost,127.0.0.1,::1
+      - no_proxy=localhost,127.0.0.1,::1
+    volumes:
+      - workspace_home:/home/agent
+      - workspace_files:/workspace
+    networks:
+      - internal
+    # Hardening (ADR-0002): no capabilities, no privilege escalation, bounded
+    # resources. LibreOffice / Chromium need more memory than the dev sandbox.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 1024
+    mem_limit: 4g
+    cpus: 2.0
+    restart: unless-stopped
+
+volumes:
+  workspace_home:
+  workspace_files:
+
+networks:
+  internal:
+    internal: true
+  external:

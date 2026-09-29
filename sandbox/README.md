@@ -15,6 +15,7 @@ Workstation sandbox for running opencode with the org plugin (ADR-0002).
 | `entrypoint.sh` | Image entrypoint (ADR-0002): strips every `OPENCODE_*` env override (keeps `OPENCODE_MODEL`) so the host can't bypass the managed config, then `exec opencode`. |
 | `run.sh` | Phase 0 stand-in for `3pa run` (ADR-0009): build image, `docker run` with only the current project mounted. **No egress restriction** — plain bridge network. |
 | `compose.yaml` | `run.sh` + a mandatory egress proxy: the sandbox is on an `internal` network with no internet route, `egress/` is its only way out (ADR-0002 / ADR-0010 layer 3). |
+| `workspace/` | Server-side department workspace image (ADR-0014/0018): the work toolchain + a tmux-held agent session. See `workspace/README.md`. |
 | `egress/` | The filtering forward proxy (tinyproxy, `FilterDefaultDeny`). See `egress/README.md`. |
 
 ## Try it
