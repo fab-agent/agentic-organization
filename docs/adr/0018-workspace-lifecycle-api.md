@@ -65,7 +65,7 @@ Files the agent produces live under `/workspace/out` on a per-person volume.
 | `POST /workspaces/{id}/suspend` | `running → suspended` (also done by idle timer). |
 | `DELETE /workspaces/{id}` | Remove the container; the volume is kept for **7 days**, then purged. A manager can restore it within that window. |
 | `POST /workspaces/{id}/attach-ticket` | Mint a single-use attach ticket (see 4). |
-| `GET /workspaces/{id}/files` | List `/workspace/out`. |
+| `GET /workspaces/{id}/files` | List `/workspace/out` as a manifest (`path`, `size`, `sha256`, `mtime`); `?since=<cursor>` returns only changes, so `fab` can sync the person's local folder incrementally (ADR-0019 §8). |
 | `GET /workspaces/{id}/files/{path}` | Download one file (streamed, size-capped). |
 | `PUT /workspaces/{id}/files/{path}` | Upload into `/workspace/in`. |
 
