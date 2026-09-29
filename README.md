@@ -73,6 +73,25 @@ Design and rationale: [`docs/ROADMAP.md`](docs/ROADMAP.md), [`docs/architecture/
 
 ---
 
+## Terminal workspace (`fab`)
+
+Every department works from a terminal workspace where one agent per person does the tool
+work: a Rust + Ratatui client (`packages/tui`, [`fab`](packages/tui/README.md)) on top of
+per-person server-side workspaces, prompt assembly with intent classification, and an
+opt-in work review with fit ratings that the person sees first. Decisions:
+[ADR-0014](docs/adr/0014-department-terminal-workspace.md),
+[0018](docs/adr/0018-workspace-lifecycle-api.md),
+[0019](docs/adr/0019-one-agent-per-person-and-work-review.md),
+[0020](docs/adr/0020-prompt-assembly-and-intent-breakdown.md),
+[0021](docs/adr/0021-fit-rubric.md).
+
+**Status:** works end to end against a fake workspace runtime and is tested; there is no real
+workspace runtime yet, and fit rating has not been measured against the live Jev API or reviewed
+legally, so it ships switched off. What is built, what is not, and the next steps:
+[`docs/DURUM.md`](docs/DURUM.md) (Turkish).
+
+---
+
 ## AI Onboarding
 
 Instead of manually setting up departments, agents, skills and policies one by one, a conversational AI assistant does it for you:

@@ -73,6 +73,10 @@ against goals).
 | 7 | Policy import (Docling → policies + proposed rules → one change request), Git as policy source of truth, "propose a change" from TUI/web |
 | 8 | Behaviour checks on agent output (Jev / local); end-of-day summaries scored against goals (opt-in) |
 
+The terminal-workspace work of ADR-0014 / 0018 / 0019 / 0020 / 0021 (the `fab` client, workspace
+API, prompt assembly, work review and fit rating) is on `main`; its status and next steps are in
+[`DURUM.md`](DURUM.md). The steps above are not tracked there.
+
 ## Fixed principles
 
 - **The web version stays unchanged.** The new execution model is optional;
