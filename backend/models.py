@@ -2,6 +2,7 @@ import json
 import uuid
 from datetime import datetime
 
+from sqlalchemy import Index, text
 from sqlmodel import Field, SQLModel
 
 
@@ -651,3 +652,35 @@ class TelegramBotState(SQLModel, table=True):
     selected_agent_name: str | None = None
     active_session_id: str | None = None  # AgentSession.id (persists history)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Workspace(SQLModel, table=True):
+    """
+    A person's server-side workspace (ADR-0014 / ADR-0018). One live workspace per
+    human Personnel; deleted rows are kept until `purge_after` (7 days) so the
+    volume can be restored, then purged.
+    state: creating | running | suspended | failed | deleted
+    """
+
+    __table_args__ = (
+        Index(
+            "uq_workspace_active_person",
+            "personnel_id",
+            unique=True,
+            sqlite_where=text("state != 'deleted'"),
+            postgresql_where=text("state != 'deleted'"),
+        ),
+    )
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    company_id: str = Field(foreign_key="company.id", index=True)
+    personnel_id: str = Field(foreign_key="personnel.id", index=True)
+    user_id: str | None = None  # owner's User.id (soft link)
+    state: str = Field(default="creating", index=True)
+    error: str | None = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    last_active_at: datetime = Field(default_factory=datetime.utcnow)
+    suspended_at: datetime | None = None
+    deleted_at: datetime | None = None
+    purge_after: datetime | None = None

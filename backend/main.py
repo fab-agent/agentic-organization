@@ -57,6 +57,7 @@ from api.telegram_config import router as telegram_router
 from api.tenant import router as tenant_router
 from api.users import router as users_router
 from api.well_known import router as well_known_router
+from api.workspaces import router as workspaces_router
 from api.workstation import router as workstation_router
 from core.runtime import (
     acquire_job_leader,
@@ -116,6 +117,7 @@ app.include_router(personnel_router)
 app.include_router(providers_router)
 app.include_router(gateway_router)
 app.include_router(workstation_router)
+app.include_router(workspaces_router)
 app.include_router(mcp_router)
 app.include_router(well_known_router)
 app.include_router(git_router)
