@@ -36,6 +36,12 @@ ratings are shown only to the person; the view says so. `←`/`→` pick a ratin
 contests it with a reason (it then leaves everyone else's view until a department head
 resolves it), `u` withdraws a contest. A day with a contested rating is marked `!`.
 
+**Where more support may help** (ADR-0021 §6) appears in the totals when your decided,
+live ratings of the last 30 days clear the company's bar: plain counts ("7 of 10 rated
+work did not meet it"), never a score or a percentage, marked "only you see this". If
+colleagues in your department show the same pattern it says the rule or its training may
+be unclear. Your manager does not receive it (whether they ever should is undecided).
+
 Environment: `FAB_SESSION_FILE`, `FAB_AGENT_CMD` (default `opencode`, else `$SHELL`),
 `FAB_LANG` (`tr`/`en`), `FAB_FOLDER`, `FAB_MAX_DOWNLOAD_MB` (200), `FAB_MAX_UPLOAD_MB` (50).
 

@@ -73,6 +73,24 @@ pub struct RatingTotal {
     pub question: Option<String>,
 }
 
+/// Where the person's own decided, live ratings suggest more support may help
+/// (ADR-0021 §6). Shown only to the person; counts, never a score.
+#[derive(Debug, Clone, Deserialize, PartialEq, Default)]
+pub struct TrainingSignal {
+    pub criterion_id: String,
+    #[serde(default)]
+    pub rated: i64,
+    #[serde(default)]
+    pub not_met: i64,
+    #[serde(default)]
+    pub window_days: i64,
+    /// Colleagues in the same department show the same pattern.
+    #[serde(default)]
+    pub unit_wide: bool,
+    #[serde(default)]
+    pub question: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Default)]
 pub struct DayEntry {
     pub day: String,
@@ -126,6 +144,8 @@ pub struct Review {
     pub totals: Totals,
     #[serde(default)]
     pub ratings: Vec<RatingTotal>,
+    #[serde(default)]
+    pub training_need: Vec<TrainingSignal>,
     #[serde(default)]
     pub disclosure: Option<Disclosure>,
 }
@@ -605,6 +625,34 @@ pub fn rating_totals_lines(r: &Review, t: &T) -> Vec<Line<'static>> {
     lines
 }
 
+/// The person's own training-need signals: plain counts, a supportive framing, and a
+/// note that nobody else sees them.
+pub fn training_lines(r: &Review, t: &T) -> Vec<Line<'static>> {
+    if r.training_need.is_empty() {
+        return Vec::new();
+    }
+    let mut lines = vec![Line::styled(
+        format!("  {} ({})", t.rv_training, t.rv_training_only_you),
+        Style::default().add_modifier(Modifier::UNDERLINED),
+    )];
+    for e in &r.training_need {
+        let name = e.question.clone().unwrap_or_else(|| e.criterion_id.clone());
+        let counts = fill(
+            &fill(&fill(t.rv_training_line, "{m}", e.not_met), "{n}", e.rated),
+            "{d}",
+            e.window_days,
+        );
+        lines.push(Line::from(format!("    {name}: {counts}")));
+        if e.unit_wide {
+            lines.push(Line::styled(
+                format!("      {}", t.rv_training_unit_wide),
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+    }
+    lines
+}
+
 pub fn totals_lines(r: &Review, t: &T) -> Vec<Line<'static>> {
     let mut lines = signals_lines(&r.totals.signals, t, "  ");
     lines.extend(tags_lines(&r.totals.tags, t, "  "));
@@ -615,6 +663,7 @@ pub fn totals_lines(r: &Review, t: &T) -> Vec<Line<'static>> {
         ));
     }
     lines.extend(rating_totals_lines(r, t));
+    lines.extend(training_lines(r, t));
     lines
 }
 
@@ -818,7 +867,7 @@ fn draw_ready(f: &mut Frame, area: Rect, r: &Review, s: &ReviewState, t: &T) {
     let disclosure = r.disclosure.as_ref().map(|d| disclosure_lines(d, t));
     let dh = disclosure.as_ref().map(|l| l.len() as u16 + 1).unwrap_or(0);
     let [totals, mid, foot] = Layout::vertical([
-        Constraint::Length((totals_lines(r, t).len() as u16 + 2).min(10)),
+        Constraint::Length((totals_lines(r, t).len() as u16 + 2).min(14)),
         Constraint::Min(4),
         Constraint::Length(dh.min(10)),
     ])
@@ -932,6 +981,7 @@ mod tests {
             ],
             totals,
             ratings: vec![],
+            training_need: vec![],
             disclosure: Some(Disclosure {
                 collected: Collected {
                     signals: vec!["policy_denied".into(), "approval_asked".into()],
@@ -1599,5 +1649,155 @@ mod tests {
         let tr = screen(&s, Lang::Tr, 90, 24);
         assert!(tr.contains("puanına neden itiraz ediyorsunuz"), "{tr}");
         let _ = screen(&two_ratings(), Lang::En, 40, 12); // must not panic
+    }
+
+    // ── training-need signals (ADR-0021 §6) ───────────────────────────────────
+
+    fn signal(unit_wide: bool) -> TrainingSignal {
+        TrainingSignal {
+            criterion_id: "G1".into(),
+            rated: 10,
+            not_met: 7,
+            window_days: 30,
+            unit_wide,
+            question: Some("Does this advance revenue?".into()),
+        }
+    }
+
+    fn with_signals(v: Vec<TrainingSignal>) -> Review {
+        let mut r = review();
+        r.training_need = v;
+        r
+    }
+
+    #[test]
+    fn training_signals_are_parsed_and_their_absence_is_tolerated() {
+        let json = r#"{"name":"A","window_days":30,"training_need":[
+            {"criterion_id":"G1","criterion_hash":"h","rated":10,"not_met":7,
+             "not_met_share":0.7,"window_days":30,"unit_wide":true,"question":"Q?","x":1},
+            {"criterion_id":"G2"}]}"#;
+        let r: Review = serde_json::from_str(json).unwrap();
+        assert_eq!(r.training_need.len(), 2);
+        assert!(r.training_need[0].unit_wide && !r.training_need[1].unit_wide);
+        assert_eq!(
+            (r.training_need[0].rated, r.training_need[0].not_met),
+            (10, 7)
+        );
+        let old: Review = serde_json::from_str(r#"{"name":"A","window_days":7}"#).unwrap();
+        assert!(old.training_need.is_empty());
+    }
+
+    #[test]
+    fn a_signal_is_shown_as_plain_counts_that_only_the_person_sees_in_both_languages() {
+        let r = with_signals(vec![signal(false)]);
+        for (lang, title, only, line) in [
+            (
+                Lang::En,
+                "Where more support may help",
+                "only you see this",
+                "7 of 10 rated work did not meet it in the last 30 days",
+            ),
+            (
+                Lang::Tr,
+                "Daha fazla desteğin yararlı olabileceği yerler",
+                "bunu yalnızca siz görürsünüz",
+                "son 30 günde puanlanan 10 işten 7 tanesi bunu karşılamadı",
+            ),
+        ] {
+            let out = text(&totals_lines(&r, &strings(lang)));
+            assert!(out.contains(title) && out.contains(only), "{out}");
+            assert!(
+                out.contains("Does this advance revenue?") && out.contains(line),
+                "{out}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_signal_never_shows_a_score_a_percentage_or_a_ranking() {
+        let out = text(&totals_lines(
+            &with_signals(vec![signal(true)]),
+            &strings(Lang::En),
+        ))
+        .to_lowercase();
+        for banned in ["score", "%", "rank", "grade", "percentile", "worst", "fail"] {
+            assert!(!out.contains(banned), "found {banned:?} in:\n{out}");
+        }
+    }
+
+    #[test]
+    fn a_unit_wide_signal_says_the_rule_may_be_unclear() {
+        let out = |uw| {
+            text(&totals_lines(
+                &with_signals(vec![signal(uw)]),
+                &strings(Lang::En),
+            ))
+        };
+        assert!(out(true).contains("the rule or its training may be unclear"));
+        assert!(!out(false).contains("the rule or its training may be unclear"));
+        let tr = text(&totals_lines(
+            &with_signals(vec![signal(true)]),
+            &strings(Lang::Tr),
+        ));
+        assert!(tr.contains("kural ya da eğitimi belirsiz olabilir"), "{tr}");
+    }
+
+    #[test]
+    fn without_signals_the_section_is_absent() {
+        let out = text(&totals_lines(&review(), &strings(Lang::En)));
+        assert!(!out.contains("more support") && !out.contains("only you see this"));
+        assert!(training_lines(&review(), &strings(Lang::En)).is_empty());
+    }
+
+    #[test]
+    fn a_signal_without_a_known_question_names_its_criterion() {
+        let mut sg = signal(false);
+        sg.question = None;
+        let out = text(&training_lines(&with_signals(vec![sg]), &strings(Lang::En)));
+        assert!(out.contains("G1: 7 of 10"), "{out}");
+    }
+
+    #[test]
+    fn the_signal_is_on_screen_even_on_a_modest_terminal() {
+        let mut r = review();
+        r.training_need = vec![signal(true)];
+        r.ratings = vec![RatingTotal {
+            criterion_id: "G1".into(),
+            status: "live".into(),
+            met: 3,
+            not_met: 7,
+            unclear: 0,
+            contested: 0,
+            question: None,
+        }];
+        let mut s = ReviewState::default();
+        s.open();
+        let id = s.begin_load();
+        s.apply_loaded(id, Ok(Outcome::Ready(r)));
+        let out = screen(&s, Lang::En, 110, 30);
+        assert!(out.contains("Where more support may help"), "{out}");
+        assert!(out.contains("7 of 10 rated work"), "{out}");
+        let _ = screen(&s, Lang::En, 40, 12); // must not panic
+    }
+
+    #[test]
+    fn the_counts_and_window_come_from_the_signal_not_from_fixed_numbers() {
+        let mut sg = signal(false);
+        sg.rated = 14;
+        sg.not_met = 9;
+        sg.window_days = 45;
+        let en = text(&training_lines(
+            &with_signals(vec![sg.clone()]),
+            &strings(Lang::En),
+        ));
+        assert!(
+            en.contains("9 of 14 rated work did not meet it in the last 45 days"),
+            "{en}"
+        );
+        let tr = text(&training_lines(&with_signals(vec![sg]), &strings(Lang::Tr)));
+        assert!(
+            tr.contains("son 45 günde puanlanan 14 işten 9 tanesi"),
+            "{tr}"
+        );
     }
 }

@@ -253,7 +253,7 @@ only, audited); 10 and 50 % are proposals. Responses carry no score, rank or gra
 - There is no rubric view. **When and whether a manager may see a person's training-need
   signal is undecided**: the ADR says "shown to the person first" but not what follows, and
   nothing here shows it to anyone else — a product and legal decision (ADR-0019 open
-  question 4). There is no `fab` screen for the signal or for the unit findings. Calibration runs from the command line only
+  question 4). `fab`'s "My review" shows the person's own signal (unit tests and a pty end-to-end run); there is no `fab` screen for the unit findings that rubric owners get. Calibration runs from the command line only
   (there is no API or `fab` screen for it), it has been exercised against a faked scorer,
   not the live Jev API, and the 85 % / 30 % / 20 / 14-day numbers are unmeasured. `fab`'s "My review" shows the
   person's ratings and lets them contest and withdraw (unit tests, plus a pty end-to-end

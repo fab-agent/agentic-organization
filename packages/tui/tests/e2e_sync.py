@@ -292,6 +292,23 @@ try:
     # withdraw it: u
     tui_screen(keys=[b"\x0f", b"v", b"u"])
     check(not ratings_now()["G1"]["contested"], "u in the TUI withdraws the contest")
+
+    # ── 6d. the person's own training-need signal (ADR-0021 §6) ────────────────
+    screen = tui_screen(keys=[b"\x0f", b"v"])
+    check("Where more support may help" not in screen, "no signal without enough rated work")
+    with database.get_session() as s:
+        for i in range(10):
+            s.add(models.WorkRating(
+                company_id=cid, personnel_id=p["id"], day=day, run_id=f"e2e-tn-{i}",
+                criterion_id="G3", criterion_hash="h", rubric_version="v",
+                criterion_status="live", verdict="not_met"))
+        s.commit()
+    me = requests.get(f"{BASE}/work-review/me", headers=H).json()
+    check(any(t["criterion_id"] == "G3" for t in me["training_need"]), "the server returns the signal to the person")
+    screen = tui_screen(keys=[b"\x0f", b"v"], rows=40)
+    check("Where more support may help" in screen and "only you see this" in screen,
+          "the TUI shows the training-need signal and says only the person sees it")
+    check("10 rated work did not meet it" in screen or "of 10 rated" in screen, "the signal is shown as counts")
     requests.put(f"{BASE}/work-review/settings", headers=H, json={"enabled": False})
 except ImportError:
     print("skip: pyte not installed — TUI checks skipped")

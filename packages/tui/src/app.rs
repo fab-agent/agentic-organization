@@ -371,6 +371,7 @@ mod review_flow_tests {
             }],
             totals: Default::default(),
             ratings: vec![],
+            training_need: vec![],
             disclosure: None,
         }
     }
