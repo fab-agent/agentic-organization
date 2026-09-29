@@ -16,20 +16,33 @@ what replaces that transport.
 
 ## Decision
 
-### 1. Who starts containers: a runtime behind an interface, never the Docker socket in the backend
+### 1. Who starts containers: a separate `workspace-controller` service
 
-The backend calls a `WorkspaceRuntime` interface (`create`, `start`, `stop`,
-`remove`, `exec_attach`, `status`, `list_files`). The first driver is Docker
-running **on a separate worker host / controller process**; the API container
-never mounts `/var/run/docker.sock` (that would make an API bug a host root
-compromise). A Kubernetes driver can follow. This keeps ADR-0002's hardening
-portable across drivers.
+**Decided (option A).** A small, single-purpose `workspace-controller` service is
+the only component with container-runtime access. The backend never mounts
+`/var/run/docker.sock` (an API bug must not become host root). It calls the
+controller over the internal network through a `WorkspaceRuntime` interface
+(`create`, `start`, `stop`, `remove`, `attach`, `status`, `list_files`),
+authenticated with a shared secret (`WORKSPACE_CONTROLLER_URL`,
+`WORKSPACE_CONTROLLER_SECRET`). It ships as one more compose service today.
+
+Hardening of the controller itself, since it is the new privileged component:
+reach Docker through a **socket proxy that allows only the verbs it needs**
+(create / start / stop / rm / exec, no privileged or host-mount options) or use
+rootless Podman; validate every input as an ID from the backend, never a free
+path or image name; keep it free of user-facing endpoints.
+
+The interface is multi-host-ready: moving to one controller per worker host
+with mTLS (the former option B) later replaces the authentication and adds a
+placement table, with no change to the API in section 3.
 
 ### 2. Workspace model
 
-One workspace per human `Personnel` (`personnel_id`). It runs as that person's
-agent persona (ADR-0007) — the persona token is minted by the backend and
-injected as `FABAGENT_TOKEN` / `FABAGENT_BASE_URL`, exactly as `sandbox/` does.
+One workspace per human `Personnel` (`personnel_id`). The person's agents
+(ADR-0019) run as sessions **inside** it; each agent session gets its own persona
+token (ADR-0007), minted by the backend when the session starts and injected as
+`FABAGENT_TOKEN` / `FABAGENT_BASE_URL`, exactly as `sandbox/` does. A token never
+carries more than the owning person's scope.
 
 State machine: `creating → running ⇄ suspended`, plus `failed` and `deleted`.
 `suspended` keeps the home volume and stops the container; `resume` starts it and
@@ -49,7 +62,7 @@ Files the agent produces live under `/workspace/out` on a per-person volume.
 | `GET /workspaces` | List — managers/admins, scoped to their company. |
 | `POST /workspaces/{id}/resume` | `suspended → running`. |
 | `POST /workspaces/{id}/suspend` | `running → suspended` (also done by idle timer). |
-| `DELETE /workspaces/{id}` | Remove the container; the volume is kept for a retention period. |
+| `DELETE /workspaces/{id}` | Remove the container; the volume is kept for **7 days**, then purged. A manager can restore it within that window. |
 | `POST /workspaces/{id}/attach-ticket` | Mint a single-use attach ticket (see 4). |
 | `GET /workspaces/{id}/files` | List `/workspace/out`. |
 | `GET /workspaces/{id}/files/{path}` | Download one file (streamed, size-capped). |
@@ -104,16 +117,19 @@ sidebar, and lists `/workspace/out` in the files strip.
 - **Accepted residual risk:** files in workspaces are company documents held
   server-side; the boundary is the container profile in 2 plus the egress proxy.
 
-## Open questions (need an owner's decision)
+## Decisions taken on the open questions
 
-1. **Controller placement:** a separate `workspace-controller` service, or a
-   worker-node agent that the backend calls over mTLS? (Affects ops, not the API.)
-2. **Retention:** how long a deleted workspace's volume is kept, and who can
-   restore it.
-3. **Persona binding:** one persona per person, or let the person choose among
-   the agents they own (ADR-0007 `agent_owner`)?
-4. **Windows clients:** WebSocket attach works everywhere; confirm we do not
-   need raw SSH for any department.
+1. **Controller placement:** separate `workspace-controller` service (section 1).
+2. **Retention:** a deleted workspace's volume is kept **7 days**, then purged.
+   Audit logs (ADR-0006) are kept independently; the volume exists so that
+   material can still be recovered when someone asks after the fact.
+3. **Persona binding:** not one persona per person — agents are task-scoped and
+   created automatically, see ADR-0019.
+
+## Open question
+
+1. **Windows clients:** WebSocket attach works everywhere; confirm we do not need
+   raw SSH for any department.
 
 ## Follow-ups
 

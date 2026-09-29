@@ -3,7 +3,7 @@
 - **Status:** proposed
 - **Date:** 2026-09-28
 - **Deciders:** Fabrika / fab.engineering
-- **Related:** ADR-0001, ADR-0002, ADR-0004, ADR-0005, ADR-0006, ADR-0008 (TUI technology superseded here), ADR-0015, ADR-0016, ADR-0018
+- **Related:** ADR-0001, ADR-0002, ADR-0004, ADR-0005, ADR-0006, ADR-0008 (TUI technology superseded here), ADR-0015, ADR-0016, ADR-0018, ADR-0019
 
 ## Context and problem
 

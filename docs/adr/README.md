@@ -35,6 +35,7 @@ Format: a [MADR](https://adr.github.io/madr/) derivative — see [`0000-template
 | [0016](0016-installation-kit.md) | Installation kit — org chart, identity, models, company systems | proposed |
 | [0017](0017-policies-as-code-and-daily-review.md) | Company policies as versioned guardrails, and daily work review | proposed |
 | [0018](0018-workspace-lifecycle-api.md) | Workspace lifecycle API and attach protocol | proposed |
+| [0019](0019-task-scoped-agent-personas.md) | Task-scoped agent personas, created and routed automatically | proposed |
 
 ## Adding a new ADR
 
