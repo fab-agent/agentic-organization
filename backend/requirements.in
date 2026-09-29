@@ -39,3 +39,6 @@ python-multipart>=0.0.9
 resend>=2.0
 sentence-transformers>=3.0
 pgvector>=0.3
+# TypeSafe Jev client (intent classification, ADR-0020). Imported lazily: the app
+# runs without it and without TYPESAFE_API_KEY.
+typesafe-sdk>=0.7

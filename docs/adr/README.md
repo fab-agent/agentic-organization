@@ -36,6 +36,7 @@ Format: a [MADR](https://adr.github.io/madr/) derivative — see [`0000-template
 | [0017](0017-policies-as-code-and-daily-review.md) | Company policies as versioned guardrails, and daily work review | proposed |
 | [0018](0018-workspace-lifecycle-api.md) | Workspace lifecycle API and attach protocol | proposed |
 | [0019](0019-one-agent-per-person-and-work-review.md) | One agent per person, subagents internal; area, rules and work review | proposed |
+| [0020](0020-prompt-assembly-and-intent-breakdown.md) | Prompt assembly with a token budget, and intent breakdown with Jev | proposed |
 
 ## Adding a new ADR
 

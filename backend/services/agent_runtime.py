@@ -9,6 +9,7 @@ Supported providers (routed by model name prefix):
 
 import asyncio
 import json
+import logging
 from collections.abc import AsyncGenerator
 
 from sqlmodel import select
@@ -25,8 +26,11 @@ from models import (
     SessionMessage,
     Skill,
 )
+from services.context_assembly import Assembled, assemble
 from services.mcp_client import call_http_tool, call_mcp_sse_tool, execute_builtin
 from services.memory_service import load_agent_memories
+
+_log = logging.getLogger("app")
 
 # ── Attachment helpers ────────────────────────────────────────────────────────
 
@@ -58,6 +62,44 @@ def _build_message_with_attachments(
 # ── System prompt builder ─────────────────────────────────────────────────────
 
 
+def build_system_prompt_assembled(
+    person: Personnel,
+    dept: Department | None,
+    skills: list[Skill],
+    policy_names: list[str] | None = None,
+    rag_query: str | None = None,
+    company_id: str | None = None,
+    skip: frozenset[str] | set[str] = frozenset(),
+) -> Assembled:
+    """The prompt as named, token-counted sections (see services.context_assembly)."""
+    memories: list[str] = []
+    knowledge: list[dict] = []
+    # Never block session start due to a memory / RAG failure.
+    try:
+        memories = load_agent_memories(person.id, limit=3)
+    except Exception:
+        pass
+    if rag_query:
+        try:
+            from services.rag_service import search as rag_search
+
+            knowledge = rag_search(
+                rag_query, company_id=company_id, personnel_id=person.id, k=4
+            )
+        except Exception:
+            pass
+    return assemble(
+        person,
+        dept,
+        skills,
+        policy_names,
+        memories=memories,
+        knowledge=knowledge,
+        company_id=company_id,
+        skip=skip,
+    )
+
+
 def build_system_prompt(
     person: Personnel,
     dept: Department | None,
@@ -66,82 +108,15 @@ def build_system_prompt(
     rag_query: str | None = None,
     company_id: str | None = None,
 ) -> str:
-    lines = [
-        f"You are {person.name}.",
-    ]
-    if person.title:
-        lines.append(f"Title: {person.title}")
-    if person.role:
-        lines.append(f"Role: {person.role}")
-    if dept:
-        lines.append(f"Department: {dept.name}")
-        if dept.goals:
-            lines.append(f"\nDepartment Goals:\n{dept.goals}")
-    if policy_names:
-        lines.append("\nPolicies you must follow:")
-        for p in policy_names:
-            lines.append(f"  - {p}")
-
-    if skills:
-        active_skills = [s for s in skills if s.is_active]
-        if active_skills:
-            import json as _json
-
-            delegate_skills = [
-                s
-                for s in active_skills
-                if s.skill_type == "builtin"
-                and s.config_json
-                and _json.loads(s.config_json).get("function_name")
-                == "delegate_to_agent"
-            ]
-            if delegate_skills:
-                lines.append(
-                    "\nYou are an orchestrator agent. When given a task, you MUST call your delegation tools to assign sub-tasks to specialist agents — do NOT just describe what you would do."
-                )
-                lines.append("Delegation tools available (call these):")
-                for s in delegate_skills:
-                    lines.append(f"  - {s.name}: {s.description or s.name}")
-                other = [s for s in active_skills if s not in delegate_skills]
-                if other:
-                    lines.append("Other tools: " + ", ".join(s.name for s in other))
-            else:
-                lines.append(
-                    "\nAvailable tools/skills: "
-                    + ", ".join(s.name for s in active_skills)
-                )
-
-    # Inject agent memory from past sessions
-    try:
-        memories = load_agent_memories(person.id, limit=3)
-        if memories:
-            lines.append("\nContext from your previous sessions:")
-            for mem in memories:
-                lines.append(f"  - {mem}")
-    except Exception:
-        pass  # Never block session start due to memory failure
-
-    # Inject RAG context — semantically relevant past task results and session summaries
-    if rag_query:
-        try:
-            from services.rag_service import search as rag_search
-
-            hits = rag_search(
-                rag_query, company_id=company_id, personnel_id=person.id, k=4
-            )
-            if hits:
-                lines.append("\n--- Relevant knowledge from past work ---")
-                for hit in hits:
-                    date = hit["created_at"][:10]
-                    source = hit["source_type"].replace("_", " ")
-                    snippet = hit["chunk_text"][:300].replace("\n", " ")
-                    lines.append(f"[{date}] ({source}) {snippet}")
-                lines.append("--- End of relevant knowledge ---")
-        except Exception:
-            pass  # Never block session start due to RAG failure
-
-    lines.append("\nRespond helpfully and concisely. Use tools when they would help.")
-    return "\n".join(lines)
+    assembled = build_system_prompt_assembled(
+        person, dept, skills, policy_names, rag_query, company_id
+    )
+    # Sizes only, never text: shows where the tokens go for every real prompt.
+    _log.info(
+        "prompt_assembled",
+        extra={"extra": {"persona": person.id, "prompt": assembled.report()}},
+    )
+    return assembled.text()
 
 
 # ── Tool definition builder ───────────────────────────────────────────────────
