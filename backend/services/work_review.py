@@ -280,11 +280,36 @@ def _totals(rows) -> dict:
     return {"signals": dict(signals), "tags": {k: dict(v) for k, v in tags.items()}}
 
 
+def _open_contest(r: WorkRating) -> bool:
+    return r.contested_at is not None and r.resolved_at is None
+
+
+def _rating_entry(r: WorkRating) -> dict:
+    return {
+        "id": r.id,
+        "criterion_id": r.criterion_id,
+        "criterion_hash": r.criterion_hash,
+        "status": r.criterion_status,
+        "verdict": r.verdict,
+        "contested": _open_contest(r),
+        "resolved": r.resolved_at is not None,
+        "contest_note": r.contest_note,
+    }
+
+
 def person_view(
-    session, subject: Personnel, days: int = 30, today: date | None = None
+    session,
+    subject: Personnel,
+    days: int = 30,
+    today: date | None = None,
+    *,
+    as_subject: bool = False,
 ) -> dict:
-    """One person's review, in full. The person and their direct manager both get
-    exactly this — there is no separate, richer manager view."""
+    """One person's review. The person and their direct manager get the same view,
+    with two deliberate differences in *fit ratings* (ADR-0021 §5–6): ratings of a
+    criterion still in `shadow` are shown only to the person, and a rating the person
+    has contested stays out of everyone else's view until it is resolved. `as_subject`
+    is therefore False by default: the safe view is the one with less in it."""
     first = _first_day(days, today)
     rows = session.exec(
         select(WorkSignal).where(
@@ -296,8 +321,17 @@ def person_view(
         .where(WorkNote.personnel_id == subject.id, WorkNote.day >= first)
         .order_by(WorkNote.created_at)
     ).all()
+    ratings = session.exec(
+        select(WorkRating)
+        .where(WorkRating.personnel_id == subject.id, WorkRating.day >= first)
+        .order_by(WorkRating.created_at)
+    ).all()
+    if not as_subject:
+        ratings = [
+            r for r in ratings if r.criterion_status == "live" and not _open_contest(r)
+        ]
     by_day: dict[str, dict] = defaultdict(
-        lambda: {"signals": {}, "tags": {}, "notes": []}
+        lambda: {"signals": {}, "tags": {}, "notes": [], "ratings": []}
     )
     for r in rows:
         if r.kind.startswith("tag_"):
@@ -308,13 +342,39 @@ def person_view(
         by_day[n.day]["notes"].append(
             {"id": n.id, "text": n.text, "created_at": n.created_at.isoformat()}
         )
+    for r in ratings:
+        by_day[r.day]["ratings"].append(_rating_entry(r))
     return {
         "personnel_id": subject.id,
         "name": subject.name,
         "window_days": days,
         "days": [{"day": d, **by_day[d]} for d in sorted(by_day, reverse=True)],
         "totals": _totals(rows),
+        "ratings": _rating_totals(ratings),
     }
+
+
+def _rating_totals(ratings: list[WorkRating]) -> list[dict]:
+    """Counts per criterion version. No score, no average (ADR-0021 §2)."""
+    out: dict[tuple[str, str], dict] = {}
+    for r in ratings:  # oldest first, so the last status wins
+        e = out.setdefault(
+            (r.criterion_id, r.criterion_hash),
+            {
+                "criterion_id": r.criterion_id,
+                "criterion_hash": r.criterion_hash,
+                "met": 0,
+                "not_met": 0,
+                "unclear": 0,
+                "contested": 0,
+            },
+        )
+        e["status"] = r.criterion_status
+        if r.verdict in ("met", "not_met", "unclear"):
+            e[r.verdict] += 1
+        if _open_contest(r):
+            e["contested"] += 1
+    return sorted(out.values(), key=lambda e: (e["criterion_id"], e["criterion_hash"]))
 
 
 def aggregate(

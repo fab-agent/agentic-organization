@@ -681,6 +681,7 @@ def test_enabling_needs_an_explicit_acknowledgement_and_is_audited(org):
     assert ok.status_code == 200 and ok.json() == {
         "enabled": True,
         "retention_days": 365,
+        "rating_enabled": False,
     }
     org.db.expire_all()
     assert wr.enabled(org.db, org.co.id) is True
@@ -711,6 +712,7 @@ def test_retention_is_validated_and_persisted(on):
     assert on.client.get("/work-review/settings").json() == {
         "enabled": True,
         "retention_days": 90,
+        "rating_enabled": False,
         "minimum_group_size": 3,
     }
 

@@ -12,10 +12,17 @@ from sqlmodel import select
 
 from api.auth import get_current_user
 from database import get_session
-from models import CompanyMember, Personnel, User, WorkNote
+from models import CompanyMember, Personnel, User, WorkNote, WorkRating
 from services import audit_chain
+from services import rating as rt
+from services import rubric as rb
 from services import work_review as wr
-from services.workspaces import person_for_user, resolve_company_id
+from services.workspaces import (
+    MANAGER_ROLES,
+    _in_scope,
+    person_for_user,
+    resolve_company_id,
+)
 
 router = APIRouter(prefix="/work-review", tags=["work-review"])
 
@@ -77,6 +84,23 @@ def _disclosure(session, company_id: str) -> dict:
     }
 
 
+def _annotate(session, company_id: str, view: dict) -> dict:
+    """Add the criterion's question wherever the company's *current* rubric still has
+    that exact version (same id and hash); older versions keep just their id."""
+    loaded = rt.load_rubric(session, company_id)
+    known = (
+        {(c.id, rb.criterion_hash(c)): c.question for c in loaded[0].criteria}
+        if loaded
+        else {}
+    )
+    for e in view.get("ratings", []):
+        e["question"] = known.get((e["criterion_id"], e["criterion_hash"]))
+    for d in view.get("days", []):
+        for e in d.get("ratings", []):
+            e["question"] = known.get((e["criterion_id"], e["criterion_hash"]))
+    return view
+
+
 # ── the person's own review ───────────────────────────────────────────────────
 
 
@@ -89,7 +113,8 @@ def my_review(
     with get_session() as session:
         person, cid = person_for_user(session, user, company_id)
         _require_enabled(session, cid)
-        view = wr.person_view(session, person, days)
+        view = wr.person_view(session, person, days, as_subject=True)
+        _annotate(session, cid, view)
         view["disclosure"] = _disclosure(session, cid)
         return view
 
@@ -141,6 +166,120 @@ def delete_note(
         session.commit()
 
 
+class ContestBody(BaseModel):
+    note: str = Field(min_length=1, max_length=1000)
+
+
+def _own_rating(session, person: Personnel, rating_id: str) -> WorkRating:
+    r = session.get(WorkRating, rating_id)
+    if not r or r.personnel_id != person.id:
+        raise HTTPException(status_code=404, detail="Rating not found")
+    return r
+
+
+def _audit_rating(user: User, cid: str, action: str, rating: WorkRating) -> None:
+    """The fact only: who did what to whose rating — never the note."""
+    audit_chain.record(
+        actor_type="human",
+        actor_id=user.id,
+        company_id=cid,
+        action=action,
+        target=rating.personnel_id,
+        reason=rating.criterion_id,
+        payload={"rating_id": rating.id},
+    )
+
+
+@router.post("/me/ratings/{rating_id}/contest")
+def contest_rating(
+    rating_id: str,
+    body: ContestBody,
+    company_id: str | None = None,
+    user: User = Depends(get_current_user),
+):
+    """Contest a fit rating (ADR-0021 §6). Until it is resolved it is left out of every
+    view but the person's own, and out of all aggregates."""
+    with get_session() as session:
+        person, cid = person_for_user(session, user, company_id)
+        _require_enabled(session, cid)
+        r = _own_rating(session, person, rating_id)
+        r.contest_note = body.note.strip()
+        r.contested_at = datetime.utcnow()
+        r.resolved_at = None
+        session.add(r)
+        session.commit()
+        _audit_rating(user, cid, "work_rating_contested", r)
+        return wr._rating_entry(r)
+
+
+@router.delete("/me/ratings/{rating_id}/contest", status_code=204)
+def withdraw_contest(
+    rating_id: str,
+    company_id: str | None = None,
+    user: User = Depends(get_current_user),
+):
+    with get_session() as session:
+        person, cid = person_for_user(session, user, company_id)
+        _require_enabled(session, cid)
+        r = _own_rating(session, person, rating_id)
+        r.contest_note = None
+        r.contested_at = None
+        r.resolved_at = None
+        session.add(r)
+        session.commit()
+        _audit_rating(user, cid, "work_rating_contest_withdrawn", r)
+
+
+def _can_resolve(session, user: User, viewer: Personnel, subject: Personnel) -> bool:
+    """A department head (or executive / founder) whose scope covers the subject —
+    never the subject, and never their direct manager, who sees the ratings."""
+    if viewer.id == subject.id or subject.manager_id == viewer.id:
+        return False
+    members = session.exec(
+        select(CompanyMember).where(
+            CompanyMember.user_id == user.id,
+            CompanyMember.company_id == subject.company_id,
+            CompanyMember.role.in_(MANAGER_ROLES),
+        )
+    ).all()
+    return any(
+        m.role == "founder"
+        or not m.scope_id
+        or _in_scope(session, subject.department_id, m.scope_id)
+        for m in members
+    )
+
+
+@router.post("/ratings/{rating_id}/resolve")
+def resolve_contest(
+    rating_id: str,
+    company_id: str | None = None,
+    user: User = Depends(get_current_user),
+):
+    """Close a contest. The rating rejoins the views (with the person's note attached)."""
+    with get_session() as session:
+        viewer, cid = person_for_user(session, user, company_id)
+        _require_enabled(session, cid)
+        r = session.get(WorkRating, rating_id)
+        subject = session.get(Personnel, r.personnel_id) if r else None
+        if not r or not subject or r.company_id != cid:
+            raise HTTPException(status_code=404, detail="Rating not found")
+        if not _can_resolve(session, user, viewer, subject):
+            raise HTTPException(
+                status_code=403,
+                detail="Only a department head above the person, not their direct manager, can resolve this",
+            )
+        if r.contested_at is None or r.resolved_at is not None:
+            raise HTTPException(
+                status_code=409, detail="This rating is not under contest"
+            )
+        r.resolved_at = datetime.utcnow()
+        session.add(r)
+        session.commit()
+        _audit_rating(user, cid, "work_rating_resolved", r)
+        return wr._rating_entry(r)
+
+
 # ── what a manager may see ────────────────────────────────────────────────────
 
 
@@ -162,6 +301,7 @@ def person_review(
                 status_code=403, detail="Only a person's direct manager can view this"
             )
         view = wr.person_view(session, subject, days)
+        _annotate(session, cid, view)
         _viewed(viewer.id, cid, "person", subject.id, days)
         return view
 
@@ -220,6 +360,9 @@ def department_reviews(
 class SettingsBody(BaseModel):
     enabled: bool | None = None
     retention_days: int | None = Field(default=None, ge=1, le=1825)
+    # Fit rating (ADR-0021): separate from work review itself, because summaries go to
+    # a scoring model. Needs work review on, and the same acknowledgement.
+    rating_enabled: bool | None = None
     # Turning it on is about employees' personal data (KVKK / GDPR): the founder must
     # confirm that purpose, access and retention are defined and staff are informed.
     acknowledge_notice: bool = False
@@ -233,6 +376,7 @@ def get_settings(company_id: str | None = None, user: User = Depends(get_current
         return {
             "enabled": wr.enabled(session, cid),
             "retention_days": wr.retention_days(session, cid),
+            "rating_enabled": rt.rating_enabled(session, cid),
             "minimum_group_size": wr.min_group(),
         }
 
@@ -249,6 +393,7 @@ def put_settings(
         before = {
             "enabled": wr.enabled(session, cid),
             "retention_days": wr.retention_days(session, cid),
+            "rating_enabled": rt.rating_enabled(session, cid),
         }
         if body.enabled and not before["enabled"] and not body.acknowledge_notice:
             raise HTTPException(
@@ -256,14 +401,29 @@ def put_settings(
                 detail="acknowledge_notice must be true to enable work review: confirm that purpose, "
                 "access and retention are defined and that employees have been informed",
             )
+        if body.rating_enabled:
+            if not (body.enabled or before["enabled"]):
+                raise HTTPException(
+                    status_code=422,
+                    detail="fit rating needs work review to be enabled first",
+                )
+            if not before["rating_enabled"] and not body.acknowledge_notice:
+                raise HTTPException(
+                    status_code=422,
+                    detail="acknowledge_notice must be true to enable fit rating: work summaries "
+                    "are sent to a scoring model, so confirm employees have been informed",
+                )
         if body.enabled is not None:
             wr.set_enabled(session, cid, body.enabled)
+        if body.rating_enabled is not None:
+            rt.set_rating_enabled(session, cid, body.rating_enabled)
         if body.retention_days is not None:
             wr.set_retention_days(session, cid, body.retention_days)
         session.commit()
         after = {
             "enabled": wr.enabled(session, cid),
             "retention_days": wr.retention_days(session, cid),
+            "rating_enabled": rt.rating_enabled(session, cid),
         }
     audit_chain.record(
         actor_type="human",

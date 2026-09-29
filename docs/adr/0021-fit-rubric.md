@@ -194,6 +194,19 @@ session's `intent_classified` audit event and the accountable person from the ag
 `responsible_id`. It does nothing without a scoring key or for a company that has not
 switched rating on.
 
+Then the person-first API (`/work-review`): `GET /me` now carries the person's fit
+ratings — per day and as counts per criterion version, with the question text when the
+company's current rubric still has that exact version. The person sees everything,
+including `shadow` ratings and their own contested ones; the direct manager's per-person
+view (and `person_view`'s default) shows only `live`, uncontested ratings, so the person
+sees *more* than the manager, never less. `POST /me/ratings/{id}/contest` (note ≤ 1000
+characters) hides a rating from everyone else until it is resolved; `DELETE` withdraws
+the contest; `POST /ratings/{id}/resolve` closes it and is limited to a department head /
+executive / founder whose scope covers the person — never the person or their direct
+manager. Every contest, withdrawal and resolution is audited without the note. Rating has
+its own company switch (`PUT /settings {"rating_enabled": true}`), which needs work review
+on and the same acknowledgement, and stops when work review is switched off.
+
 **Not built, and why it matters:**
 
 - **The filter recognises identifiers by shape only** (secrets, e-mail, URL, card, IBAN,
@@ -203,9 +216,11 @@ switched rating on.
   phone-shaped (the safe side).
 - Only sessions with an LLM summary are rated; a session too short to be summarised
   (fewer than two messages) or whose summary failed is never rated.
-- No person view, manager view, aggregates, contest endpoint, shadow gating in a view,
-  training-need signal, calibration tool or `fab` rubric view. Because no endpoint
-  reads ratings, they are visible to nobody today.
+- **Team / department aggregates do not include ratings yet**, and there is no
+  training-need signal, calibration tool, rubric view or `fab` screen for ratings or the
+  contest — only the API. The shadow period is a status of the criterion; nothing yet
+  promotes a criterion from `shadow` to `live` after calibration (it is edited in the
+  rubric file).
 - The rubric lives in an `AppConfig` row, not in the policy repo behind a change
   request; the 20 % sample rate, thresholds and caps are unmeasured proposals.
 - The Jev call with several `Noul` questions was exercised only against the documented
