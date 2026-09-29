@@ -317,10 +317,14 @@ def team_reviews(
         viewer, cid = person_for_user(session, user, company_id)
         _require_enabled(session, cid)
         out = [
-            {
-                "leader": {"id": leader.id, "name": leader.name},
-                **wr.aggregate(session, members, days),
-            }
+            _annotate(
+                session,
+                cid,
+                {
+                    "leader": {"id": leader.id, "name": leader.name},
+                    **wr.aggregate(session, members, days),
+                },
+            )
             for leader, members in wr.visible_teams(session, viewer)
         ]
         _viewed(viewer.id, cid, "teams", viewer.id, days)
@@ -345,10 +349,14 @@ def department_reviews(
             members = wr.department_members(session, d)
             if members:
                 out.append(
-                    {
-                        "department": {"id": d.id, "name": d.name},
-                        **wr.aggregate(session, members, days),
-                    }
+                    _annotate(
+                        session,
+                        cid,
+                        {
+                            "department": {"id": d.id, "name": d.name},
+                            **wr.aggregate(session, members, days),
+                        },
+                    )
                 )
         _viewed(user.id, cid, "departments", cid, days)
         return out

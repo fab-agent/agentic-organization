@@ -397,6 +397,7 @@ def aggregate(
         )
     ).all()
     totals = _totals(rows)
+    ratings, hidden = _group_ratings(session, [m.id for m in members], first, floor)
     return {
         "n_people": n,
         "suppressed": False,
@@ -405,7 +406,53 @@ def aggregate(
         "per_person_average": {
             k: round(v / n, 2) for k, v in totals["signals"].items()
         },
+        "ratings": ratings,
+        "ratings_hidden": hidden,
     }
+
+
+def _group_ratings(
+    session, member_ids: list[str], first: str, floor: int
+) -> tuple[list[dict], int]:
+    """Fit ratings of a group (ADR-0021 §6): counts per criterion version, from `live`
+    and uncontested ratings only — never `shadow`, never one under contest — and only
+    for a criterion that at least `floor` different people have been rated on, so a
+    criterion cannot single a person out. Returns (rows, number of rows held back)."""
+    rows = session.exec(
+        select(WorkRating).where(
+            WorkRating.personnel_id.in_(member_ids),
+            WorkRating.day >= first,
+            WorkRating.criterion_status == "live",
+        )
+    ).all()
+    groups: dict[tuple[str, str], dict] = {}
+    for r in rows:
+        if _open_contest(r):
+            continue
+        g = groups.setdefault(
+            (r.criterion_id, r.criterion_hash),
+            {
+                "criterion_id": r.criterion_id,
+                "criterion_hash": r.criterion_hash,
+                "status": "live",
+                "met": 0,
+                "not_met": 0,
+                "unclear": 0,
+                "people": set(),
+            },
+        )
+        if r.verdict in ("met", "not_met", "unclear"):
+            g[r.verdict] += 1
+        g["people"].add(r.personnel_id)
+    out, hidden = [], 0
+    for key in sorted(groups):
+        g = groups[key]
+        n_people = len(g.pop("people"))
+        if n_people < floor:
+            hidden += 1
+            continue
+        out.append({**g, "n_people": n_people})
+    return out, hidden
 
 
 def direct_reports(session, manager: Personnel) -> list[Personnel]:

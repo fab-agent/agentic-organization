@@ -331,3 +331,154 @@ def test_turning_work_review_off_stops_rating_too(on):
     _put(on, on.founder, enabled=False)
     on.db.expire_all()
     assert rt.rating_enabled(on.db, on.co.id) is False
+
+
+# ── team and department aggregates ───────────────────────────────────────────
+
+
+def _team(o, leader="Mert"):
+    teams = {t["leader"]["name"]: t for t in _get(o, "/teams", o.dana.user).json()}
+    return teams[leader]
+
+
+def _rows(agg):
+    return {(e["criterion_id"], e["criterion_hash"]): e for e in agg["ratings"]}
+
+
+def _three_raters(o, verdicts=("met", "met", "not_met"), **kw):
+    return [
+        _rating(o, who.person, verdict=v, **kw)
+        for who, v in zip((o.ayse, o.bora, o.cem), verdicts)
+    ]
+
+
+def test_team_aggregate_counts_live_ratings_per_criterion_version(on):
+    _three_raters(on)
+    a = _team(on)
+    (row,) = a["ratings"]
+    assert (row["criterion_id"], row["met"], row["not_met"], row["unclear"]) == (
+        "G1",
+        2,
+        1,
+        0,
+    )
+    assert row["n_people"] == 3 and row["status"] == "live"
+    assert a["ratings_hidden"] == 0
+
+
+def test_shadow_and_contested_ratings_never_reach_an_aggregate(on):
+    _three_raters(on)
+    _rating(on, on.ayse.person, status="shadow", verdict="not_met")
+    _rating(on, on.bora.person, verdict="unclear", contested_at=datetime.utcnow())
+    (row,) = _team(on)["ratings"]
+    assert (row["met"], row["not_met"], row["unclear"]) == (2, 1, 0)
+
+
+def test_a_criterion_rated_on_fewer_than_the_floor_of_people_is_held_back(on):
+    _rating(on, on.ayse.person)
+    _rating(on, on.ayse.person, verdict="not_met")  # many ratings, but one person
+    _rating(on, on.bora.person)
+    a = _team(on)
+    assert a["ratings"] == [] and a["ratings_hidden"] == 1
+    _rating(on, on.cem.person)
+    a = _team(on)
+    assert len(a["ratings"]) == 1 and a["ratings_hidden"] == 0
+
+
+def test_a_contest_can_pull_a_criterion_below_the_floor(on):
+    rs = _three_raters(on)
+    assert len(_team(on)["ratings"]) == 1
+    _contest(on, on.cem.user, rs[2].id)
+    a = _team(on)
+    assert a["ratings"] == [] and a["ratings_hidden"] == 1
+
+
+def test_the_floor_setting_applies_to_criteria_too(on, monkeypatch):
+    _rating(on, on.ayse.person)
+    _rating(on, on.bora.person)
+    assert _team(on)["ratings_hidden"] == 1
+    monkeypatch.setenv("WORK_REVIEW_MIN_GROUP", "2")
+    assert len(_team(on)["ratings"]) == 1
+
+
+def test_a_suppressed_small_team_has_no_ratings_at_all(on):
+    _rating(on, on.efe.person)
+    _rating(on, on.gul.person)
+    lale = _team(on, "Lale")  # two people: the whole team is suppressed
+    assert lale["suppressed"] is True
+    assert "ratings" not in lale and "ratings_hidden" not in lale
+
+
+def test_aggregates_do_not_identify_anyone_or_mix_in_other_teams(on):
+    _three_raters(on)
+    for who in (on.efe, on.gul):  # Lale's team, different criterion
+        _rating(on, who.person, cid="OTHER")
+    blob = json.dumps(_team(on))
+    for name in ("Ayşe", "Bora", "Cem", on.ayse.person.id, on.bora.person.id):
+        assert name not in blob
+    assert "OTHER" not in blob
+    assert not any(k in blob for k in ("score", "average_rating"))
+
+
+def test_old_ratings_fall_outside_the_window(on):
+    from datetime import timedelta
+
+    old = TODAY - timedelta(days=40)
+    for who in (on.ayse, on.bora, on.cem):
+        _rating(on, who.person, day=old)
+    assert _team(on)["ratings"] == []
+    _as(on.client, on.dana.user)
+    wide = on.client.get("/work-review/teams", params={"days": 90}).json()
+    mert = {t["leader"]["name"]: t for t in wide}["Mert"]
+    assert len(mert["ratings"]) == 1
+
+
+def test_team_and_department_aggregates_carry_the_current_question(on):
+    wr._put(on.db, f"work_review.rubric:{on.co.id}", RUBRIC)
+    on.db.commit()
+    current = rb.criterion_hash(rt.load_rubric(on.db, on.co.id)[0].criteria[0])
+    for who in (on.ayse, on.bora, on.cem):
+        _rating(on, who.person, chash=current)
+    (row,) = _team(on)["ratings"]
+    assert row["question"] == "Does this work advance recurring revenue?"
+    dept = {
+        d["department"]["name"]: d for d in _get(on, "/departments", on.founder).json()
+    }
+    assert dept["Accounting"]["ratings"][0]["question"] == row["question"]
+
+
+def test_department_aggregate_counts_everyone_in_the_department(on):
+    for who in (on.ayse, on.bora, on.efe):  # two teams, one department
+        _rating(on, who.person)
+    dept = {
+        d["department"]["name"]: d for d in _get(on, "/departments", on.founder).json()
+    }
+    (row,) = dept["Accounting"]["ratings"]
+    assert row["met"] == 3 and row["n_people"] == 3
+    assert dept["Finance"]["suppressed"] is True  # only Dana: nothing to show
+
+
+def test_aggregate_reads_are_audited_without_content(on):
+    _three_raters(on)
+    _team(on)
+    ev = on.db.exec(
+        select(models.AuditEvent).where(
+            models.AuditEvent.action == "work_review_viewed"
+        )
+    ).all()
+    assert len(ev) >= 1 and "G1" not in "".join(e.payload_json or "" for e in ev)
+
+
+def test_another_teams_ratings_cannot_lift_a_criterion_over_this_teams_floor(on):
+    # Mert's team: 2 raters of G1 (below the floor of 3). Lale's team: 2 more raters of
+    # the same criterion. If other teams leaked in, Mert's team would show 4.
+    _rating(on, on.ayse.person)
+    _rating(on, on.bora.person)
+    for who in (on.efe, on.gul):
+        _rating(on, who.person)
+    a = _team(on)
+    assert a["ratings"] == [] and a["ratings_hidden"] == 1
+    # and the counts of a shown criterion are this team's own
+    _rating(on, on.cem.person)
+    (row,) = _team(on)["ratings"]
+    assert row["met"] == 3 and row["n_people"] == 3

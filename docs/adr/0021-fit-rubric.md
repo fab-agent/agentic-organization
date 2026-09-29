@@ -207,6 +207,15 @@ manager. Every contest, withdrawal and resolution is audited without the note. R
 its own company switch (`PUT /settings {"rating_enabled": true}`), which needs work review
 on and the same acknowledgement, and stops when work review is switched off.
 
+Then the aggregates: team (`/teams`) and department (`/departments`) results now carry
+fit ratings as counts per criterion version — from `live`, uncontested ratings only, never
+`shadow` and never one under contest — and a criterion appears only if at least the group
+floor (`WORK_REVIEW_MIN_GROUP`, default 3) of *different people* were rated on it, so a
+criterion cannot single a person out even inside a group large enough to be shown. How many
+rows were held back is reported (`ratings_hidden`); who is not. A suppressed small group
+carries no ratings at all. Totals per group can still be differenced against other groups'
+totals, as with the hard signals; the floor limits that, it does not remove it.
+
 **Not built, and why it matters:**
 
 - **The filter recognises identifiers by shape only** (secrets, e-mail, URL, card, IBAN,
@@ -216,7 +225,7 @@ on and the same acknowledgement, and stops when work review is switched off.
   phone-shaped (the safe side).
 - Only sessions with an LLM summary are rated; a session too short to be summarised
   (fewer than two messages) or whose summary failed is never rated.
-- **Team / department aggregates do not include ratings yet**, and there is no
+- There is no
   training-need signal, calibration tool or rubric view. `fab`'s "My review" shows the
   person's ratings and lets them contest and withdraw (unit tests, plus a pty end-to-end
   run against the real backend); there is no screen for the person who resolves. The
