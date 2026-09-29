@@ -306,6 +306,17 @@ def on_startup():
             id="work_review_purge",
             replace_existing=True,
         )
+        # Fit rating (ADR-0021): a no-op unless a company switched rating on and a
+        # scoring key is configured.
+        from services.rating import rate_recent_sessions
+
+        _scheduler.add_job(
+            rate_recent_sessions,
+            "interval",
+            minutes=60,
+            id="work_rating",
+            replace_existing=True,
+        )
     except Exception as e:
         logger.warning("work review init failed", extra={"extra": {"error": str(e)}})
 

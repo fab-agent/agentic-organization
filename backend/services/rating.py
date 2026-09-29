@@ -1,18 +1,22 @@
 """Fit rating: score one run's summary against the rubric (ADR-0021).
 
-First slice. What is here: storing a company's rubric behind the linter, choosing which
-criteria apply to a run, sampling, one Jev call per run, and writing `WorkRating` rows.
+What is here: storing a company's rubric behind the linter, choosing which criteria
+apply to a run, sampling, the filter stage (`services.redact`, applied inside
+`rate_run` so no caller can skip it), one Jev call per run, writing `WorkRating` rows,
+and an hourly job (`rate_recent_sessions`) that rates the LLM summaries of recently
+closed agent sessions. Off unless the company enabled work review **and** switched
+rating on separately, and a scoring key is configured.
+
 What is *not* here, on purpose:
 
-* **No filter/redaction stage yet** (ADR-0019 §6 step 1). The summary is sent to the
-  scoring model as given, so rating is off unless the company enabled work review
-  **and** switched rating on separately, and a scoring key is configured. Nothing
-  personal should be sent until the filter exists — callers pass filtered text.
+* **The filter recognises identifiers by shape only** — not names or prose details —
+  so it is a floor (see `services.redact`); the summary still leaves the premises with
+  Jev.
 * **No reasons.** TypeSafe answers are probabilities, not text, so a rating carries no
   free-text reason (which also keeps personal data out of stored rows).
-* **No views, aggregates, contest endpoint or training-need signal**, and nothing calls
-  `rate_run` yet: no summary source is wired. Ratings are therefore visible to nobody,
-  which trivially keeps shadow ratings from anyone but their subject.
+* **No views, aggregates, contest endpoint or training-need signal.** Ratings are
+  therefore visible to nobody, which trivially keeps shadow ratings from anyone but
+  their subject.
 
 Fail open: any scoring failure stores nothing and never blocks the work.
 """
@@ -20,18 +24,28 @@ Fail open: any scoring failure stores nothing and never blocks the work.
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Protocol
 
 from sqlmodel import select
 
-from models import Department, Personnel, WorkRating
+from database import get_session
+from models import (
+    AgentMemory,
+    AuditEvent,
+    Company,
+    Department,
+    Personnel,
+    WorkRating,
+)
 from services import rubric as rb
 from services import work_review as wr
 from services.intent import quiet_sdk_logs
+from services.redact import redact
 
 logger = logging.getLogger("app")
 
@@ -200,7 +214,8 @@ def rate_run(
     rater: Rater | None,
     day: str | None = None,
 ) -> list[WorkRating]:
-    """Rate one run's (already filtered) summary; returns the rows written.
+    """Rate one run's summary (redacted here, before it reaches the rater); returns the
+    rows written.
 
     Nothing is written — and the rater is not called — unless: the person is a human
     of a company that enabled work review *and* rating, a rubric is stored, some
@@ -242,7 +257,7 @@ def rate_run(
     todo = [c for c in eligible if (c.id, rb.criterion_hash(c)) not in done]
     if not todo:
         return []
-    result = rater.rate(summary, todo)
+    result = rater.rate(redact(summary).text, todo)
     if result is None:
         return []
     day = day or datetime.utcnow().date().isoformat()
@@ -267,3 +282,77 @@ def rate_run(
         rows.append(row)
     session.commit()
     return rows
+
+
+# ── the hourly job ────────────────────────────────────────────────────────────
+
+
+def _session_tags(session, company_id: str, agent_id: str, session_id: str) -> dict:
+    """Tags of the latest intent classification of this session (audit, not content)."""
+    ev = session.exec(
+        select(AuditEvent)
+        .where(
+            AuditEvent.company_id == company_id,
+            AuditEvent.action == "intent_classified",
+            AuditEvent.actor_id == agent_id,
+            AuditEvent.target == session_id,
+        )
+        .order_by(AuditEvent.created_at.desc())
+    ).first()
+    if ev is None or not ev.payload_json:
+        return {}
+    try:
+        tags = json.loads(ev.payload_json).get("tags")
+    except (ValueError, AttributeError):
+        return {}
+    return tags if isinstance(tags, dict) else {}
+
+
+def rate_recent_sessions(
+    rater: Rater | None = None, now: datetime | None = None, hours: int = 48
+) -> int:
+    """Rate the summaries of agent sessions closed in the last `hours`, for every
+    company that switched rating on. Returns the rows written. A no-op without a
+    scoring key; one bad session never stops the rest. Re-running is safe (rows are
+    idempotent per run and criterion)."""
+    rater = rater or get_rater()
+    if rater is None:
+        return 0
+    since = (now or datetime.utcnow()) - timedelta(hours=hours)
+    written = 0
+    with get_session() as session:
+        for cid in session.exec(select(Company.id)).all():
+            if not rating_enabled(session, cid):
+                continue
+            owners = wr.owner_map(session, cid)
+            memories = session.exec(
+                select(AgentMemory)
+                .join(Personnel, Personnel.id == AgentMemory.personnel_id)
+                .where(
+                    Personnel.company_id == cid,
+                    AgentMemory.created_at >= since,
+                    AgentMemory.session_id.is_not(None),
+                )
+            ).all()
+            for m in memories:
+                try:
+                    owner = session.get(Personnel, owners.get(m.personnel_id, ""))
+                    if owner is None:
+                        continue
+                    rows = rate_run(
+                        session,
+                        person=owner,
+                        run_id=m.session_id,
+                        summary=m.summary,
+                        tags=_session_tags(session, cid, m.personnel_id, m.session_id),
+                        rater=rater,
+                        day=m.created_at.date().isoformat(),
+                    )
+                    written += len(rows)
+                except Exception as e:  # noqa: BLE001 - keep going with the others
+                    session.rollback()
+                    logger.warning(
+                        "work_rating_session_failed",
+                        extra={"extra": {"error": type(e).__name__}},
+                    )
+    return written
