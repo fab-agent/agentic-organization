@@ -164,6 +164,32 @@ impl Client {
         Ok(())
     }
 
+    pub fn contest_work_rating(&self, company: &str, id: &str, note: &str) -> Result<()> {
+        self.http
+            .post(&format!(
+                "{}/work-review/me/ratings/{}/contest?company_id={company}",
+                self.s.base_url,
+                encode_path(id)
+            ))
+            .set("Authorization", &format!("Bearer {}", self.s.token))
+            .send_json(serde_json::json!({ "note": note }))
+            .map_err(error_from)?;
+        Ok(())
+    }
+
+    pub fn withdraw_work_rating_contest(&self, company: &str, id: &str) -> Result<()> {
+        self.http
+            .delete(&format!(
+                "{}/work-review/me/ratings/{}/contest?company_id={company}",
+                self.s.base_url,
+                encode_path(id)
+            ))
+            .set("Authorization", &format!("Bearer {}", self.s.token))
+            .call()
+            .map_err(error_from)?;
+        Ok(())
+    }
+
     /// The caller's live workspace, or `None` if they have none yet.
     pub fn workspace_current(&self, company: &str) -> Result<Option<Ws>> {
         let r = self

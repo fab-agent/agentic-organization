@@ -130,6 +130,17 @@ impl App {
             ReviewAction::DeleteNote { id } => {
                 review::spawn_delete_note(self.review_backend.clone(), self.review_tx.clone(), id)
             }
+            ReviewAction::ContestRating { id, note } => review::spawn_contest(
+                self.review_backend.clone(),
+                self.review_tx.clone(),
+                id,
+                note,
+            ),
+            ReviewAction::WithdrawContest { id } => review::spawn_withdraw_contest(
+                self.review_backend.clone(),
+                self.review_tx.clone(),
+                id,
+            ),
         }
     }
 
@@ -206,6 +217,12 @@ impl App {
                 Ok(())
             }
             fn delete_note(&self, _: &str) -> Result<()> {
+                Ok(())
+            }
+            fn contest_rating(&self, _: &str, _: &str) -> Result<()> {
+                Ok(())
+            }
+            fn withdraw_contest(&self, _: &str) -> Result<()> {
                 Ok(())
             }
         }
@@ -318,6 +335,28 @@ mod review_flow_tests {
         }
     }
 
+    fn review_with_ratings() -> Review {
+        let mut r = review("A");
+        r.days[0].ratings = vec![
+            review::RatingItem {
+                id: "r1".into(),
+                criterion_id: "G1".into(),
+                status: "live".into(),
+                verdict: "met".into(),
+                ..Default::default()
+            },
+            review::RatingItem {
+                id: "r2".into(),
+                criterion_id: "G2".into(),
+                status: "live".into(),
+                verdict: "unclear".into(),
+                contested: true,
+                ..Default::default()
+            },
+        ];
+        r
+    }
+
     fn review(tag: &str) -> Review {
         Review {
             name: tag.into(),
@@ -331,6 +370,7 @@ mod review_flow_tests {
                 ..DayEntry::default()
             }],
             totals: Default::default(),
+            ratings: vec![],
             disclosure: None,
         }
     }
@@ -368,6 +408,17 @@ mod review_flow_tests {
         }
         fn delete_note(&self, id: &str) -> Result<()> {
             self.calls.lock().unwrap().push(format!("delete {id}"));
+            Ok(())
+        }
+        fn contest_rating(&self, id: &str, note: &str) -> Result<()> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(format!("contest {id} {note}"));
+            Ok(())
+        }
+        fn withdraw_contest(&self, id: &str) -> Result<()> {
+            self.calls.lock().unwrap().push(format!("withdraw {id}"));
             Ok(())
         }
     }
@@ -446,6 +497,52 @@ mod review_flow_tests {
         assert_eq!(app.focus, Focus::Sidebar);
         wait(&mut app, "second load", |_| fake.calls().len() >= 2);
         assert_eq!(fake.calls(), vec!["load 30", "load 30"]);
+    }
+
+    fn rated_app(fake: &Arc<Fake>) -> App {
+        fake.outcome
+            .lock()
+            .unwrap()
+            .insert(30, (0, Outcome::Ready(review_with_ratings())));
+        let mut app = app_with(fake);
+        press(&mut app, "v");
+        wait(&mut app, "ready", |a| {
+            matches!(a.review.view, View::Ready(_))
+        });
+        app
+    }
+
+    #[test]
+    fn contesting_a_rating_calls_the_backend_with_the_reason_then_reloads() {
+        let fake = Arc::new(Fake::default());
+        let mut app = rated_app(&fake);
+        press(&mut app, "c");
+        press(&mut app, "Rehearsal");
+        app.on_key(k(KeyCode::Enter));
+        wait(&mut app, "contest + reload", |_| fake.calls().len() >= 3);
+        assert_eq!(
+            fake.calls(),
+            vec!["load 30", "contest r1 Rehearsal", "load 30"]
+        );
+    }
+
+    #[test]
+    fn withdrawing_a_contest_calls_the_backend_then_reloads() {
+        let fake = Arc::new(Fake::default());
+        let mut app = rated_app(&fake);
+        app.on_key(k(KeyCode::Right)); // r2 is the contested one
+        press(&mut app, "u");
+        wait(&mut app, "withdraw + reload", |_| fake.calls().len() >= 3);
+        assert_eq!(fake.calls(), vec!["load 30", "withdraw r2", "load 30"]);
+    }
+
+    #[test]
+    fn a_contest_key_in_the_agent_pane_is_the_agents_not_the_reviews() {
+        let fake = Arc::new(Fake::default());
+        let mut app = app_with(&fake);
+        app.focus = Focus::Agent;
+        press(&mut app, "c");
+        assert!(!app.review.open && fake.calls().is_empty());
     }
 
     #[test]

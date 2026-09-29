@@ -262,6 +262,36 @@ try:
     notes = requests.get(f"{BASE}/work-review/me", headers=H).json()
     texts = [n["text"] for d in notes.get("days", []) for n in d.get("notes", [])]
     check("e2e note from tui" not in texts, "d in the TUI deletes the person's own note")
+
+    # ── 6c. fit ratings and contesting them (ADR-0021) ────────────────────────
+    from datetime import datetime as _dt
+
+    day = _dt.utcnow().date().isoformat()
+    with database.get_session() as s:
+        for crit, status, verdict in (("G1", "live", "met"), ("G2", "shadow", "not_met")):
+            s.add(models.WorkRating(
+                company_id=cid, personnel_id=p["id"], day=day, run_id=f"e2e-{crit}",
+                criterion_id=crit, criterion_hash="h", rubric_version="v",
+                criterion_status=status, verdict=verdict))
+        s.commit()
+    screen = tui_screen(keys=[b"\x0f", b"v"])
+    check("Fit ratings" in screen, "review view lists fit ratings")
+    check("trial" in screen and "only to you" in screen, "trial ratings say only the person sees them")
+
+    def ratings_now():
+        r = requests.get(f"{BASE}/work-review/me", headers=H).json()
+        return {e["criterion_id"]: e for d in r["days"] for e in d["ratings"]}
+
+    # contest the first rating (G1): c, a reason, Enter
+    tui_screen(keys=[b"\x0f", b"v", b"c", b"rehearsal only", b"\r"])
+    g1 = ratings_now()["G1"]
+    check(g1["contested"] and g1["contest_note"] == "rehearsal only", "c in the TUI contests the rating with a reason")
+    screen = tui_screen(keys=[b"\x0f", b"v"])
+    check("contested" in screen, "the contested rating is marked in the TUI")
+
+    # withdraw it: u
+    tui_screen(keys=[b"\x0f", b"v", b"u"])
+    check(not ratings_now()["G1"]["contested"], "u in the TUI withdraws the contest")
     requests.put(f"{BASE}/work-review/settings", headers=H, json={"enabled": False})
 except ImportError:
     print("skip: pyte not installed — TUI checks skipped")

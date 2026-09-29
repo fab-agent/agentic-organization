@@ -37,6 +37,42 @@ pub struct Note {
     pub text: String,
 }
 
+/// One fit rating of one piece of work (ADR-0021). `status` is `live` or `shadow`
+/// (a trial period only the person sees).
+#[derive(Debug, Clone, Deserialize, PartialEq, Default)]
+pub struct RatingItem {
+    pub id: String,
+    pub criterion_id: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub verdict: String,
+    #[serde(default)]
+    pub contested: bool,
+    #[serde(default)]
+    pub resolved: bool,
+    #[serde(default)]
+    pub question: Option<String>,
+}
+
+/// Counts per criterion version — never a score.
+#[derive(Debug, Clone, Deserialize, PartialEq, Default)]
+pub struct RatingTotal {
+    pub criterion_id: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub met: i64,
+    #[serde(default)]
+    pub not_met: i64,
+    #[serde(default)]
+    pub unclear: i64,
+    #[serde(default)]
+    pub contested: i64,
+    #[serde(default)]
+    pub question: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, PartialEq, Default)]
 pub struct DayEntry {
     pub day: String,
@@ -46,6 +82,8 @@ pub struct DayEntry {
     pub tags: BTreeMap<String, BTreeMap<String, i64>>,
     #[serde(default)]
     pub notes: Vec<Note>,
+    #[serde(default)]
+    pub ratings: Vec<RatingItem>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Default)]
@@ -87,6 +125,8 @@ pub struct Review {
     #[serde(default)]
     pub totals: Totals,
     #[serde(default)]
+    pub ratings: Vec<RatingTotal>,
+    #[serde(default)]
     pub disclosure: Option<Disclosure>,
 }
 
@@ -105,6 +145,8 @@ pub enum Outcome {
 // ── state ─────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
+// One value per load, as with `Outcome`.
+#[allow(clippy::large_enum_variant)]
 pub enum View {
     Loading,
     NotEnabled,
@@ -120,6 +162,8 @@ pub enum Action {
     Load,
     AddNote { day: String, text: String },
     DeleteNote { id: String },
+    ContestRating { id: String, note: String },
+    WithdrawContest { id: String },
 }
 
 #[derive(Debug, Clone)]
@@ -130,6 +174,11 @@ pub struct ReviewState {
     pub window: u32,
     /// The note being typed, if any.
     pub input: Option<String>,
+    /// Set while the text being typed is the reason for contesting this rating,
+    /// not a day note.
+    pub contest_target: Option<String>,
+    /// Which of the selected day's ratings is highlighted.
+    pub sel_rating: usize,
     /// Latest load request; answers to older ones are ignored.
     pub req_id: u64,
     pub notice: Option<String>,
@@ -143,6 +192,8 @@ impl Default for ReviewState {
             selected: 0,
             window: 30,
             input: None,
+            contest_target: None,
+            sel_rating: 0,
             req_id: 0,
             notice: None,
         }
@@ -153,7 +204,9 @@ impl ReviewState {
     pub fn open(&mut self) -> Action {
         self.open = true;
         self.selected = 0;
+        self.sel_rating = 0;
         self.input = None;
+        self.contest_target = None;
         self.notice = None;
         Action::Load
     }
@@ -179,6 +232,9 @@ impl ReviewState {
         };
         let max = self.days().len().saturating_sub(1);
         self.selected = self.selected.min(max);
+        self.sel_rating = self
+            .sel_rating
+            .min(self.day_ratings().len().saturating_sub(1));
     }
 
     /// After adding / deleting a note: reload on success, say why on failure.
@@ -202,6 +258,17 @@ impl ReviewState {
         }
     }
 
+    fn day_ratings(&self) -> &[RatingItem] {
+        self.days()
+            .get(self.selected)
+            .map(|d| d.ratings.as_slice())
+            .unwrap_or(&[])
+    }
+
+    fn selected_rating(&self) -> Option<&RatingItem> {
+        self.day_ratings().get(self.sel_rating)
+    }
+
     /// The day a new note goes on: the selected day, else today (UTC).
     fn note_day(&self) -> String {
         self.days()
@@ -213,14 +280,21 @@ impl ReviewState {
     pub fn on_key(&mut self, k: KeyEvent) -> Action {
         if let Some(buf) = self.input.as_mut() {
             match k.code {
-                KeyCode::Esc => self.input = None,
+                KeyCode::Esc => {
+                    self.input = None;
+                    self.contest_target = None;
+                }
                 KeyCode::Enter => {
                     let text = buf.trim().to_string();
                     self.input = None;
+                    let target = self.contest_target.take();
                     if !text.is_empty() {
-                        return Action::AddNote {
-                            day: self.note_day(),
-                            text,
+                        return match target {
+                            Some(id) => Action::ContestRating { id, note: text },
+                            None => Action::AddNote {
+                                day: self.note_day(),
+                                text,
+                            },
                         };
                     }
                 }
@@ -249,17 +323,45 @@ impl ReviewState {
             }
             KeyCode::Up | KeyCode::Char('k') => {
                 self.selected = self.selected.saturating_sub(1);
+                self.sel_rating = 0;
                 Action::None
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 let max = self.days().len().saturating_sub(1);
                 self.selected = (self.selected + 1).min(max);
+                self.sel_rating = 0;
                 Action::None
             }
+            KeyCode::Left | KeyCode::Char('h') => {
+                self.sel_rating = self.sel_rating.saturating_sub(1);
+                Action::None
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                let max = self.day_ratings().len().saturating_sub(1);
+                self.sel_rating = (self.sel_rating + 1).min(max);
+                Action::None
+            }
+            KeyCode::Char('c') if ready => {
+                let target = self
+                    .selected_rating()
+                    .filter(|r| !r.contested)
+                    .map(|r| r.id.clone());
+                if let Some(id) = target {
+                    self.contest_target = Some(id);
+                    self.input = Some(String::new());
+                }
+                Action::None
+            }
+            KeyCode::Char('u') if ready => self
+                .selected_rating()
+                .filter(|r| r.contested)
+                .map(|r| Action::WithdrawContest { id: r.id.clone() })
+                .unwrap_or(Action::None),
             KeyCode::Char('w') => {
                 let i = WINDOWS.iter().position(|w| *w == self.window).unwrap_or(0);
                 self.window = WINDOWS[(i + 1) % WINDOWS.len()];
                 self.selected = 0;
+                self.sel_rating = 0;
                 Action::Load
             }
             KeyCode::Char('r') => Action::Load,
@@ -308,6 +410,8 @@ pub trait Backend: Send + Sync + 'static {
     fn load(&self, days: u32) -> Result<Outcome>;
     fn add_note(&self, day: &str, text: &str) -> Result<()>;
     fn delete_note(&self, id: &str) -> Result<()>;
+    fn contest_rating(&self, id: &str, note: &str) -> Result<()>;
+    fn withdraw_contest(&self, id: &str) -> Result<()>;
 }
 
 pub struct Http {
@@ -335,9 +439,18 @@ impl Backend for Http {
         let (c, co) = self.client()?;
         c.delete_work_note(&co, id)
     }
+    fn contest_rating(&self, id: &str, note: &str) -> Result<()> {
+        let (c, co) = self.client()?;
+        c.contest_work_rating(&co, id, note)
+    }
+    fn withdraw_contest(&self, id: &str) -> Result<()> {
+        let (c, co) = self.client()?;
+        c.withdraw_work_rating_contest(&co, id)
+    }
 }
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum Msg {
     Loaded(u64, Result<Outcome, String>),
     Saved(Result<(), String>),
@@ -362,6 +475,18 @@ pub fn spawn_add_note(b: Arc<dyn Backend>, tx: Sender<Msg>, day: String, text: S
 pub fn spawn_delete_note(b: Arc<dyn Backend>, tx: Sender<Msg>, id: String) {
     std::thread::spawn(move || {
         let _ = tx.send(Msg::Saved(b.delete_note(&id).map_err(err)));
+    });
+}
+
+pub fn spawn_contest(b: Arc<dyn Backend>, tx: Sender<Msg>, id: String, note: String) {
+    std::thread::spawn(move || {
+        let _ = tx.send(Msg::Saved(b.contest_rating(&id, &note).map_err(err)));
+    });
+}
+
+pub fn spawn_withdraw_contest(b: Arc<dyn Backend>, tx: Sender<Msg>, id: String) {
+    std::thread::spawn(move || {
+        let _ = tx.send(Msg::Saved(b.withdraw_contest(&id).map_err(err)));
     });
 }
 
@@ -433,22 +558,78 @@ fn tags_lines(
         .collect()
 }
 
+fn status_label<'a>(status: &'a str, t: &'a T) -> &'a str {
+    match status {
+        "shadow" => t.rv_shadow,
+        "live" => t.rv_live,
+        other => other,
+    }
+}
+
+fn verdict_label<'a>(verdict: &'a str, t: &'a T) -> &'a str {
+    match verdict {
+        "met" => t.rv_met,
+        "not_met" => t.rv_not_met,
+        "unclear" => t.rv_unclear,
+        other => other,
+    }
+}
+
+/// Counts per criterion. Deliberately no score and no average.
+pub fn rating_totals_lines(r: &Review, t: &T) -> Vec<Line<'static>> {
+    if r.ratings.is_empty() {
+        return Vec::new();
+    }
+    let mut lines = vec![Line::styled(
+        format!("  {}", t.rv_ratings),
+        Style::default().add_modifier(Modifier::UNDERLINED),
+    )];
+    for e in &r.ratings {
+        let name = e.question.clone().unwrap_or_else(|| e.criterion_id.clone());
+        let contested = if e.contested > 0 {
+            format!(" · {} {}", e.contested, t.rv_contested)
+        } else {
+            String::new()
+        };
+        lines.push(Line::from(format!(
+            "    {name} [{}]: {} {} · {} {} · {} {}{contested}",
+            status_label(&e.status, t),
+            e.met,
+            t.rv_met,
+            e.not_met,
+            t.rv_not_met,
+            e.unclear,
+            t.rv_unclear
+        )));
+    }
+    lines
+}
+
 pub fn totals_lines(r: &Review, t: &T) -> Vec<Line<'static>> {
     let mut lines = signals_lines(&r.totals.signals, t, "  ");
     lines.extend(tags_lines(&r.totals.tags, t, "  "));
-    if lines.is_empty() {
+    if lines.is_empty() && r.ratings.is_empty() {
         lines.push(Line::styled(
             format!("  {}", t.rv_nothing),
             Style::default().fg(Color::DarkGray),
         ));
     }
+    lines.extend(rating_totals_lines(r, t));
     lines
 }
 
 pub fn day_row(d: &DayEntry, selected: bool) -> Line<'static> {
     let denied = d.signals.get("policy_denied").copied().unwrap_or(0);
     let asked = d.signals.get("approval_asked").copied().unwrap_or(0);
-    let mark = if d.notes.is_empty() { "" } else { " ✎" };
+    let mark = format!(
+        "{}{}",
+        if d.notes.is_empty() { "" } else { " ✎" },
+        if d.ratings.iter().any(|r| r.contested) {
+            " !"
+        } else {
+            ""
+        }
+    );
     let text = format!(
         "{} {}  ✗{denied} ⧗{asked}{mark}",
         if selected { "▸" } else { " " },
@@ -461,13 +642,49 @@ pub fn day_row(d: &DayEntry, selected: bool) -> Line<'static> {
     }
 }
 
-pub fn detail_lines(d: &DayEntry, t: &T) -> Vec<Line<'static>> {
+pub fn rating_line(r: &RatingItem, selected: bool, t: &T) -> Line<'static> {
+    let name = r.question.clone().unwrap_or_else(|| r.criterion_id.clone());
+    let mut tail = String::new();
+    if r.contested {
+        tail.push_str(&format!(" · {}", t.rv_contested));
+    } else if r.resolved {
+        tail.push_str(&format!(" · {}", t.rv_resolved));
+    }
+    let text = format!(
+        "{} {name} [{}]: {}{tail}",
+        if selected { "▸" } else { " " },
+        status_label(&r.status, t),
+        verdict_label(&r.verdict, t)
+    );
+    if selected {
+        Line::styled(text, Style::default().add_modifier(Modifier::BOLD))
+    } else {
+        Line::from(text)
+    }
+}
+
+pub fn detail_lines(d: &DayEntry, t: &T, sel_rating: usize) -> Vec<Line<'static>> {
     let mut lines = vec![Line::styled(
         d.day.clone(),
         Style::default().add_modifier(Modifier::BOLD),
     )];
     lines.extend(signals_lines(&d.signals, t, "  "));
     lines.extend(tags_lines(&d.tags, t, "  "));
+    if !d.ratings.is_empty() {
+        lines.push(Line::styled(
+            t.rv_ratings.to_string(),
+            Style::default().add_modifier(Modifier::UNDERLINED),
+        ));
+        for (i, r) in d.ratings.iter().enumerate() {
+            lines.push(rating_line(r, i == sel_rating, t));
+        }
+        if d.ratings.iter().any(|r| r.status == "shadow") {
+            lines.push(Line::styled(
+                format!("  {}", t.rv_shadow_hint),
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+    }
     lines.push(Line::styled(
         t.rv_notes.to_string(),
         Style::default().add_modifier(Modifier::UNDERLINED),
@@ -563,12 +780,20 @@ pub fn draw(f: &mut Frame, area: Rect, s: &ReviewState, lang: Lang) {
     }
 
     let line = if let Some(buf) = &s.input {
-        let day = s.note_day();
+        let prompt = match &s.contest_target {
+            Some(id) => {
+                let name = s
+                    .day_ratings()
+                    .iter()
+                    .find(|r| &r.id == id)
+                    .map(|r| r.question.clone().unwrap_or_else(|| r.criterion_id.clone()))
+                    .unwrap_or_default();
+                fill(t.rv_contest_for, "{c}", name)
+            }
+            None => fill(t.rv_note_for, "{day}", s.note_day()),
+        };
         Line::from(vec![
-            Span::styled(
-                format!("{}: ", fill(t.rv_note_for, "{day}", day)),
-                Style::default().fg(Color::Cyan),
-            ),
+            Span::styled(format!("{prompt}: "), Style::default().fg(Color::Cyan)),
             Span::raw(format!("{buf}▏")),
             Span::styled(
                 format!("   {}", t.rv_note_hint),
@@ -593,7 +818,7 @@ fn draw_ready(f: &mut Frame, area: Rect, r: &Review, s: &ReviewState, t: &T) {
     let disclosure = r.disclosure.as_ref().map(|d| disclosure_lines(d, t));
     let dh = disclosure.as_ref().map(|l| l.len() as u16 + 1).unwrap_or(0);
     let [totals, mid, foot] = Layout::vertical([
-        Constraint::Length((totals_lines(r, t).len() as u16 + 2).min(8)),
+        Constraint::Length((totals_lines(r, t).len() as u16 + 2).min(10)),
         Constraint::Min(4),
         Constraint::Length(dh.min(10)),
     ])
@@ -639,7 +864,7 @@ fn draw_ready(f: &mut Frame, area: Rect, r: &Review, s: &ReviewState, t: &T) {
         );
         if let Some(d) = r.days.get(s.selected) {
             f.render_widget(
-                Paragraph::new(detail_lines(d, t)).wrap(Wrap { trim: false }),
+                Paragraph::new(detail_lines(d, t, s.sel_rating)).wrap(Wrap { trim: false }),
                 detail,
             );
         }
@@ -684,6 +909,7 @@ mod tests {
                     text: (*t).into(),
                 })
                 .collect(),
+            ratings: vec![],
         }
     }
 
@@ -705,6 +931,7 @@ mod tests {
                 day("2026-09-28", 1, &[]),
             ],
             totals,
+            ratings: vec![],
             disclosure: Some(Disclosure {
                 collected: Collected {
                     signals: vec!["policy_denied".into(), "approval_asked".into()],
@@ -999,9 +1226,9 @@ mod tests {
             assert!(totals.contains(want), "{want}\n{totals}");
         }
         assert!(totals.find("Policy refusals").unwrap() < totals.find("Would-be").unwrap());
-        let d = text(&detail_lines(&review().days[0], &t));
+        let d = text(&detail_lines(&review().days[0], &t, 0));
         assert!(d.contains("2026-09-29") && d.contains("✎ first") && d.contains("✎ second"));
-        let empty = text(&detail_lines(&review().days[1], &t));
+        let empty = text(&detail_lines(&review().days[1], &t, 0));
         assert!(empty.contains("no notes — press n to add one"));
         assert_eq!(
             day_row(&review().days[0], true).to_string(),
@@ -1108,5 +1335,269 @@ mod tests {
             out.contains("▸ 2026-08-36"),
             "selected day scrolled into view:\n{out}"
         );
+    }
+
+    // ── fit ratings (ADR-0021) ────────────────────────────────────────────────
+
+    fn rating(id: &str, crit: &str, status: &str, verdict: &str, contested: bool) -> RatingItem {
+        RatingItem {
+            id: id.into(),
+            criterion_id: crit.into(),
+            status: status.into(),
+            verdict: verdict.into(),
+            contested,
+            resolved: false,
+            question: Some(format!("Question of {crit}?")),
+        }
+    }
+
+    fn with_ratings(items: Vec<RatingItem>) -> ReviewState {
+        let mut r = review();
+        r.days[0].ratings = items;
+        let mut s = ReviewState::default();
+        s.open();
+        let id = s.begin_load();
+        s.apply_loaded(id, Ok(Outcome::Ready(r)));
+        s
+    }
+
+    fn two_ratings() -> ReviewState {
+        with_ratings(vec![
+            rating("r1", "G1", "live", "met", false),
+            rating("r2", "G2", "shadow", "not_met", true),
+        ])
+    }
+
+    #[test]
+    fn ratings_are_parsed_and_their_absence_is_tolerated() {
+        let json = r#"{"name":"A","window_days":30,
+            "days":[{"day":"2026-09-29","ratings":[
+                {"id":"r1","criterion_id":"G1","status":"shadow","verdict":"unclear",
+                 "contested":true,"resolved":false,"contest_note":"n","question":"Q?","future_field":1},
+                {"id":"r2","criterion_id":"G2"}]},
+              {"day":"2026-09-28"}],
+            "ratings":[{"criterion_id":"G1","status":"live","met":2,"not_met":1,"unclear":0,
+                        "contested":1,"criterion_hash":"h","question":null}]}"#;
+        let r: Review = serde_json::from_str(json).unwrap();
+        assert_eq!(r.days[0].ratings.len(), 2);
+        assert_eq!(r.days[0].ratings[0].question.as_deref(), Some("Q?"));
+        assert!(r.days[0].ratings[0].contested && !r.days[0].ratings[1].contested);
+        assert_eq!(r.days[0].ratings[1].verdict, "");
+        assert!(r.days[1].ratings.is_empty());
+        assert_eq!(
+            (
+                r.ratings[0].met,
+                r.ratings[0].not_met,
+                r.ratings[0].contested
+            ),
+            (2, 1, 1)
+        );
+        // an older server without ratings at all
+        let old: Review = serde_json::from_str(r#"{"name":"A","window_days":7}"#).unwrap();
+        assert!(old.ratings.is_empty());
+    }
+
+    #[test]
+    fn arrows_move_between_ratings_and_stay_in_range() {
+        let mut s = two_ratings();
+        s.on_key(key(KeyCode::Right));
+        assert_eq!(s.sel_rating, 1);
+        s.on_key(ch('l'));
+        assert_eq!(s.sel_rating, 1, "clamped at the last rating");
+        s.on_key(key(KeyCode::Left));
+        s.on_key(ch('h'));
+        assert_eq!(s.sel_rating, 0, "clamped at the first rating");
+        s.on_key(key(KeyCode::Right));
+        s.on_key(key(KeyCode::Down));
+        assert_eq!(s.sel_rating, 0, "moving to another day resets the rating");
+    }
+
+    #[test]
+    fn contesting_asks_for_a_reason_and_sends_it_for_the_selected_rating() {
+        let mut s = two_ratings();
+        assert_eq!(s.on_key(ch('c')), Action::None);
+        assert_eq!(s.contest_target.as_deref(), Some("r1"));
+        assert!(s.input.is_some());
+        for c in "Rehearsal, not real work".chars() {
+            s.on_key(ch(c)); // includes a 'c' and a 'u': they are text now, not commands
+        }
+        assert_eq!(
+            s.on_key(key(KeyCode::Enter)),
+            Action::ContestRating {
+                id: "r1".into(),
+                note: "Rehearsal, not real work".into()
+            }
+        );
+        assert!(s.input.is_none() && s.contest_target.is_none());
+    }
+
+    #[test]
+    fn an_empty_or_cancelled_contest_sends_nothing_and_does_not_leak_into_notes() {
+        let mut s = two_ratings();
+        s.on_key(ch('c'));
+        s.on_key(ch(' '));
+        assert_eq!(s.on_key(key(KeyCode::Enter)), Action::None);
+        assert!(s.contest_target.is_none());
+        s.on_key(ch('c'));
+        s.on_key(ch('x'));
+        s.on_key(key(KeyCode::Esc));
+        assert!(s.input.is_none() && s.contest_target.is_none());
+        // a note typed afterwards is a note, not a contest of the earlier rating
+        s.on_key(ch('n'));
+        s.on_key(ch('y'));
+        assert!(matches!(
+            s.on_key(key(KeyCode::Enter)),
+            Action::AddNote { .. }
+        ));
+    }
+
+    #[test]
+    fn an_already_contested_rating_cannot_be_contested_again_but_can_be_withdrawn() {
+        let mut s = two_ratings();
+        s.on_key(key(KeyCode::Right)); // r2 is contested
+        assert_eq!(s.on_key(ch('c')), Action::None);
+        assert!(s.input.is_none() && s.contest_target.is_none());
+        assert_eq!(
+            s.on_key(ch('u')),
+            Action::WithdrawContest { id: "r2".into() }
+        );
+        s.on_key(key(KeyCode::Left)); // r1 is not contested: nothing to withdraw
+        assert_eq!(s.on_key(ch('u')), Action::None);
+    }
+
+    #[test]
+    fn contest_keys_do_nothing_without_ratings_or_before_the_review_is_ready() {
+        let mut none = ready();
+        assert_eq!(none.on_key(ch('c')), Action::None);
+        assert!(none.input.is_none());
+        assert_eq!(none.on_key(ch('u')), Action::None);
+        let mut loading = ReviewState::default();
+        loading.open();
+        assert_eq!(loading.on_key(ch('c')), Action::None);
+        assert!(loading.input.is_none());
+    }
+
+    #[test]
+    fn a_reload_keeps_the_rating_selection_in_range() {
+        let mut s = two_ratings();
+        s.on_key(key(KeyCode::Right));
+        let mut r = review();
+        r.days[0].ratings = vec![rating("r1", "G1", "live", "met", false)];
+        let id = s.begin_load();
+        s.apply_loaded(id, Ok(Outcome::Ready(r)));
+        assert_eq!(s.sel_rating, 0);
+    }
+
+    #[test]
+    fn ratings_show_status_verdict_and_who_sees_trial_ones_in_both_languages() {
+        let s = two_ratings();
+        let View::Ready(r) = &s.view else { panic!() };
+        for (lang, live, shadow, unmet, contested, hint) in [
+            (
+                Lang::En,
+                "live",
+                "trial",
+                "not met",
+                "contested",
+                "only to you",
+            ),
+            (
+                Lang::Tr,
+                "geçerli",
+                "deneme",
+                "karşılanmadı",
+                "itiraz edildi",
+                "yalnızca siz",
+            ),
+        ] {
+            let t = strings(lang);
+            let out = text(&detail_lines(&r.days[0], &t, 0));
+            assert!(
+                out.contains("▸ Question of G1? [") && out.contains(live),
+                "{out}"
+            );
+            assert!(
+                out.contains(shadow) && out.contains(unmet) && out.contains(contested),
+                "{out}"
+            );
+            assert!(
+                out.contains(hint),
+                "trial ratings say only the person sees them:\n{out}"
+            );
+            // the label must sit on the right rating, not merely appear in the hint
+            assert!(
+                out.contains(&format!("Question of G2? [{shadow}]")),
+                "{out}"
+            );
+            assert!(out.contains(&format!("Question of G1? [{live}]")), "{out}");
+        }
+    }
+
+    #[test]
+    fn a_rating_without_a_known_question_shows_its_criterion_id() {
+        let mut item = rating("r1", "G7-old", "live", "met", false);
+        item.question = None;
+        let out = text(&[rating_line(&item, false, &strings(Lang::En))]);
+        assert!(out.contains("G7-old"), "{out}");
+    }
+
+    #[test]
+    fn a_resolved_contest_is_marked_as_reviewed() {
+        let mut item = rating("r1", "G1", "live", "met", false);
+        item.resolved = true;
+        let out = text(&[rating_line(&item, false, &strings(Lang::En))]);
+        assert!(
+            out.contains("reviewed") && !out.contains("contested"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn rating_totals_are_counts_and_never_a_score() {
+        let mut r = review();
+        r.ratings = vec![RatingTotal {
+            criterion_id: "G1".into(),
+            status: "live".into(),
+            met: 3,
+            not_met: 1,
+            unclear: 2,
+            contested: 1,
+            question: Some("Does this advance revenue?".into()),
+        }];
+        let out = text(&totals_lines(&r, &strings(Lang::En)));
+        assert!(
+            out.contains(
+                "Does this advance revenue? [live]: 3 met · 1 not met · 2 unclear · 1 contested"
+            ),
+            "{out}"
+        );
+        assert!(
+            !out.to_lowercase().contains("score") && !out.contains("average") && !out.contains('%')
+        );
+        assert!(rating_totals_lines(&review(), &strings(Lang::En)).is_empty());
+    }
+
+    #[test]
+    fn a_day_with_a_contested_rating_is_marked_in_the_list() {
+        let s = two_ratings();
+        let View::Ready(r) = &s.view else { panic!() };
+        assert!(day_row(&r.days[0], false).to_string().contains('!'));
+        assert!(!day_row(&r.days[1], false).to_string().contains('!'));
+    }
+
+    #[test]
+    fn the_contest_prompt_names_the_rating_and_the_screen_fits_a_small_terminal() {
+        let mut s = two_ratings();
+        s.on_key(ch('c'));
+        s.on_key(ch('w'));
+        let out = screen(&s, Lang::En, 90, 24);
+        assert!(
+            out.contains("Why do you contest \"Question of G1?\""),
+            "{out}"
+        );
+        assert!(out.contains("w▏"));
+        let tr = screen(&s, Lang::Tr, 90, 24);
+        assert!(tr.contains("puanına neden itiraz ediyorsunuz"), "{tr}");
+        let _ = screen(&two_ratings(), Lang::En, 40, 12); // must not panic
     }
 }

@@ -29,6 +29,13 @@ it takes every key. If the company has not enabled work review it says so plainl
 nothing is collected about the person. Limitation: the disclosure sentences come
 from the server in English; the TUI's own labels are TR/EN.
 
+**Fit ratings** (ADR-0021) appear in the same view when the company has switched rating
+on: counts per criterion in the totals (never a score), and per day the rating of each
+piece of work with its criterion's question, `live` or `trial`, and its verdict. Trial
+ratings are shown only to the person; the view says so. `←`/`→` pick a rating, `c`
+contests it with a reason (it then leaves everyone else's view until a department head
+resolves it), `u` withdraws a contest. A day with a contested rating is marked `!`.
+
 Environment: `FAB_SESSION_FILE`, `FAB_AGENT_CMD` (default `opencode`, else `$SHELL`),
 `FAB_LANG` (`tr`/`en`), `FAB_FOLDER`, `FAB_MAX_DOWNLOAD_MB` (200), `FAB_MAX_UPLOAD_MB` (50).
 
