@@ -42,14 +42,24 @@ pub fn draw(f: &mut Frame, app: &App) {
     draw_recurring(f, recurring, &sb, app);
     draw_runs(f, runs, &sb, app);
 
-    let agent_block = block(format!(" {} ", t.agent_pane), app.focus == Focus::Agent);
-    f.render_widget(
-        Paragraph::new(t.agent_pane_hint)
-            .wrap(Wrap { trim: true })
-            .style(Style::default().fg(Color::DarkGray))
-            .block(agent_block),
-        agent,
-    );
+    let ended = app.agent_ended();
+    let title = if ended && app.pty.is_some() {
+        format!(" {} — {} ", t.agent_pane, t.ended)
+    } else {
+        format!(" {} ", t.agent_pane)
+    };
+    let agent_block = block(title, app.focus == Focus::Agent);
+    let inner = agent_block.inner(agent);
+    f.render_widget(agent_block, agent);
+    match &app.pty {
+        Some(p) => p.render(inner, f.buffer_mut(), app.focus == Focus::Agent),
+        None => f.render_widget(
+            Paragraph::new(t.agent_pane_hint)
+                .wrap(Wrap { trim: true })
+                .style(Style::default().fg(Color::DarkGray)),
+            inner,
+        ),
+    }
     f.render_widget(
         Paragraph::new(t.no_files)
             .style(Style::default().fg(Color::DarkGray))
@@ -62,7 +72,14 @@ pub fn draw(f: &mut Frame, app: &App) {
             format!(" {}: {e} ", t.loading_failed),
             Style::default().fg(Color::Red),
         ),
-        None => Span::styled(t.keys, Style::default().add_modifier(Modifier::DIM)),
+        None => Span::styled(
+            if app.focus == Focus::Agent {
+                t.keys_agent
+            } else {
+                t.keys_sidebar
+            },
+            Style::default().add_modifier(Modifier::DIM),
+        ),
     };
     f.render_widget(Paragraph::new(Line::from(status)), keys);
 }
@@ -155,7 +172,13 @@ mod tests {
             .iter()
             .map(|c| c.symbol())
             .collect();
-        for want in ["Recurring", "Recent runs", "Agent session", "Files", "quit"] {
+        for want in [
+            "Recurring",
+            "Recent runs",
+            "Agent session",
+            "Files",
+            "Ctrl+O",
+        ] {
             assert!(text.contains(want), "missing {want}");
         }
     }

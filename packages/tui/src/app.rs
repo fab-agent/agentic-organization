@@ -3,10 +3,11 @@
 use crate::api::Client;
 use crate::i18n::{self, Lang};
 use crate::model::Snapshot;
+use crate::pty::{self, Pty};
 use crate::session;
 use crate::ui;
 use anyhow::{bail, Result};
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use std::time::Duration;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -21,6 +22,7 @@ pub struct App {
     pub snapshot: Snapshot,
     pub error: Option<String>,
     pub should_quit: bool,
+    pub pty: Option<Pty>,
     client: Client,
 }
 
@@ -35,18 +37,52 @@ impl App {
         }
     }
 
-    fn on_key(&mut self, code: KeyCode, mods: KeyModifiers) {
-        match code {
-            KeyCode::Char('q') => self.should_quit = true,
-            KeyCode::Char('c') if mods.contains(KeyModifiers::CONTROL) => self.should_quit = true,
-            KeyCode::Char('r') => self.refresh(),
-            KeyCode::Tab => {
-                self.focus = match self.focus {
-                    Focus::Sidebar => Focus::Agent,
-                    Focus::Agent => Focus::Sidebar,
+    fn start_agent(&mut self) {
+        match Pty::spawn(&pty::default_command(), 80, 24) {
+            Ok(p) => {
+                self.pty = Some(p);
+                self.error = None;
+            }
+            Err(e) => self.error = Some(format!("{e:#}")),
+        }
+    }
+
+    pub fn agent_ended(&self) -> bool {
+        self.pty.as_ref().is_none_or(|p| !p.is_alive())
+    }
+
+    fn toggle_focus(&mut self) {
+        self.focus = match self.focus {
+            Focus::Sidebar => Focus::Agent,
+            Focus::Agent => Focus::Sidebar,
+        };
+    }
+
+    fn on_key(&mut self, k: KeyEvent) {
+        let ctrl_o = k.code == KeyCode::Char('o') && k.modifiers.contains(KeyModifiers::CONTROL);
+        if ctrl_o {
+            self.toggle_focus();
+            return;
+        }
+        match self.focus {
+            Focus::Agent => {
+                if self.agent_ended() {
+                    if k.code == KeyCode::Enter {
+                        self.start_agent();
+                    }
+                } else if let Some(p) = &self.pty {
+                    p.write(&pty::encode_key(k));
                 }
             }
-            _ => {}
+            Focus::Sidebar => match k.code {
+                KeyCode::Char('q') => self.should_quit = true,
+                KeyCode::Char('c') if k.modifiers.contains(KeyModifiers::CONTROL) => {
+                    self.should_quit = true
+                }
+                KeyCode::Char('r') => self.refresh(),
+                KeyCode::Tab | KeyCode::Enter => self.focus = Focus::Agent,
+                _ => {}
+            },
         }
     }
 }
@@ -60,6 +96,7 @@ impl App {
             snapshot: Snapshot::default(),
             error: None,
             should_quit: false,
+            pty: None,
             client: Client::new(session::Session {
                 base_url: String::new(),
                 token: String::new(),
@@ -92,9 +129,11 @@ pub fn run() -> Result<()> {
         snapshot: Snapshot::default(),
         error: None,
         should_quit: false,
+        pty: None,
         client: Client::new(sess),
     };
     app.refresh();
+    app.start_agent();
 
     let mut terminal = ratatui::init();
     let result = (|| -> Result<()> {
@@ -103,7 +142,7 @@ pub fn run() -> Result<()> {
             if event::poll(Duration::from_millis(250))? {
                 if let Event::Key(k) = event::read()? {
                     if k.kind == KeyEventKind::Press {
-                        app.on_key(k.code, k.modifiers);
+                        app.on_key(k);
                     }
                 }
             }

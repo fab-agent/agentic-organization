@@ -9,6 +9,7 @@ mod app;
 mod cron;
 mod i18n;
 mod model;
+mod pty;
 mod session;
 mod ui;
 
