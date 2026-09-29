@@ -83,7 +83,7 @@ def world(db_session, test_engine):
         ayse.department_id = sales.id
         s.add(ayse)
         s.commit()
-        assert rt.set_rubric(s, co.id, RUBRIC) == []
+        assert rt.set_rubric(s, co.id, RUBRIC, gates=False) == []
         wr.set_enabled(s, co.id, True)
         rt.set_rating_enabled(s, co.id, True)
         rt.wr._put(s, f"work_review.rating.sample_rate:{co.id}", "1")
@@ -144,7 +144,7 @@ def test_a_rubric_that_fails_the_linter_is_not_stored(world):
         'quote: "recurring revenue"}\n    scope: {departments',
         'quote: "halve costs"}\n    scope: {departments',
     )
-    findings = rt.set_rubric(w.db, w.co.id, bad)
+    findings = rt.set_rubric(w.db, w.co.id, bad, gates=False)
     assert [f.code for f in findings] == ["quote_not_in_source"]
     assert wr._get(w.db, f"work_review.rubric:{w.co.id}") == before
 
@@ -152,9 +152,11 @@ def test_a_rubric_that_fails_the_linter_is_not_stored(world):
 def test_unknown_department_is_refused_and_garbage_raises(world):
     w = world
     ghost = RUBRIC.replace("departments: [sales]", "departments: [ghost]")
-    assert "unknown_department" in {f.code for f in rt.set_rubric(w.db, w.co.id, ghost)}
+    assert "unknown_department" in {
+        f.code for f in rt.set_rubric(w.db, w.co.id, ghost, gates=False)
+    }
     with pytest.raises(rb.RubricError):
-        rt.set_rubric(w.db, w.co.id, "- nope")
+        rt.set_rubric(w.db, w.co.id, "- nope", gates=False)
 
 
 def test_load_rubric_tolerates_missing_and_corrupt_text(world):
@@ -209,7 +211,7 @@ def test_a_reworded_criterion_is_rated_again_and_old_rows_stay(world):
     rater = FakeRater()
     rate(w, rater)
     reworded = RUBRIC.replace("advance recurring revenue", "grow recurring revenue")
-    assert rt.set_rubric(w.db, w.co.id, reworded) == []
+    assert rt.set_rubric(w.db, w.co.id, reworded, gates=False) == []
     rows = rate(w, rater)
     assert len(rows) == 1
     old, new = sorted(stored(w), key=lambda r: r.created_at)

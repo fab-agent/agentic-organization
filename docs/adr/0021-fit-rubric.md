@@ -216,6 +216,18 @@ rows were held back is reported (`ratings_hidden`); who is not. A suppressed sma
 carries no ratings at all. Totals per group can still be differenced against other groups'
 totals, as with the hard signals; the floor limits that, it does not remove it.
 
+Then calibration and the gates (`services/calibration.py`, `scripts/calibrate_rubric.py`).
+The author labels examples (`expected: met | not_met`, judged against the criterion's own
+good answer); the scorer rates the same texts (redacted first); the report gives agreement
+on the *decided* answers, the unclear share, per-class counts and per-example verdicts —
+never the texts. It passes only with at least 20 examples, 5 of each class, ≥ 85 %
+agreement and ≤ 30 % unclear (the ADR's proposals, parameters not facts); a scorer that
+shrugs at everything, or a failing call, counts as unclear and cannot pass. The result is
+recorded for the criterion's *exact wording* (id and hash), so rewording sends it back to
+calibration. `rating.set_rubric` now refuses a rubric in which a `shadow` or `live`
+criterion has no passing calibration, or a `live` one has not been rated in `shadow` for
+14 days under that wording. Drafts and retired criteria are never gated.
+
 **Not built, and why it matters:**
 
 - **The filter recognises identifiers by shape only** (secrets, e-mail, URL, card, IBAN,
@@ -226,7 +238,9 @@ totals, as with the hard signals; the floor limits that, it does not remove it.
 - Only sessions with an LLM summary are rated; a session too short to be summarised
   (fewer than two messages) or whose summary failed is never rated.
 - There is no
-  training-need signal, calibration tool or rubric view. `fab`'s "My review" shows the
+  training-need signal or rubric view. Calibration runs from the command line only
+  (there is no API or `fab` screen for it), it has been exercised against a faked scorer,
+  not the live Jev API, and the 85 % / 30 % / 20 / 14-day numbers are unmeasured. `fab`'s "My review" shows the
   person's ratings and lets them contest and withdraw (unit tests, plus a pty end-to-end
   run against the real backend); there is no screen for the person who resolves. The
   shadow period is a status of the criterion; nothing yet

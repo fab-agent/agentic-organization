@@ -42,6 +42,7 @@ from models import (
     Personnel,
     WorkRating,
 )
+from services import calibration as cal
 from services import rubric as rb
 from services import work_review as wr
 from services.intent import quiet_sdk_logs
@@ -53,6 +54,7 @@ DEFAULT_SAMPLE_RATE = 0.2
 MAX_SUMMARY_CHARS = 4000
 MAX_CRITERIA_PER_CALL = 12
 RATED_STATUSES = ("shadow", "live")
+SHADOW_DAYS = 14  # a proposal (ADR-0021 §5): how long a criterion is tried before live
 
 
 # ── settings ──────────────────────────────────────────────────────────────────
@@ -93,9 +95,53 @@ def rubric_version(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:12]
 
 
-def set_rubric(session, company_id: str, text: str) -> list[rb.Finding]:
-    """Store the rubric only if it parses and passes the linter; return the findings
-    (empty = stored). An unreadable file raises `RubricError`. The caller commits."""
+def gate_findings(
+    session, company_id: str, rubric: rb.Rubric, now: datetime | None = None
+) -> list[rb.Finding]:
+    """ADR-0021 §5: nothing goes live untested. A `shadow` or `live` criterion needs a
+    passing calibration of its *current wording*; a `live` one also needs to have been
+    rated in `shadow` for `SHADOW_DAYS`, so the person has seen what it says first."""
+    out: list[rb.Finding] = []
+    cutoff = (now or datetime.utcnow()) - timedelta(days=SHADOW_DAYS)
+    for c in rubric.criteria:
+        if c.status not in RATED_STATUSES:
+            continue
+        if not cal.is_calibrated(session, company_id, c):
+            out.append(
+                rb.Finding(
+                    c.id,
+                    "not_calibrated",
+                    "this wording has not passed calibration; run the calibration tool first",
+                )
+            )
+        if c.status == "live":
+            first = session.exec(
+                select(WorkRating.created_at)
+                .where(
+                    WorkRating.company_id == company_id,
+                    WorkRating.criterion_id == c.id,
+                    WorkRating.criterion_hash == rb.criterion_hash(c),
+                    WorkRating.criterion_status == "shadow",
+                )
+                .order_by(WorkRating.created_at)
+            ).first()
+            if first is None or first > cutoff:
+                out.append(
+                    rb.Finding(
+                        c.id,
+                        "shadow_period_not_over",
+                        f"a criterion must be rated in shadow for {SHADOW_DAYS} days before it goes live",
+                    )
+                )
+    return out
+
+
+def set_rubric(
+    session, company_id: str, text: str, *, gates: bool = True
+) -> list[rb.Finding]:
+    """Store the rubric only if it parses, passes the linter and (unless `gates` is off)
+    the calibration and shadow-period gates; return the findings (empty = stored). An
+    unreadable file raises `RubricError`. The caller commits."""
     rubric = rb.parse_rubric(text)
     slugs = set(
         session.exec(
@@ -105,6 +151,8 @@ def set_rubric(session, company_id: str, text: str) -> list[rb.Finding]:
     findings = rb.lint(
         rubric, rb.collect_sources(session, company_id), department_slugs=slugs
     )
+    if gates:
+        findings += gate_findings(session, company_id, rubric)
     if not findings:
         wr._put(session, _rubric_key(company_id), text)
     return findings
