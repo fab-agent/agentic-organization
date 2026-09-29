@@ -201,8 +201,150 @@ def test_a_failed_call_writes_no_audit_event(world, monkeypatch, db_session, cap
     assert "intent_wiring_failed" not in caplog.text
 
 
-def test_chat_stream_passes_the_message_on_the_first_turn_only():
-    import inspect
+# ── run_session: what it hands to the prompt builder, and where it runs ────────
 
-    src = inspect.getsource(agent_runtime)
-    assert "intent_message=user_message if not history_rows else None" in src
+
+def _chat_session(test_engine, name="Bot"):
+    from sqlmodel import Session
+
+    from tests.conftest import (
+        make_agent_config,
+        make_company,
+        make_personnel,
+        make_provider_key,
+    )
+
+    with Session(test_engine) as s:
+        co = make_company(s)
+        agent = make_personnel(s, co.id, name=name, slug=name.lower(), type="agent")
+        make_agent_config(s, agent.id, model="gpt-4o-mini")
+        make_provider_key(s, provider="openai", plain_key="sk-test-mock")
+        sess = models.AgentSession(personnel_id=agent.id)
+        s.add(sess)
+        s.commit()
+        return sess.id
+
+
+def _mock_openai():
+    from unittest.mock import MagicMock, patch
+
+    choice = MagicMock()
+    choice.message.content = "ok"
+    choice.message.tool_calls = None
+    resp = MagicMock()
+    resp.choices = [choice]
+    resp.usage.prompt_tokens = 1
+    resp.usage.completion_tokens = 1
+    resp.usage.total_tokens = 2
+    patcher = patch("openai.OpenAI")
+    client = patcher.start().return_value
+    client.chat.completions.create.return_value = resp
+    return patcher
+
+
+def _run(session_id, message, attachments=None):
+    import asyncio
+
+    from services.agent_runtime import run_session
+
+    async def go():
+        return [e async for e in run_session(session_id, message, attachments)]
+
+    return asyncio.run(go())
+
+
+def test_the_first_turn_hands_the_classifier_the_message_and_later_turns_do_not(
+    db_session, test_engine, monkeypatch
+):
+    seen = []
+    real = agent_runtime.build_system_prompt
+
+    def spy(*args, **kwargs):
+        seen.append((kwargs.get("intent_message"), kwargs.get("session_ref")))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(agent_runtime, "build_system_prompt", spy)
+    sid = _chat_session(test_engine)
+    patcher = _mock_openai()
+    try:
+        _run(sid, "first message")
+        _run(sid, "second message")
+    finally:
+        patcher.stop()
+    assert seen == [("first message", sid), (None, sid)]
+
+
+def test_file_contents_never_reach_the_classifier(db_session, test_engine, monkeypatch):
+    seen = []
+    real = agent_runtime.build_system_prompt
+    monkeypatch.setattr(
+        agent_runtime,
+        "build_system_prompt",
+        lambda *a, **k: (seen.append(k.get("intent_message")), real(*a, **k))[1],
+    )
+    sid = _chat_session(test_engine)
+    patcher = _mock_openai()
+    try:
+        _run(
+            sid,
+            "summarise this",
+            [
+                {
+                    "type": "text",
+                    "filename": "a.txt",
+                    "content": "FILE-CONTENT-XYZ",
+                    "mime_type": "text/plain",
+                }
+            ],
+        )
+    finally:
+        patcher.stop()
+    assert seen == ["summarise this"]
+
+
+def test_a_slow_prompt_build_does_not_block_the_event_loop(
+    db_session, test_engine, monkeypatch
+):
+    """Building the prompt can wait on the classifier's network call. That must
+    happen in a worker thread, or every other request in the worker stalls."""
+    import asyncio
+    import time
+
+    from services.agent_runtime import run_session
+
+    monkeypatch.setattr(
+        agent_runtime,
+        "build_system_prompt",
+        lambda *a, **k: (time.sleep(0.5), "system prompt")[1],
+    )
+    sid = _chat_session(test_engine)
+    patcher = _mock_openai()
+    gaps: list[float] = []
+
+    async def main():
+        done = False
+
+        async def heartbeat():
+            last = time.perf_counter()
+            while not done:
+                await asyncio.sleep(0.01)
+                now = time.perf_counter()
+                gaps.append(now - last)
+                last = now
+
+        async def consume():
+            nonlocal done
+            try:
+                return [e async for e in run_session(sid, "hello")]
+            finally:
+                done = True
+
+        _, events = await asyncio.gather(heartbeat(), consume())
+        return events
+
+    try:
+        events = asyncio.run(main())
+    finally:
+        patcher.stop()
+    assert any(e["type"] == "done" for e in events)
+    assert max(gaps) < 0.25, f"the event loop stalled for {max(gaps):.2f}s"

@@ -271,6 +271,35 @@ retrieved text into a greeting; the token saving becomes real once prompts carry
 and tool schemas (§2).
 
 
+## Review notes (independent review of the wired-in version)
+
+- **Fixed — the classifier call blocked the event loop.** `run_session` is an async
+  generator serving every request in the worker, and the wiring called the classifier
+  (a synchronous network round trip, up to its timeout) from `build_system_prompt`
+  directly. It now runs in a worker thread (`asyncio.to_thread`, as the other
+  blocking calls in that module already do). A test measures event-loop stalls while
+  a slow prompt build runs (0.53 s without the fix). The old "first turn only" test
+  matched a string in the source; it is replaced by tests that run `run_session`
+  and check what the prompt builder receives on the first and later turns, and that
+  attachment contents never reach the classifier.
+- **This is not a token saver, and should not be sold as one.** As built it narrows
+  only the first turn of a session, and the call costs ~690 tokens against a best
+  case of ~455 saved at a ~560-token prompt (the trial's own figures). The gate at
+  1500 estimated tokens keeps it away from small prompts but has not been shown to
+  make it pay. What it does deliver: tags for the review pipeline, no retrieval (and
+  no irrelevant retrieved chunks to build a story from — seen once, on synthetic
+  data, with a greeting) for small talk, and one skipped retrieval round trip. Real
+  token savings have to come from elsewhere: the cache-friendly stable prefix,
+  tool / MCP schema deferral, lookup tools instead of inlined text.
+- **`needs_company_knowledge` is asked but barely used.** Its separation criterion
+  failed (means 0.557 vs 0.195, ranges overlapping), and after lowering the
+  threshold to 0.15 it only fires on small talk that `task = chitchat` already
+  catches. It still costs input tokens on every call and writes an unreliable tag.
+  Proposal: drop the question (and the tag) unless a later trial shows it separates.
+- **The token estimator is calibrated to one tokenizer** (Qwen). Other providers'
+  tokenizers produce more tokens per English character, so budget and gate figures
+  are optimistic for them; a per-provider factor would fix it.
+
 ## Follow-ups
 
 1. ~~Trial Jev against real requests~~ — done 2026-09-29 (see Trial results). Repeat it

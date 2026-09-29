@@ -1199,17 +1199,22 @@ async def run_session(
                 policy_names.append(p.name)
                 seen_ids.add(p.id)
 
-        system_prompt = build_system_prompt(
-            person,
-            dept,
-            list(skills),
-            policy_names or None,
-            rag_query=user_message[:500] if not history_rows else None,
-            company_id=person.company_id,
-            # First turn only (see build_system_prompt); the message without
-            # attachments, so file contents never go to the classifier.
-            intent_message=user_message if not history_rows else None,
-            session_ref=session_id,
+        # Off the event loop: building the prompt can call the intent classifier
+        # (a network round trip, up to its timeout) and the retrieval, and this is an
+        # async generator serving every other request in the worker.
+        system_prompt = await asyncio.to_thread(
+            lambda: build_system_prompt(
+                person,
+                dept,
+                list(skills),
+                policy_names or None,
+                rag_query=user_message[:500] if not history_rows else None,
+                company_id=person.company_id,
+                # First turn only (see build_system_prompt); the message without
+                # attachments, so file contents never go to the classifier.
+                intent_message=user_message if not history_rows else None,
+                session_ref=session_id,
+            )
         )
         tool_defs = build_tool_definitions(list(skills))
 
