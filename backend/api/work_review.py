@@ -12,10 +12,11 @@ from sqlmodel import select
 
 from api.auth import get_current_user
 from database import get_session
-from models import CompanyMember, Personnel, User, WorkNote, WorkRating
+from models import CompanyMember, Department, Personnel, User, WorkNote, WorkRating
 from services import audit_chain
 from services import rating as rt
 from services import rubric as rb
+from services import training_need as tn
 from services import work_review as wr
 from services.workspaces import (
     MANAGER_ROLES,
@@ -98,6 +99,8 @@ def _annotate(session, company_id: str, view: dict) -> dict:
     for d in view.get("days", []):
         for e in d.get("ratings", []):
             e["question"] = known.get((e["criterion_id"], e["criterion_hash"]))
+    for e in view.get("training_need", []):
+        e["question"] = known.get((e["criterion_id"], e["criterion_hash"]))
     return view
 
 
@@ -114,9 +117,29 @@ def my_review(
         person, cid = person_for_user(session, user, company_id)
         _require_enabled(session, cid)
         view = wr.person_view(session, person, days, as_subject=True)
+        view["training_need"] = _training_need_for(session, person)
         _annotate(session, cid, view)
         view["disclosure"] = _disclosure(session, cid)
         return view
+
+
+def _training_need_for(session, person: Personnel) -> list[dict]:
+    """The person's own training-need signals (ADR-0021 §6), each marked `unit_wide` when
+    enough colleagues in the same department show the same pattern — then the likelier
+    reading is an unclear rule, not the person."""
+    signals = tn.person_signals(session, person)
+    if not signals:
+        return []
+    unit: set[tuple[str, str]] = set()
+    dept = (
+        session.get(Department, person.department_id) if person.department_id else None
+    )
+    if dept is not None:
+        found = tn.unit_findings(session, wr.department_members(session, dept)) or []
+        unit = {(f["criterion_id"], f["criterion_hash"]) for f in found}
+    for e in signals:
+        e["unit_wide"] = (e["criterion_id"], e["criterion_hash"]) in unit
+    return signals
 
 
 class NoteBody(BaseModel):
@@ -360,6 +383,90 @@ def department_reviews(
                 )
         _viewed(user.id, cid, "departments", cid, days)
         return out
+
+
+@router.get("/training-need/units")
+def training_need_units(
+    company_id: str | None = None, user: User = Depends(get_current_user)
+):
+    """Where a whole unit struggles with a criterion — for whoever owns the rubric over
+    that unit (department head, executive, founder). Counts only, never names; a unit
+    below the group floor says nothing."""
+    with get_session() as session:
+        cid = resolve_company_id(session, user, company_id)
+        _require_enabled(session, cid)
+        depts = wr.departments_in_scope(session, user, cid)
+        if not depts:
+            raise HTTPException(status_code=403, detail="Manager role required")
+        out = []
+        for d in depts:
+            members = wr.department_members(session, d)
+            if not members:
+                continue
+            found = tn.unit_findings(session, members)
+            entry = {
+                "department": {"id": d.id, "name": d.name},
+                "n_people": len(members),
+            }
+            if found is None:
+                entry |= {"suppressed": True, "findings": []}
+            else:
+                entry |= {
+                    "suppressed": False,
+                    "findings": _annotate(session, cid, {"training_need": found})[
+                        "training_need"
+                    ],
+                }
+            out.append(entry)
+        _viewed(user.id, cid, "training_units", cid, tn.WINDOW_DAYS)
+        return out
+
+
+class TrainingSettings(BaseModel):
+    min_rated: int | None = Field(
+        default=None, ge=tn.MIN_RATED_RANGE[0], le=tn.MIN_RATED_RANGE[1]
+    )
+    bar: float | None = Field(default=None, ge=tn.BAR_RANGE[0], le=tn.BAR_RANGE[1])
+
+
+@router.get("/training-need/settings")
+def get_training_settings(
+    company_id: str | None = None, user: User = Depends(get_current_user)
+):
+    with get_session() as session:
+        cid = resolve_company_id(session, user, company_id)
+        _require_founder(session, user, cid)
+        return {
+            "min_rated": tn.min_rated(session, cid),
+            "bar": tn.bar(session, cid),
+            "window_days": tn.WINDOW_DAYS,
+        }
+
+
+@router.put("/training-need/settings")
+def put_training_settings(
+    body: TrainingSettings,
+    company_id: str | None = None,
+    user: User = Depends(get_current_user),
+):
+    with get_session() as session:
+        cid = resolve_company_id(session, user, company_id)
+        _require_founder(session, user, cid)
+        if body.min_rated is not None:
+            tn.set_min_rated(session, cid, body.min_rated)
+        if body.bar is not None:
+            tn.set_bar(session, cid, body.bar)
+        session.commit()
+        after = {"min_rated": tn.min_rated(session, cid), "bar": tn.bar(session, cid)}
+    audit_chain.record(
+        actor_type="human",
+        actor_id=user.id,
+        company_id=cid,
+        action="work_review_settings_changed",
+        reason="training_need",
+        payload={"after": after},
+    )
+    return {**after, "window_days": tn.WINDOW_DAYS}
 
 
 # ── the company switch (founder only) ─────────────────────────────────────────

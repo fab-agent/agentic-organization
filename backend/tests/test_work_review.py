@@ -439,6 +439,8 @@ def test_only_the_direct_manager_sees_a_person_and_it_is_the_same_view(on):
     theirs = _get(on, f"/people/{pid}", on.mert.user)
     assert theirs.status_code == 200
     own.pop("disclosure")
+    # what only the person gets (ADR-0021): their training-need signals, shown to them first
+    assert own.pop("training_need") == [] and "training_need" not in theirs.json()
     assert theirs.json() == own, (
         "a manager must see exactly what the person sees — no richer view"
     )

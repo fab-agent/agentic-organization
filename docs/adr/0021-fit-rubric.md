@@ -228,6 +228,19 @@ calibration. `rating.set_rubric` now refuses a rubric in which a `shadow` or `li
 criterion has no passing calibration, or a `live` one has not been rated in `shadow` for
 14 days under that wording. Drafts and retired criteria are never gated.
 
+Then the training-need signal (`services/training_need.py`), read in the order §6 asks.
+Only `live`, uncontested, *decided* (`met` / `not_met`) ratings of the last 30 days count,
+per criterion wording. A **unit finding** ("this rule or its training may be unclear") needs
+the group floor of different people rated on the criterion *and* the floor of them with a
+not-met, plus at least 10 decided ratings and a not-met share at or above the bar; it is
+counts only, and a unit below the floor says nothing. It is served to the people who own
+the rubric over that unit (`GET /work-review/training-need/units`: department head,
+executive, founder — not a team leader). A **person's signal** (10 decided ratings and a
+share at or above the bar) appears only in that person's own `GET /me`, marked `unit_wide`
+when colleagues show the same pattern, and is not returned to their manager or in any
+aggregate. The company sets the minimum and the bar (`/training-need/settings`, founder
+only, audited); 10 and 50 % are proposals. Responses carry no score, rank or grade.
+
 **Not built, and why it matters:**
 
 - **The filter recognises identifiers by shape only** (secrets, e-mail, URL, card, IBAN,
@@ -237,8 +250,10 @@ criterion has no passing calibration, or a `live` one has not been rated in `sha
   phone-shaped (the safe side).
 - Only sessions with an LLM summary are rated; a session too short to be summarised
   (fewer than two messages) or whose summary failed is never rated.
-- There is no
-  training-need signal or rubric view. Calibration runs from the command line only
+- There is no rubric view. **When and whether a manager may see a person's training-need
+  signal is undecided**: the ADR says "shown to the person first" but not what follows, and
+  nothing here shows it to anyone else — a product and legal decision (ADR-0019 open
+  question 4). There is no `fab` screen for the signal or for the unit findings. Calibration runs from the command line only
   (there is no API or `fab` screen for it), it has been exercised against a faked scorer,
   not the live Jev API, and the 85 % / 30 % / 20 / 14-day numbers are unmeasured. `fab`'s "My review" shows the
   person's ratings and lets them contest and withdraw (unit tests, plus a pty end-to-end
