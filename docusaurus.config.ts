@@ -5,7 +5,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 const config: Config = {
   title: 'fab.engineering',
   tagline: 'Şirketinizin ajanlarını organize edin.',
-  favicon: 'img/favicon.svg',
+  favicon: 'img/fab-logo.jpg',
 
   url: 'https://agent-docs.fab.engineering',
   baseUrl: '/',
@@ -66,9 +66,8 @@ const config: Config = {
       title: 'fab.engineering',
       logo: {
         alt: 'fab.engineering Logo',
-        src: 'img/fab-logo.svg',
-        srcDark: 'img/fab-logo-dark.svg',
-        style: {height: '32px', width: 'auto'},
+        src: 'img/fab-logo.jpg',
+        style: {height: '32px', width: 'auto', borderRadius: '6px'},
       },
       items: [
         {
