@@ -8,70 +8,52 @@ everything is logged tamper-evidently.
 Full rationale for the decisions: [`docs/adr/`](adr/). Architecture picture:
 [`docs/architecture/agentic-os.md`](architecture/agentic-os.md).
 
-## Current state (2026-09-02)
+## Current state (2026-09-30)
 
-**Phases 0–2 are on `main`.** Gateway + guardrails, fail-closed scoped Policy
-Engine (with bash AST matching), per-tenant tamper-evident audit chain, full
-Postgres cutover (pgvector), `3pa login` + pluggable OIDC, Ed25519-signed
-`/.well-known/opencode`, backend MCP server, LLM severity scoring. 7 migrations
-(head `b7d1e93a4c25`); CI includes a real-Postgres job (`postgres.yml`).
+Two layers are on `main`. Per-ADR detail lives in each ADR's own *Implementation status*
+section; this page only says what is done and what is next.
 
-**ADR-0010 injection defense** (layers 1–4): plugin session-level provenance/taint
-tracking, `baseline:untrusted-high-risk` policy rule, `sandbox/base-prompt.md`
-structural guardrails, and a `FilterDefaultDeny` egress proxy on an internal-only
-sandbox network (`sandbox/egress/` + `sandbox/compose.yaml`).
+**Agentic OS layer for developers (ADR-0001 – 0013): done.** Gateway + guardrails, fail-closed
+scoped policy engine, tamper-evident audit with external anchoring, Postgres + pgvector, `3pa` CLI
++ OIDC, signed `/.well-known/opencode` and command channel, sandbox with default-deny egress,
+injection defense layers 1–5, token refresh/revocation, severity scoring with Telegram alerts,
+release workflows. Documented at [agent-docs.fab.engineering](https://agent-docs.fab.engineering).
+Left over (small): read-only rootfs, Redis rate limit / audit lock for multi-worker, `3pa update`,
+rule-authoring UI, injection layer 6 (output scanning).
 
-**ADR-0009 `3pa run` / `3pa doctor`**: launch opencode in the sandbox with a
-fail-closed gateway/token preflight, Ed25519 verification + TOFU-pin of the
-served org config (ADR-0011), token/model injection, and a gateway heartbeat.
+**Department terminal workspace (ADR-0014, 0018 – 0021): implemented up to the runtime.**
+`fab` client (Rust + Ratatui), workspace lifecycle API, one agent per person, token-budgeted prompt
+assembly, Jev intent classifier, work review, fit rating with rubric / calibration / shadow gates,
+training-need signal. PR #21; migration head `f8c4e1b73a26`. Everything that evaluates people is
+**off per company** until legal review.
 
-**ADR-0007 token refresh + revocation**: access + refresh persona tokens (jti,
-rotation on refresh), `POST /workstation/persona-token/refresh` + `/revoke`
-(owner or self), fail-closed per-jti + per-persona `not_before` revocation
-checked in the auth deps. `3pa refresh` / `3pa logout [--revoke]`; `3pa run`
-auto-refreshes near expiry.
+| Not usable at a real customer yet | Why |
+|---|---|
+| Server-side workspace runtime | Only a test `FakeRuntime`; contract is in ADR-0018; the image has not been run in Docker |
+| Fit rating | Never measured against the live Jev API; thresholds are proposals; not legally reviewed (ADR-0019 open question 4) |
 
-### Remaining, by ADR
+### Decisions waiting on people
 
-| ADR | Left to do |
-|-----|------------|
-| 0002 | ~~egress-proxy + allowlist~~, ~~isolation hardening (cap_drop, no-new-privileges, pids/mem/cpu, OPENCODE_* scrub)~~ done; read-only rootfs, devcontainer/macOS |
-| 0004 | ~~parse the streamed `usage` chunk~~ done; Redis rate-limit for multi-worker; propagate non-200 upstream status on the streaming path |
-| 0005 | ~~parent-department policy inheritance~~ done; rule-authoring UI (frontend) |
-| 0006 | ~~external chain anchoring (local log + S3 Object Lock, truncation/rewrite check)~~ done; Redis lock for non-Postgres multi-worker; git/notary anchor |
-| 0007 | ~~token refresh + revocation + auto-revoke on stale heartbeat + prune~~ done; in-sandbox token rotation (long-run TTL limit); device registration |
-| 0008 | own Bubble Tea TUI (deferred until an "operations panel" need is concrete) |
-| 0009 | ~~`3pa run`~~, ~~`3pa doctor`~~, ~~`3pa policy`~~, ~~`3pa audit verify`~~, ~~`/workstation/heartbeat`~~ done; `3pa update`; auto-revoke job; distribution + signing |
-| 0010 | ~~layers 1-5 (taint, guardrails, untrusted→ask, egress, signed command channel)~~ done; layer 6 output scanning (later phase) |
-| 0011 | ~~fetch + verify + in-container injection + key rotation~~ done; `OPENCODE_PERMISSION` env-bypass hardening; plugin runtime assert; rotate UI |
-| 0012 | ~~`release.yml` (sandbox/egress images, 3pa bundle, plugin/cli npm), opencode pin, compat matrix~~ done; backend/frontend image push; Go 3pa + signing; e2e-nightly |
-| 0013 | ~~Telegram wiring, per-company opt-in, policy auto-escalation~~ done |
+- Accept ADR-0014, 0018 – 0021 (all still `proposed`).
+- Legal review (KVKK / GDPR) before rating or manager sharing is enabled.
+- Retention (default 365 days) and export authority; whether the minimum group size (3) is permanent.
 
-**Suggested next work:** (1) ADR-0012 release workflows, (2) ADR-0010 signed
-command channel, (3) ADR-0006 external chain anchoring.
+### Next, in priority order
 
-## Next phase — every department in a terminal workspace (proposed)
+1. Run the rubric calibration against the live Jev API with 20+ labelled samples; update thresholds.
+2. Real workspace runtime + controller (Docker or worker node, idle suspend, capacity model).
+3. While legal review runs: name / address recognition in the redaction filter; move the rubric to the
+   policy repo behind a change request; `fab` rubric view and the missing screens (unit findings,
+   shared signals for managers, contest resolver); easier `shadow → live` promotion.
+4. Decide whether intent classification becomes default-on (measured: 0/48 wrongly trimmed, p50 0.24 s).
+5. Small debts: token refresh for long-lived workspaces, per-provider token estimate factor, whether the
+   `needs_company_knowledge` tag is needed.
 
-Direction set 2026-09-28: every department works from a terminal workspace where
-an agent does the tool work. Decisions: [ADR-0014](adr/0014-department-terminal-workspace.md)
-(server-side workspaces + Rust/Ratatui TUI), [ADR-0015](adr/0015-document-ingestion-and-ranking.md)
-(Docling ingestion + TypeSafe Jev ranking, ACL-filtered, small context),
-[ADR-0016](adr/0016-installation-kit.md) (org chart, SSO / password / Google,
-OpenAI-compatible model endpoints by URL + token, ERP via MCP),
-[ADR-0017](adr/0017-policies-as-code-and-daily-review.md) (company policies imported
-with Docling into Git-versioned guardrails, changes by change request, daily review
-against goals).
+### Not started from the original plan
 
-| Step | Scope |
-|------|-------|
-| 1 | `packages/tui` skeleton: login, sidebar (org / recurring / recent runs) from existing APIs, one agent pane; herdr reuse spike |
-| 2 | `openai_compatible` provider (base URL + token) + validation |
-| 3 | Docling ingest worker, `DocumentChunk` with ACL, hybrid retrieval, `Ranker` (Jev / local) |
-| 4 | Workspace container image with LibreOffice, PDF tools, headless Chromium; lifecycle API |
-| 5 | OIDC + Google login for web and TUI (device-code flow) |
-| 6 | Installation `setup` flow + read-only ERP MCP template |
-| 7 | Policy import (Docling → policies + proposed rules → one change request), Git as policy source of truth, "propose a change" from TUI/web |
-| 8 | Behaviour checks on agent output (Jev / local); end-of-day summaries scored against goals (opt-in) |
+ADR-0015 (document ingestion with Docling and Jev ranking), ADR-0016 (installation kit) and
+ADR-0017 (policies as code and daily review) are still proposals with no Docling / ingestion code (grep-verified 2026-09-30); only the
+`openai_compatible` provider routing from ADR-0016 already exists. The earlier plan for them (steps 2, 3, 5 – 8) stands; see those ADRs.
 
 ## Fixed principles
 
