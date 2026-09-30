@@ -60,6 +60,18 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: 'Departman Çalışma Alanı (fab)',
+      items: [
+        'fab/overview',
+        'fab/workspace',
+        'fab/agent-and-context',
+        'fab/work-review',
+        'fab/fit-rubric',
+        'fab/enablement',
+      ],
+    },
+    {
+      type: 'category',
       label: 'Mimari',
       items: [
         'architecture/3rdparty-agent-org',

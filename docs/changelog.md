@@ -8,6 +8,46 @@ Platform güncellemelerinin kronolojik kaydı.
 
 ---
 
+## v1.3 — 30 Eylül 2026
+
+> **Departman Çalışma Alanı (`fab`).** Her departmanın terminalden çalıştığı, Rust ile
+> yazılmış `fab` istemcisi ve arkasındaki backend. Bu sürümde iki şey gerçek
+> müşteride kullanılamaz: sunucu tarafında gerçek bir çalışma alanı çalışma zamanı
+> yok (yalnızca test için `FakeRuntime`), ve uygunluk puanlaması canlı Jev API'siyle
+> ölçülmedi ve hukuki incelemeden geçmedi; bu yüzden şirket başına **kapalı** gelir.
+> Ayrıntı → **Departman Çalışma Alanı (fab)** bölümü. Kararlar: ADR-0014, 0018–0021
+> (henüz `proposed`).
+
+### Yeni Özellikler
+
+**`fab` istemcisi:** giriş, kenar çubuğu, yerel ajan paneli, `fab workspace`,
+`fab sync` (yerel klasör eşitleme; yerelde düzenlenmiş dosyanın üzerine yazmaz).
+
+**Çalışma alanı API'si (ADR-0018):** oluştur / sürdür / askıya al / sil,
+tek kullanımlık bağlanma bileti, dosya manifesti. Çalışma alanı imajı ilk sürüm
+(LibreOffice, PDF araçları, headless Chromium).
+
+**Kişi başına tek ajan ve prompt (ADR-0019, 0020):** token bütçeli prompt
+birleştirme, şirket bağlamı ve kişinin iş tanımı, Jev ile niyet sınıflandırma
+(yalnızca ilk tur, hataya açık, şirket başına opt-in).
+
+**İş incelemesi ve uygunluk puanları (ADR-0019, 0021):** "İş incelemem" görünümü,
+puanlar ve itiraz, rubrik ve denetleyicisi (linter), örneklemeli puanlama,
+kalibrasyon aracı, eğitim ihtiyacı sinyali (kişinin onayıyla yöneticiyle
+paylaşım). Hepsi şirket başına kapalı.
+
+### Altyapı
+
+5 yeni migration (head `f8c4e1b73a26`); zamanlayıcı işleri `work_review_rollup`,
+`work_review_purge`, `work_rating`.
+
+### Bilinen Sınırlar
+
+Eşikler öneridir, ölçülmemiştir; süzme yalnızca biçime bakar (isim ve düz yazı
+ayrıntısını tanımaz); çalışma alanı imajı Docker'da çalıştırılmadı.
+
+---
+
 ## v1.2 — 9 Eylül 2026
 
 > **Ajan Yürütme Katmanı (Agentic OS).** Bu sürüm, geliştirici personaların kendi
