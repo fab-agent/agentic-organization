@@ -1,10 +1,11 @@
 ---
 sidebar_position: 1
+slug: /
 ---
 
 # fab.engineering — Kurumsal Yapay Zeka Katmanı
 
-**Versiyon 1.2** · Self-hosted, açık kaynak (MIT + Commons Clause) · [GitHub](https://github.com/fab-agent/agentic-organization)
+Self-hosted, açık kaynak (MIT + Commons Clause) · [GitHub](https://github.com/fab-agent/agentic-organization)
 
 > **Kurumsal hafıza ve kurumsal yapay zeka ile işleriniz artık çok daha verimli ve hızlı.**
 
@@ -30,7 +31,7 @@ Ajanlarınız sadece sohbet etmez. Mevcut veritabanlarınıza, dahili API'lerini
 Geliştirici personalar iş istasyonlarında [opencode](https://opencode.ai) ile çalışır; tüm model trafiği merkezî bir gateway'den geçer, her komut çalıştırılabilir politikalarla değerlendirilir ve her eylem değiştirilemez bir denetim zincirine yazılır. Ayrıntı → [Ajan Yürütme Katmanı](./workstation/overview.md).
 
 ### Departmanlar için Terminal Çalışma Alanı
-Finans, muhasebe, satış gibi departmanlar `fab` terminal istemcisiyle kendi çalışma alanlarına bağlanır ve tek bir ajanla çalışır. İsteğe bağlı, şirket başına kapalı gelen **iş incelemesi** kişinin kendi işini ve şirket hedeflerine uygunluğunu önce kişiye gösterir. Ayrıntı → [Departman Çalışma Alanı](/docs/fab/overview).
+Finans, muhasebe, satış gibi departmanlar `fab` terminal istemcisiyle kendi çalışma alanlarına bağlanır ve tek bir ajanla çalışır. İsteğe bağlı, şirket başına kapalı gelen **iş incelemesi** kişinin kendi işini ve şirket hedeflerine uygunluğunu önce kişiye gösterir. Ayrıntı → [Departman Çalışma Alanı](/fab/overview).
 
 ---
 

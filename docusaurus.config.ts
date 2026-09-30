@@ -5,7 +5,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 const config: Config = {
   title: 'fab.engineering',
   tagline: 'Şirketinizin ajanlarını organize edin.',
-  favicon: 'img/favicon.ico',
+  favicon: 'img/favicon.svg',
 
   url: 'https://agent-docs.fab.engineering',
   baseUrl: '/',
@@ -13,8 +13,13 @@ const config: Config = {
   organizationName: 'fab-agent',
   projectName: 'docs',
 
-  onBrokenLinks: 'warn',
-  onBrokenMarkdownLinks: 'warn',
+  onBrokenLinks: 'throw',
+
+  markdown: {
+    hooks: {
+      onBrokenMarkdownLinks: 'throw',
+    },
+  },
 
   i18n: {
     defaultLocale: 'tr',
@@ -25,13 +30,25 @@ const config: Config = {
     },
   },
 
+  plugins: [
+    [
+      '@docusaurus/plugin-client-redirects',
+      {
+        // Eski /docs/* adresleri kök altına taşındı
+        createRedirects(existingPath: string) {
+          return existingPath === '/' ? undefined : [`/docs${existingPath}`];
+        },
+      },
+    ],
+  ],
+
   presets: [
     [
       'classic',
       {
         docs: {
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/fab-agent/docs/edit/main/',
+          routeBasePath: '/',
         },
         blog: false,
         theme: {
@@ -42,8 +59,17 @@ const config: Config = {
   ],
 
   themeConfig: {
+    colorMode: {
+      respectPrefersColorScheme: true,
+    },
     navbar: {
       title: 'fab.engineering',
+      logo: {
+        alt: 'fab.engineering Logo',
+        src: 'img/fab-logo.svg',
+        srcDark: 'img/fab-logo-dark.svg',
+        style: {height: '32px', width: 'auto'},
+      },
       items: [
         {
           type: 'docSidebar',
@@ -55,15 +81,27 @@ const config: Config = {
           type: 'localeDropdown',
           position: 'right',
         },
-        {
-          href: 'https://github.com/fab-agent',
-          label: 'GitHub',
-          position: 'right',
-        },
       ],
     },
     footer: {
       style: 'dark',
+      links: [
+        {
+          title: 'Ürün',
+          items: [
+            {label: 'agent.fab.engineering', href: 'https://agent.fab.engineering'},
+            {label: 'GitHub', href: 'https://github.com/fab-agent/agentic-organization'},
+          ],
+        },
+        {
+          title: 'Şirket',
+          items: [
+            {label: 'fab.limited', href: 'https://fab.limited'},
+            {label: 'fab.engineering', href: 'https://fab.engineering'},
+            {label: 'LinkedIn', href: 'https://www.linkedin.com/in/kuntaykunt/'},
+          ],
+        },
+      ],
       copyright: `© 2026 Fabrika Yazılım Ticaret Limited Şirketi · Kuntay Kunt`,
     },
     prism: {

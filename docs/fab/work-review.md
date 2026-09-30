@@ -10,7 +10,7 @@ Her çalıştırma ve oturum tek bir hattan geçer (ADR-0019 §6). Hat, ADR-0013
 
 1. **Süz.** Depolanmadan veya puanlama modeline gitmeden önce hassas içerik sınıflandırılır ve maskelenir.
 2. **Etiketle.** Departman, konu, veri sınıfı, eylem türleri (okuma/yazma/gönderme/harcama), kullanılan araç.
-3. **Uygunluğu puanla.** Şirketin kendi ölçütlerine göre (bkz. [Uygunluk rubriği](/docs/fab/fit-rubric)).
+3. **Uygunluğu puanla.** Şirketin kendi ölçütlerine göre (bkz. [Uygunluk rubriği](/fab/fit-rubric)).
 4. **Yönlendir.** Risk eşiği aşılırsa gelen kutusu/uyarı; tekrarlayan düşük sonuçlar **eğitim ihtiyacı** sinyali olur.
 
 Puanlar ve etiketler, denetim sıra numaralarına bağlı yan tablolardır. **Denetim zinciri asla değiştirilmez.**

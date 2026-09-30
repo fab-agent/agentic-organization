@@ -6,7 +6,7 @@ sidebar_position: 1
 
 **fab**, her departmanın (finans, muhasebe, satış…) terminalden çalıştığı istemcidir. Rust + Ratatui ile yazılmış tek bir ikili dosyadır. Kişi giriş yapar; kendisine ait, sunucuda çalışan bir **çalışma alanına** bağlanır ve orada **tek bir ajanla** çalışır. Ajan belgeleri, tabloları ve sunumları üretir; şirketin araçlarına politika ve denetim altında erişir.
 
-> Geliştiriciler için olan [Ajan Yürütme Katmanı](/docs/workstation/overview) (opencode + laptop sandbox) yerinde durur. `fab`, aynı gateway, politika motoru ve denetim zincirini kullanan ikinci yoldur. Web arayüzü bu yüzden değişmez.
+> Geliştiriciler için olan [Ajan Yürütme Katmanı](/workstation/overview) (opencode + laptop sandbox) yerinde durur. `fab`, aynı gateway, politika motoru ve denetim zincirini kullanan ikinci yoldur. Web arayüzü bu yüzden değişmez.
 
 ## Ne var, ne yok
 
@@ -20,7 +20,7 @@ sidebar_position: 1
 | Çalışma alanı imajı (LibreOffice, PDF araçları, headless Chromium) | İlk sürüm; Docker'da **çalıştırılmadı** |
 | **Gerçek çalışma alanı çalışma zamanı** | **Yok** — yalnızca test için `FakeRuntime` |
 
-Bu yüzden bugün `fab` gerçek bir müşteride kullanıma hazır değildir: sunucu tarafında gerçek bir çalışma alanı çalışma zamanı yoktur ve uygunluk puanlaması canlı Jev API'siyle ölçülmemiş, hukuki incelemeden geçmemiştir. Ayrıntı için [Yönetici Rehberi](/docs/fab/enablement).
+Bu yüzden bugün `fab` gerçek bir müşteride kullanıma hazır değildir: sunucu tarafında gerçek bir çalışma alanı çalışma zamanı yoktur ve uygunluk puanlaması canlı Jev API'siyle ölçülmemiş, hukuki incelemeden geçmemiştir. Ayrıntı için [Yönetici Rehberi](/fab/enablement).
 
 ## Ekran
 
@@ -41,10 +41,10 @@ Kenar çubuğu mevcut API'lerden beslenir (organizasyon ağacı, akışlar, gele
 
 ## Bölümler
 
-- [Çalışma alanı ve senkronizasyon](/docs/fab/workspace) — yaşam döngüsü, bağlanma, yerel klasör
-- [Kişinin ajanı ve prompt](/docs/fab/agent-and-context) — tek ajan, "Alanım", token bütçesi, niyet sınıflandırma
-- [İş incelemesi](/docs/fab/work-review) — ne toplanır, ne toplanmaz, kim ne görür
-- [Uygunluk rubriği](/docs/fab/fit-rubric) — puanlama, kalibrasyon, gölge dönem, eğitim sinyali
-- [Yönetici rehberi](/docs/fab/enablement) — anahtarlar, ön koşullar, doğrulama, bilinen sınırlar
+- [Çalışma alanı ve senkronizasyon](/fab/workspace) — yaşam döngüsü, bağlanma, yerel klasör
+- [Kişinin ajanı ve prompt](/fab/agent-and-context) — tek ajan, "Alanım", token bütçesi, niyet sınıflandırma
+- [İş incelemesi](/fab/work-review) — ne toplanır, ne toplanmaz, kim ne görür
+- [Uygunluk rubriği](/fab/fit-rubric) — puanlama, kalibrasyon, gölge dönem, eğitim sinyali
+- [Yönetici rehberi](/fab/enablement) — anahtarlar, ön koşullar, doğrulama, bilinen sınırlar
 
 Mimari kararların tamamı `agentic-organization` deposunda `docs/adr/` altındadır (ADR-0014, 0018–0021). Bu ADR'ler henüz `proposed` durumundadır.
