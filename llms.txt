@@ -35,8 +35,7 @@ policies and goals. Agents relate outward too: sideways to teammates, upward to 
 - Model-agnostic: Claude, GPT-4o, Gemini, Qwen, etc. — switch as needed, no lock-in.
 - Connections: databases, internal APIs, MCP servers.
 - One-command install: `bash install.sh` — Let's Encrypt SSL, Nginx, Docker Compose, key generation.
-- SLA & AI telemetry dashboard, S3/R2 encrypted backups, Telegram notifications, AI onboarding.
-- Social-media skills (Instagram Business, WhatsApp Business via Meta Graph API).
+- SLA & AI telemetry dashboard, S3/R2 encrypted backups, AI onboarding.
 
 ## Install
 
@@ -51,8 +50,6 @@ Runs on any server with Docker. All data stays on your infrastructure.
 - Landing: https://agent.fab.engineering/
 - Source code: https://github.com/fab-agent/agentic-organization
 - Documentation: https://agent-docs.fab.engineering/
-- App: https://app.agent.fab.engineering/
-- Demo: https://demo.agent.fab.engineering/
 - License: MIT — https://github.com/fab-agent/agentic-organization/blob/main/LICENSE
 
 ## Publisher

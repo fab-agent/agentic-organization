@@ -2,24 +2,6 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
 
-/
-  Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+json", </.well-known/agent-card.json>; rel="service-desc"; type="application/json", </llms.txt>; rel="describedby"; type="text/plain", </auth.md>; rel="describedby"; type="text/markdown"
-
-/.well-known/api-catalog
-  Content-Type: application/linkset+json; charset=utf-8
-  Access-Control-Allow-Origin: *
-  Cache-Control: public, max-age=3600, s-maxage=86400
-
-/.well-known/agent-card.json
-  Content-Type: application/json; charset=utf-8
-  Access-Control-Allow-Origin: *
-  Cache-Control: public, max-age=3600, s-maxage=86400
-
-/auth.md
-  Content-Type: text/markdown; charset=utf-8
-  Access-Control-Allow-Origin: *
-  Cache-Control: public, max-age=3600, s-maxage=86400
-
 /sitemap.xml
   Content-Type: application/xml; charset=utf-8
   Cache-Control: public, max-age=3600, s-maxage=86400
@@ -32,13 +14,7 @@
   Cache-Control: public, max-age=3600, s-maxage=86400
 
 /og.jpg
-  Cache-Control: public, max-age=604800, immutable
+  Cache-Control: public, max-age=86400
 
 /favicon.svg
-  Cache-Control: public, max-age=604800
-
-/videos/*
-  Cache-Control: public, max-age=604800, immutable
-
-/screenshots/*
   Cache-Control: public, max-age=604800

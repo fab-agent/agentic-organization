@@ -1,11 +1,21 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "agent-fab-engineering",
+  "main": "worker.js",
   "compatibility_date": "2026-09-02",
   "assets": {
     "directory": "./",
-    "not_found_handling": "single-page-application"
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "fab-agent-contacts",
+      "database_id": "799316cf-9d24-4cb0-9305-a5e06f65bac0"
+    }
+  ],
   "observability": {
     "enabled": true
   }

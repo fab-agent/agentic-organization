@@ -3,8 +3,7 @@
 .assetsignore
 .wrangler
 wrangler.jsonc
+worker.js
+schema.sql
 node_modules
 *.md
-
-# agent-discovery doc must ship
-!auth.md
