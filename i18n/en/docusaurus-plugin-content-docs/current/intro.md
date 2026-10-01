@@ -51,9 +51,9 @@ Same server, same policies, same audit trail; three doors depending on the job:
 - **Traceability.** Important actions are written to an audit log. In the developer workstation layer the log is additionally a tamper-evident hash chain.
 - **Open source.** Source code is on [GitHub](https://github.com/fab-agent/agentic-organization); see the `LICENSE` file in the repository for the license.
 
-## Try it
+## Try it on your own server
 
-There is a live demo environment: [demo.agent.fab.engineering](https://demo.agent.fab.engineering) (a one-time code is sent to your email). To install on your own server, go to [Installation](/getting-started/installation).
+Go to [Installation](/getting-started/installation), then [First Steps](/getting-started/first-steps).
 
 ## Contact
 

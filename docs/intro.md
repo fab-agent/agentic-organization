@@ -51,9 +51,9 @@ Aynı sunucu, aynı politikalar, aynı denetim kaydı; kişinin işine göre ü�
 - **İzlenebilirlik.** Önemli işlemler denetim kaydına yazılır. Geliştirici iş istasyonu katmanında kayıt ayrıca değiştirilemez bir hash zinciridir.
 - **Açık kaynak.** Kaynak kodu [GitHub](https://github.com/fab-agent/agentic-organization) üzerinde; lisans için depodaki `LICENSE` dosyasına bakın.
 
-## Denemek için
+## Kendi sunucunuzda deneyin
 
-Canlı bir demo ortamı vardır: [demo.agent.fab.engineering](https://demo.agent.fab.engineering) (e-posta adresinize tek kullanımlık kod gönderilir). Kendi sunucunuza kurmak için [Kurulum](/getting-started/installation) sayfasına geçin.
+Kurulum için [Kurulum](/getting-started/installation) sayfasına, ardından [İlk Adımlar](/getting-started/first-steps) sayfasına geçin.
 
 ## İletişim
 
