@@ -26,8 +26,8 @@
   <meta name="twitter:image" content="https://agent.fab.engineering/og.jpg">
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
   <meta name="googlebot" content="index, follow">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="apple-touch-icon" href="/favicon.svg">
+  <link rel="icon" type="image/jpeg" href="/favicon.jpg">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt — machine-readable brief">
   <link rel="alternate" hreflang="tr" href="https://agent.fab.engineering/">
   <link rel="alternate" hreflang="en" href="https://agent.fab.engineering/?lang=en">
@@ -95,7 +95,7 @@
         "name": "Fabrika Yazılım Tic. Ltd. Şti.",
         "alternateName": "Fabrika Yazılım",
         "url": "https://fab.limited/",
-        "logo": "https://agent.fab.engineering/favicon.svg",
+        "logo": "https://agent.fab.engineering/favicon.jpg",
         "email": "bilgi@kuntaykunt.com",
         "founder": { "@id": "https://agent.fab.engineering/#person" },
         "sameAs": [
@@ -177,8 +177,9 @@
   /* header */
   header.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
   header.top .wrap{display:flex;align-items:center;gap:20px;height:64px}
-  .logo{display:flex;align-items:center;gap:10px;text-decoration:none;font-stretch:125%;font-weight:800;font-size:17px;letter-spacing:-.02em}
-  .logo i{width:12px;height:12px;background:var(--signal);display:block;transform:rotate(45deg)}
+  .logo{display:flex;align-items:center;gap:11px;text-decoration:none;font-stretch:118%;font-weight:700;font-size:16px;letter-spacing:-.02em;white-space:nowrap;min-width:0}
+  .logo img{border-radius:6px;flex:none}
+  .logo b{font-weight:400;color:var(--ink-2)}
   nav.main{display:flex;gap:22px;margin-left:auto}
   nav.main a{text-decoration:none;font-size:14px;font-weight:500;color:var(--ink-2)}
   nav.main a:hover{color:var(--ink)}
@@ -192,6 +193,7 @@
   .btn.ghost{background:transparent;color:var(--ink)}
   .btn.sm{padding:9px 14px;font-size:13px}
   @media(max-width:900px){nav.main{display:none}.langs{margin-left:auto}}
+  @media(max-width:640px){header.top .wrap{gap:10px}.logo{font-size:13px;gap:8px}.logo img{width:28px;height:28px}header.top .btn.sm{display:none}.lang-btn{padding:5px 5px}}
 
   /* frames: crop marks */
   .frame{position:relative}
@@ -352,7 +354,7 @@
 <a class="sr" href="#main">Skip to content</a>
 <header class="top">
   <div class="wrap">
-    <a class="logo" href="#top" aria-label="agent.fab.engineering"><i></i>agent.fab</a>
+    <a class="logo" href="#top" aria-label="agent.fab.engineering"><img src="logo-64.png" width="32" height="32" alt=""><span>agent<b>.fab.engineering</b></span></a>
     <nav class="main" aria-label="Main">
       <a href="#katmanlar" data-i18n="nav.layers">Katmanlar</a>
       <a href="#ozellikler" data-i18n="nav.features">Özellikler</a>
