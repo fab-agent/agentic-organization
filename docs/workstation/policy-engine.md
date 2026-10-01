@@ -7,8 +7,8 @@ sidebar_position: 3
 > ADR-0005 · `backend/services/policy_engine.py`,
 > `backend/services/command_parser.py`
 
-Web arayüzündeki politikalar, ajanın sistem prompt'una gömülen doğal dil
-kurallarıdır — model bunları yorumlar. Yürütme katmanı buna **araç çağrısından
+Web arayüzündeki politikalar Markdown belgeleridir; ajanın talimatına yalnızca
+**adları** girer ve model bunları bir rehber olarak yorumlar. Yürütme katmanı buna **araç çağrısından
 önce çalışan** ikinci bir kapı ekler: politika motoru bir komutu görür, kurala
 göre `allow` / `ask` / `deny` verir ve `enforce` modda çağrıyı fiilen durdurur.
 

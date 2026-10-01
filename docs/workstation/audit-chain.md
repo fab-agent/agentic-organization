@@ -6,7 +6,7 @@ sidebar_position: 4
 
 > ADR-0006 · `backend/services/audit_chain.py`, `backend/services/audit_anchor.py`
 
-[Audit Log](/product/audit-log) her mutasyonu kaydeder ama satırları
+[Audit Log](/guide/dashboard#denetim-kaydı) her mutasyonu kaydeder ama satırları
 teknik olarak düzenlenebilir. Yürütme katmanı, ajan eylemleri için
 **hash-zincirli**, kanıtlanabilir bir kayıt ekler: bir satır silinir veya
 değiştirilirse zincir doğrulaması bunu ortaya çıkarır.

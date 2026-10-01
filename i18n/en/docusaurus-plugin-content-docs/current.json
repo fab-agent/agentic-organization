@@ -7,20 +7,32 @@
     "message": "Getting Started",
     "description": "The label for category 'Başlarken' in sidebar 'tutorialSidebar'"
   },
-  "sidebar.tutorialSidebar.category.Ürün": {
-    "message": "Product",
-    "description": "The label for category 'Ürün' in sidebar 'tutorialSidebar'"
+  "sidebar.tutorialSidebar.category.Kullanım Kılavuzu": {
+    "message": "User Guide",
+    "description": "The label for category 'Kullanım Kılavuzu' in sidebar 'tutorialSidebar'"
   },
-  "sidebar.tutorialSidebar.category.Platform": {
-    "message": "Platform",
-    "description": "The label for category 'Platform' in sidebar 'tutorialSidebar'"
+  "sidebar.tutorialSidebar.category.Departman Çalışma Alanı (fab)": {
+    "message": "Department Workspace (fab)",
+    "description": "The label for category 'Departman Çalışma Alanı (fab)' in sidebar 'tutorialSidebar'"
   },
-  "sidebar.tutorialSidebar.category.Mimari": {
-    "message": "Architecture",
-    "description": "The label for category 'Mimari' in sidebar 'tutorialSidebar'"
+  "sidebar.tutorialSidebar.category.Geliştirici İş İstasyonu": {
+    "message": "Developer Workstation",
+    "description": "The label for category 'Geliştirici İş İstasyonu' in sidebar 'tutorialSidebar'"
   },
-  "sidebar.tutorialSidebar.category.İçgörüler": {
-    "message": "Insights",
-    "description": "The label for category 'İçgörüler' in sidebar 'tutorialSidebar'"
+  "sidebar.tutorialSidebar.category.Teknik": {
+    "message": "Technical",
+    "description": "The label for category 'Teknik' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.category.Geliştirici Notları": {
+    "message": "Developer Notes",
+    "description": "The label for category 'Geliştirici Notları' in sidebar 'tutorialSidebar'"
+  },
+  "sidebar.tutorialSidebar.doc.Giriş": {
+    "message": "Introduction",
+    "description": "The label for the doc item 'Giriş' in sidebar 'tutorialSidebar', linking to the doc intro"
+  },
+  "sidebar.tutorialSidebar.doc.Sürüm Notları": {
+    "message": "Release Notes",
+    "description": "The label for the doc item 'Sürüm Notları' in sidebar 'tutorialSidebar', linking to the doc changelog"
   }
 }

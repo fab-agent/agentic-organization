@@ -6,7 +6,7 @@ sidebar_position: 1
 
 **fab**, her departmanın (finans, muhasebe, satış…) terminalden çalıştığı istemcidir. Rust + Ratatui ile yazılmış tek bir ikili dosyadır. Kişi giriş yapar; kendisine ait, sunucuda çalışan bir **çalışma alanına** bağlanır ve orada **tek bir ajanla** çalışır. Ajan belgeleri, tabloları ve sunumları üretir; şirketin araçlarına politika ve denetim altında erişir.
 
-> Geliştiriciler için olan [Ajan Yürütme Katmanı](/workstation/overview) (opencode + laptop sandbox) yerinde durur. `fab`, aynı gateway, politika motoru ve denetim zincirini kullanan ikinci yoldur. Web arayüzü bu yüzden değişmez.
+> Geliştiriciler için olan [Geliştirici İş İstasyonu](/workstation/overview) (opencode + laptop sandbox) yerinde durur. `fab`, aynı gateway, politika motoru ve denetim zincirini kullanan ikinci yoldur. Web arayüzü bu yüzden değişmez.
 
 ## Ne var, ne yok
 

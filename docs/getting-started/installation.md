@@ -1,202 +1,102 @@
 ---
-sidebar_position: 1
+sidebar_position: 2
 ---
 
 # Kurulum
 
-fab.engineering platformunu üç farklı yöntemle kurabilirsiniz.
+Üç yol var: yerel deneme, tek komutla üretim kurulumu ve manuel geliştirme kurulumu. İş tarafı için en kısa yol: önce yerel denemeyi çalıştırıp [İlk Adımlar](/getting-started/first-steps) sayfasını izlemek.
 
----
-
-## Geliştirme Ortamı — Hızlı Başlangıç
+## 1. Yerel deneme (Docker)
 
 ```bash
-git clone https://github.com/fab-agent/3rdparty-agent-org.git
-cd 3rdparty-agent-org
-
+git clone https://github.com/fab-agent/agentic-organization.git
+cd agentic-organization
 cp .env.example .env
-# İsterseniz .env içine AI anahtarlarınızı ekleyin (sonradan arayüzden de eklenebilir)
-
+# .env içinde JWT_SECRET değerini doldurun (openssl rand -hex 32)
 docker compose up --build
 ```
 
-Kurulum tamamlandığında:
+Hazır olduğunda:
 
-- **Arayüz:** `http://localhost:5173`
-- **API:** `http://localhost:8000`
-- **API Dokümantasyonu:** `http://localhost:8000/docs`
+- Arayüz: `http://localhost:5173`
+- API: `http://localhost:8000` (etkileşimli dokümantasyon: `/docs`)
 
----
+Bu yığın üç servis çalıştırır: PostgreSQL (pgvector), backend ve arayüz.
 
-## Prodüksiyon Kurulumu (Tek Komut)
+## 2. Üretim kurulumu (tek komut)
 
-Sunucunuza bağlandıktan sonra tek bir komutla prodüksiyona alabilirsiniz:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/fab-agent/3rdparty-agent-org/main/install.sh | bash
-```
-
-Ya da repoyu indirip çalıştırın:
+Bir Ubuntu sunucuda, DNS kaydı hazırken:
 
 ```bash
-git clone https://github.com/fab-agent/3rdparty-agent-org.git
-cd 3rdparty-agent-org
+git clone https://github.com/fab-agent/agentic-organization.git
+cd agentic-organization
 bash install.sh
 ```
 
-`install.sh` sırasıyla şunları yapar:
+`install.sh` sırayla şunları yapar:
 
-1. Docker ve Docker Compose kurulumu kontrol eder
-2. `.env` sihirbazı (`setup-env.sh`) ile yapılandırma oluşturur
-3. Let's Encrypt üzerinden SSL sertifikası alır (Certbot)
-4. Nginx yapılandırmasını domain ile üretir
-5. Tüm servisleri `docker compose -f docker-compose.prod.yml up -d` ile başlatır
-6. Sağlık kontrolü yapar
+1. Docker ve Docker Compose'u kontrol eder.
+2. `.env` sihirbazını (`setup-env.sh`) çalıştırır.
+3. Let's Encrypt (Certbot) ile SSL sertifikası alır.
+4. Alan adınıza göre Nginx yapılandırmasını üretir.
+5. `docker-compose.prod.yml` ile servisleri (veritabanı, backend, arayüz, Nginx) başlatır.
+6. Sağlık kontrolü yapar.
 
-### .env Sihirbazı
+`.env` sihirbazı yalnızca ortam değişkenlerini üretmek için de çalıştırılabilir: `bash setup-env.sh`. Alan adı, şirket bilgisi ve isteğe bağlı sağlayıcı anahtarlarını sorar; `JWT_SECRET` değerini kendisi üretir.
 
-Sadece ortam değişkenlerini yapılandırmak için:
-
-```bash
-bash setup-env.sh
-```
-
-Sihirbaz şunları sorar:
-
-1. **Alan adı** — ör. `agents.sirketim.com`
-2. **Şirket bilgileri** — ad, sektör
-3. **Güvenlik anahtarları** — `JWT_SECRET` ve `ENCRYPTION_KEY` otomatik oluşturulur
-4. **AI sağlayıcı anahtarları** — isteğe bağlı, arayüzden de eklenebilir
-5. **E-posta bildirimleri** — gönderici adresi
-6. **Güncelleme bildirimleri** — isteğe bağlı kayıt (MIT lisanslı, ücret yok)
-
----
-
-## Manuel Kurulum (Geliştirme Ortamı)
-
-**Backend:**
+## 3. Manuel kurulum (geliştirme)
 
 ```bash
+# Backend
 cd backend
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
-```
 
-**Frontend (ayrı terminalde):**
-
-```bash
+# Arayüz (ayrı terminal)
 cd frontend
 npm install
-cp .env.example .env              # VITE_API_URL=http://localhost:8000
+cp .env.example .env     # VITE_API_URL=http://localhost:8000
 npm run dev
 ```
 
-Frontend `http://localhost:5173` adresinde açılır.
+`DATABASE_URL` verilmezse SQLite (`data/app.db`) kullanılır.
 
----
+## Ortam değişkenleri
 
-## İlk Açılış — Kurulum Sihirbazı
+| Değişken | Gerekli mi? | Açıklama |
+|---|---|---|
+| `JWT_SECRET` | Evet | Oturum imzalama anahtarı, en az 32 karakter. Üretimde zayıf değer reddedilir. |
+| `DATABASE_URL` | Docker'da otomatik | Varsayılan SQLite; compose dosyaları PostgreSQL'e ayarlar |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Docker'da | Veritabanı bilgileri |
+| `APP_URL` | Önerilir | Davet bağlantılarında kullanılan adres |
+| `CORS_ORIGINS` | İsteğe bağlı | Virgülle ayrılmış izinli adresler; varsayılan `APP_URL` |
+| `RESEND_API_KEY`, `EMAIL_FROM` | İsteğe bağlı | E-posta gönderimi (Resend). Tanımlı değilse e-postalar yalnızca günlüğe yazılır. |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `QWEN_API_KEY` | İsteğe bağlı | İlk açılışta bir kez içe aktarılır; Ayarlar'dan da eklenebilir |
+| `SCHEDULER_ENABLED` | İsteğe bağlı | Zamanlanmış akışları çalıştıran görev zamanlayıcı (varsayılan açık) |
+| `PUBLIC_BASE_URL` | İsteğe bağlı | Geliştirici iş istasyonu katmanının herkese açık API adresi |
 
-Platform ilk açıldığında veritabanında hiç kullanıcı yoksa otomatik olarak **kurulum sayfasına** yönlendirilirsiniz.
+`.env.example` ve `setup-env.sh` bir `ENCRYPTION_KEY` değişkeni de üretir, ancak kod bu değeri **okumaz**. Şifreleme anahtarı otomatik oluşturulan `data/.secret` dosyasındadır; bu dosya yedeğe dahil edilmelidir.
 
-Bu sayfada:
+Telegram, Git, sosyal medya, yedekleme ve veritabanı bağlantıları ortam değişkeniyle değil, **Ayarlar** sayfasından şirket bazında yapılır.
 
-1. **Ad Soyad** — yönetici kullanıcının adı
-2. **Şirket Adı** — platformdaki ilk şirket
-3. **E-posta** — giriş için kullanılacak adres
-4. **Şifre** — en az 8 karakter
+## SSL sertifikasını elle almak
 
-Form gönderildiğinde kullanıcı `founder` rolüyle oluşturulur ve otomatik giriş yapılır.
-
-:::info
-Kurulum formu yalnızca veritabanı boşken görünür. Bir kullanıcı oluşturulduktan sonra `/setup` sayfası devre dışı kalır.
-:::
-
----
-
-## Ortam Değişkenleri
-
-```bash
-# Backend (.env)
-
-# ── Zorunlu ────────────────────────────────────────────────────────────────────
-DOMAIN=agents.sirketim.com           # Prodüksiyon domain'i
-JWT_SECRET=<en az 32 karakter>       # JWT imzalama anahtarı
-ENCRYPTION_KEY=<en az 32 karakter>   # Sağlayıcı anahtar şifreleme
-
-# ── Şirket ─────────────────────────────────────────────────────────────────────
-COMPANY_NAME=Şirket Adı
-COMPANY_SECTOR=Yazılım
-APP_URL=https://agents.sirketim.com
-
-# ── Bildirim ───────────────────────────────────────────────────────────────────
-EMAIL_FROM=noreply@sirketim.com
-
-# ── AI Sağlayıcıları (Opsiyonel) ──────────────────────────────────────────────
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-...
-GOOGLE_API_KEY=AIza...
-MISTRAL_API_KEY=...
-QWEN_API_KEY=sk-...
-```
-
-:::info
-AI anahtarları `.env` yerine **Ayarlar → AI Sağlayıcıları** sayfasından da eklenebilir. Arayüzden eklenen anahtarlar şifrelenmiş olarak veritabanında saklanır.
-:::
-
-:::caution
-`JWT_SECRET` ve `ENCRYPTION_KEY` değerlerini ayarlamadan prodüksiyon ortamında çalıştırmayın. `setup-env.sh` bu değerleri `openssl rand -hex 32` ile otomatik üretir.
-:::
-
----
-
-## SSL Sertifikası (Manuel)
-
-`install.sh` SSL'i otomatik yapılandırır. Manuel olarak yapmak isterseniz:
+`install.sh` bunu otomatik yapar. Elle yapmak isterseniz:
 
 ```bash
-# Sertifika al (port 80 serbest olmalı)
-docker run --rm \
-  -v /etc/letsencrypt:/etc/letsencrypt \
-  -v /var/www/certbot:/var/www/certbot \
-  -p 80:80 \
-  certbot/certbot certonly \
-    --standalone \
-    --email admin@sirketim.com \
-    --agree-tos \
-    -d agents.sirketim.com
+docker run --rm -v /etc/letsencrypt:/etc/letsencrypt -v /var/www/certbot:/var/www/certbot \
+  -p 80:80 certbot/certbot certonly --standalone \
+  --email admin@sirketim.com --agree-tos -d agents.sirketim.com
 
-# nginx.conf üret
 sed 's/__DOMAIN__/agents.sirketim.com/g' nginx.prod.conf.template > nginx.conf
-
-# Başlat
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Sertifika yenileme (`certbot renew`) için bir cron job eklemeniz önerilir:
+Sertifika yenilemesi için haftalık bir cron görevi ekleyin: `certbot renew --quiet && docker exec <nginx-konteyneri> nginx -s reload`.
 
-```bash
-# /etc/cron.d/certbot-renew
-0 0 * * 0 root certbot renew --quiet && docker exec 3rdparty-nginx nginx -s reload
-```
+## İlk açılış
 
----
+Veritabanında hiç kullanıcı yoksa uygulama sizi **kurulum sayfasına** yönlendirir. Ad soyad, şirket adı, e-posta ve şifre (en az 8 karakter) girersiniz; hesap **kurucu** rolüyle oluşturulur ve otomatik giriş yapılır. Bu sayfa yalnızca veritabanı boşken çalışır. Sabit bir yönetici şifresi yoktur.
 
-## Telegram Bot Kurulumu
-
-Davet ve şifre sıfırlama bildirimleri Telegram üzerinden iletilir. `.env` ayarı gerekmez; tüm yapılandırma arayüzden yapılır.
-
-1. Telegram'da [@BotFather](https://t.me/BotFather) botuna `/newbot` komutunu gönderin.
-2. Bot adı ve kullanıcı adı belirleyin; BotFather size bir **token** verecektir (`123456789:AAF...` formatında).
-3. Bildirimlerin gideceği chat'e botunuzu ekleyin veya bota `/start` gönderin.
-4. [@userinfobot](https://t.me/userinfobot) ile chat ID'nizi öğrenin.
-5. Platformda **Ayarlar → Entegrasyonlar → Telegram Bildirimleri** bölümüne girerek token ve chat ID'yi kaydedin.
-
----
-
-## Sonraki Adım
-
-Kurulum tamamlandıktan sonra [Kullanım Kılavuzu](./agent-usage.md) sayfasına geçin.  
-Kullanıcı rolleri ve davet sistemi için → [Kullanıcı Rolleri](./user-roles.md)
+Sonraki adım: [İlk Adımlar](/getting-started/first-steps).

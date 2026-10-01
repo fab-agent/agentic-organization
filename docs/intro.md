@@ -3,105 +3,58 @@ sidebar_position: 1
 slug: /
 ---
 
-# fab.engineering — Kurumsal Yapay Zeka Katmanı
+# fab.engineering
 
-Self-hosted, açık kaynak (MIT + Commons Clause) · [GitHub](https://github.com/fab-agent/agentic-organization)
+**Şirketinizin yapay zeka ajanlarını organizasyon şemasına yerleştirin, yönetin ve denetleyin.**
 
-> **Kurumsal hafıza ve kurumsal yapay zeka ile işleriniz artık çok daha verimli ve hızlı.**
+fab.engineering, kendi sunucunuzda çalışan, açık kaynaklı bir platformdur. Her ajanın bir adı, rolü, departmanı ve sorumlu bir insanı vardır; ajanlar şirket yapısında diğer çalışanlar gibi yer alır. Politikalar, onay akışları ve denetim kaydı baştan gelir.
 
-Veritabanı, uygulama (API, MCP) bağlantılarını içeren ekibinizle birlikte çalışacak bir kurumsal yapay zeka katmanı. Süslü değil — çalışan bir arayüz, açık kaynak, model bağımsız.
+## Kimin için, nereden başlamalı?
 
----
-
-## Temel İlkeler
-
-### Tam Şeffaflık
-Sizden gizli çalışan hiçbir katman yok. Kaynak koda bakabilir, yapay zekanıza sorabilir ya da doğrudan terminalden inceleyebilirsiniz. MIT lisansı, şeffaf mimari.
-
-### Model Bağımsızlığı
-Claude, GPT-4o, Gemini, Qwen ya da son çıkan herhangi bir model — illa bir modele ya da her zaman son sürüme bağlı değilsiniz. İhtiyacınıza göre değiştirirsiniz.
-
-### Gerçek Bağlantılar
-Ajanlarınız sadece sohbet etmez. Mevcut veritabanlarınıza, dahili API'lerinize ve MCP sunucularınıza bağlanır. Gerçek iş süreçlerinin içinde çalışır.
-
-### Kurumsal Hafıza
-Şirketinizin bilgisi, deneyimi ve süreçleri yapay zeka eşliğinde korunur ve büyür. Yeni çalışanlar geçmişe anında erişir; ajanlar bağlamı hiç unutmaz.
-
-### Denetlenebilir Yürütme
-Geliştirici personalar iş istasyonlarında [opencode](https://opencode.ai) ile çalışır; tüm model trafiği merkezî bir gateway'den geçer, her komut çalıştırılabilir politikalarla değerlendirilir ve her eylem değiştirilemez bir denetim zincirine yazılır. Ayrıntı → [Ajan Yürütme Katmanı](./workstation/overview.md).
-
-### Departmanlar için Terminal Çalışma Alanı
-Finans, muhasebe, satış gibi departmanlar `fab` terminal istemcisiyle kendi çalışma alanlarına bağlanır ve tek bir ajanla çalışır. İsteğe bağlı, şirket başına kapalı gelen **iş incelemesi** kişinin kendi işini ve şirket hedeflerine uygunluğunu önce kişiye gösterir. Ayrıntı → [Departman Çalışma Alanı](/fab/overview).
-
----
-
-## Temel Kavramlar
-
-| Kavram | Açıklama |
+| Siz kimsiniz? | Önce şuraya bakın |
 |---|---|
-| **Şirket** | En üst organizasyon birimi. Birden fazla şirket yönetilebilir. |
-| **Departman** | Şirkete bağlı ekip/birim. Hedefler ve politika listesi taşır. |
-| **Personel** | İnsan çalışan veya ajan. Her ikisi de aynı hiyerarşide yer alır. |
-| **Ajan** | Bir personele atanmış AI yapılandırması (model + skill + durum). |
-| **Skill** | Ajanın sahip olduğu yetenek tanımı (ad, versiyon, açıklama). |
-| **Politika** | Şirket, departman veya ajan kapsamında geçerli kural/direktif. |
-| **Platform Kullanıcısı** | E-posta + şifreyle giriş yapan insan personel. Davet ile eklenir. |
+| **Şirket yöneticisi / kurucu** — ne işe yaradığını ve nasıl kurulacağını öğrenmek istiyorum | [İlk Adımlar](/getting-started/first-steps) → [AI ile Kurulum](/guide/onboarding) |
+| **Departman çalışanı** — ajanla çalışacağım | [Ajanla Sohbet](/guide/chat), [Görev Talepleri ve Gelen Kutusu](/guide/tasks-and-inbox) |
+| **Departman yöneticisi** — ekibimin ajanlarını ve onayları yönetiyorum | [Ajanlar](/guide/agents), [Değişiklik Talepleri](/guide/change-requests) |
+| **BT / kurulum sorumlusu** | [Gereksinimler](/getting-started/requirements), [Kurulum](/getting-started/installation), [Ayarlar](/guide/settings) |
+| **Geliştirici** — kendi bilgisayarımda opencode ile çalışacağım | [Geliştirici İş İstasyonu](/workstation/overview) |
+| **Departman çalışanı, terminalde çalışmak istiyorum** | [fab terminal istemcisi](/fab/overview) |
+| **Platformu geliştiren / inceleyen** | [Teknik Bölüm](/technical/architecture), [Geliştirici Notları](/developer-notes/overview) |
 
----
+## Üç çalışma yüzeyi
 
-## Neler Yapılabilir?
+Aynı sunucu, aynı politikalar, aynı denetim kaydı; kişinin işine göre üç farklı kapı:
 
-- Birden fazla şirketi tek platformdan yönet
-- `parent_id` ile iç içe departman hiyerarşisi kur; org chart'ta departman görünümünü kullan
-- Her personele özgü AI ajan yapılandır
-- Anthropic, OpenAI, Google, Mistral veya Qwen modellerinden birini seç — model bağımsız
-- Ajan yapılandırma değişikliklerini iki aşamalı onay akışından geçir (Değişiklik Talepleri)
-- Departman ve skill filtreyle uygun ajana görev gönder (Görev Talepleri)
-- Ajana resim ürettir — Qwen Image, DALL-E ve uyumlu modeller desteklenir
-- Ekip üyelerini platforma davet et; rol bazlı erişim kontrolü uygula (5 kademe)
-- Geliştirici personalarını `3pa` CLI ile iş istasyonunda çalıştır — merkezî gateway, politika zorlaması ve hash-zincirli denetim ile
-- Arayüzü Türkçe veya İngilizce kullan
+| Yüzey | Kimin için | Durum |
+|---|---|---|
+| **Web arayüzü** | Herkes: sohbet, akışlar, onaylar, yönetim | Kullanıma hazır |
+| **Geliştirici iş istasyonu** (`3pa` + opencode) | Yazılım geliştiriciler | Kullanıma hazır |
+| **`fab` terminal istemcisi** | Finans, muhasebe, satış gibi departmanlar | Geliştirme aşamasında: gerçek çalışma alanı çalışma zamanı henüz yok, bkz. [fab](/fab/overview) |
 
----
+## Temel kavramlar
 
-## Denemeye Başlayın
-
-| | |
+| Kavram | Anlamı |
 |---|---|
-| **Demo** | [demo.agent.fab.engineering](https://demo.agent.fab.engineering) — ücretsiz, kayıt gerektirmez |
-| **Uygulama** | [app.agent.fab.engineering](https://app.agent.fab.engineering) — kendi hesabınızla giriş yapın |
+| **Şirket** | En üst birim. Bir kurulumda birden fazla şirket yönetilebilir; veriler birbirinden ayrıdır. |
+| **Departman** | Şirketin bir birimi. Üst departmana bağlanabilir; hedefleri ve politikaları vardır. |
+| **Personel** | Organizasyon şemasındaki bir kişi. Türü **insan** veya **ajan** olabilir. |
+| **Ajan** | Bir yapay zeka modeli (ör. Claude, GPT, Gemini), yetenekleri ve politikalarıyla bir personele bağlanmış çalışma birimi. Her ajanın sorumlu bir insanı vardır. |
+| **Yetenek (skill)** | Ajanın kullanabildiği araç: web arama, grafik üretimi, veritabanı sorgusu, harici API gibi. |
+| **Politika** | Şirket, departman veya ajan için geçerli yazılı kural. |
+| **Platform kullanıcısı** | E-posta ve şifreyle giriş yapan kişi. Davet ile eklenir; rolü neleri görebileceğini belirler. |
 
----
+## Temel ilkeler
 
-## Self-Hosted Kurulum
+- **Kendi sunucunuzda.** Veriler sizde kalır; yapay zeka modeli sağlayıcılarına yalnızca sizin tanımladığınız anahtarlarla bağlanılır.
+- **Modelden bağımsız.** Anthropic, OpenAI, Google, Mistral, Qwen, yerel modeller (Ollama, LM Studio) ve OpenAI uyumlu her adres kullanılabilir.
+- **İnsan onayı.** Ajan yapılandırması değişiklikleri iki aşamalı onaydan geçer; ajanlar arası görev devri insan onayı ister.
+- **İzlenebilirlik.** Önemli işlemler denetim kaydına yazılır. Geliştirici iş istasyonu katmanında kayıt ayrıca değiştirilemez bir hash zinciridir.
+- **Açık kaynak.** Kaynak kodu [GitHub](https://github.com/fab-agent/agentic-organization) üzerinde; lisans için depodaki `LICENSE` dosyasına bakın.
 
-```bash
-git clone https://github.com/fab-agent/agentic-organization.git
-cd agentic-organization
-cp .env.example .env
-# .env içine JWT_SECRET değerini girin
-docker compose up --build
-```
+## Denemek için
 
-Arayüz → [http://localhost:5173](http://localhost:5173)
-
-Detaylı kurulum için → [Kurulum Kılavuzu](./getting-started/installation.md)
-
----
-
-## Kimlik Doğrulama
-
-Platform, davet tabanlı bir kullanıcı sistemi kullanır. Kullanıcılar sisteme kendi kendine kayıt olamaz; yöneticiler İnsanlar sayfasından e-posta ile davet gönderir. Roller (`founder`, `executive`, `dept_head`, `agent_owner`, `user`) hangi sayfaların görüneceğini ve hangi işlemlerin yapılabileceğini belirler.
-
-Detaylı bilgi için → [Kimlik Doğrulama ve Roller](./platform/auth-and-roles.md)
-
----
+Canlı bir demo ortamı vardır: [demo.agent.fab.engineering](https://demo.agent.fab.engineering) (e-posta adresinize tek kullanımlık kod gönderilir). Kendi sunucunuza kurmak için [Kurulum](/getting-started/installation) sayfasına geçin.
 
 ## İletişim
 
-Soru, öneri ya da geri bildirim için:
-- **LinkedIn**: [Kuntay Kunt](https://www.linkedin.com/in/kuntaykunt/)
-- **X**: [x.com/kuntaykunt](https://x.com/kuntaykunt)
-- **E-posta**: bilgi@kuntaykunt.com
-
-Site dili: Türkçe. Yayın adresi: [docs.fab.engineering](https://docs.fab.engineering)
+[LinkedIn](https://www.linkedin.com/in/kuntaykunt/) · [X](https://x.com/kuntaykunt) · bilgi@kuntaykunt.com

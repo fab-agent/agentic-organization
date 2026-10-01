@@ -2,10 +2,14 @@
 sidebar_position: 1
 ---
 
-# Ajan Yürütme Katmanı — Genel Bakış
+# Geliştirici İş İstasyonu — Genel Bakış
+
+:::tip Kısaca
+Geliştiriciler kendi bilgisayarlarında **opencode** ile çalışır; ama model çağrıları, komutlar ve eylemler **şirket sunucusundan geçer**: anahtarlar iş istasyonunda tutulmaz, her komut kurallara göre değerlendirilir, her şey değiştirilemez bir kayda yazılır. Bu bölüm teknik ekipler içindir; iş kullanıcıları [Kullanım Kılavuzu](/guide/onboarding)'na bakmalıdır.
+:::
 
 Platformun web arayüzü, ajanları **tanımlamak** için kullanılır: kim hangi
-departmanda, hangi model, hangi skill, hangi politika. **Ajan Yürütme Katmanı**
+departmanda, hangi model, hangi skill, hangi politika. **Geliştirici İş İstasyonu** katmanı
 (kod adı *Agentic OS*) ise geliştirici personaların bu tanımlarla gerçek işi
 yapmasını sağlar — kendi iş istasyonlarında, kod tabanının içinde.
 

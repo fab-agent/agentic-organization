@@ -3,9 +3,9 @@
     "message": "fab.engineering",
     "description": "The title in the navbar"
   },
-  "item.label.GitHub": {
-    "message": "GitHub",
-    "description": "Navbar item with label GitHub"
+  "logo.alt": {
+    "message": "fab.engineering Logo",
+    "description": "The alt text of navbar logo"
   },
   "item.label.Dokümantasyon": {
     "message": "Documentation",
