@@ -148,10 +148,13 @@
     ]
   }
   </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..900&family=Instrument+Serif:ital@1&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="preload" href="/fonts/archivo-var.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/instrument-serif-italic.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" as="image" href="img/hero-terminal-sm.webp" imagesrcset="img/hero-terminal-sm.webp 900w, img/hero-terminal.webp 2000w" imagesizes="(max-width:900px) 100vw, 66vw" fetchpriority="high">
   <style>
+  @font-face{font-family:"Archivo";src:url(/fonts/archivo-var.woff2) format("woff2");font-weight:400 800;font-stretch:100% 125%;font-style:normal;font-display:swap}
+  @font-face{font-family:"Instrument Serif";src:url(/fonts/instrument-serif-italic.woff2) format("woff2");font-weight:400;font-style:italic;font-display:swap}
+  @font-face{font-family:"JetBrains Mono";src:url(/fonts/jetbrains-mono-500.woff2) format("woff2");font-weight:400 600;font-style:normal;font-display:swap}
   /* Layout: a contact sheet. Each section is a numbered "frame" with crop marks; the nested context layers of the product drive the structure. */
   :root{
     --paper:#f3f5f0; --mist:#e6ebe3; --ink:#0f1c19; --ink-2:#44524d; --line:#c8d1c6; --sage:#9bb3a2; --teal:#27504a;
@@ -222,8 +225,6 @@
   .cta-row{display:flex;gap:12px;flex-wrap:wrap}
   .hero-fig{grid-column:5/13}
   .hero-fig .frame{aspect-ratio:16/8.4;background:var(--ink);overflow:hidden}
-  .hero-fig .frame img{animation:develop 1.6s cubic-bezier(.2,.7,.2,1) both}
-  @keyframes develop{from{filter:grayscale(1) brightness(1.7) contrast(.7);transform:scale(1.06)}to{filter:none;transform:none}}
   .status{position:absolute;left:14px;bottom:14px;right:14px;display:flex;justify-content:space-between;gap:12px;background:color-mix(in srgb,var(--ink) 82%,transparent);color:#e9efe8;padding:9px 12px;border-radius:2px;z-index:1}
   .status .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--signal);margin-right:8px;animation:pulse 1.8s infinite}
   @keyframes pulse{50%{opacity:.25}}
