@@ -11,7 +11,6 @@ This page openly describes the web platform's security features and its **known 
 - **Invitation-based:** there is no self-registration. Only while the database is empty does the first-setup page work.
 - **Passwords** are hashed with bcrypt. A temporary password is valid for 30 minutes and must be changed at first sign-in.
 - **Sessions** use JWT (HS256); token lifetime is 72 hours. With `ENVIRONMENT=production` the application **refuses to start** with a weak or placeholder `JWT_SECRET`.
-- **Demo tenant:** passwordless, a one-time 6-digit code by email (15 min, one per five minutes limit). It gives the executive role only in the `demo` company.
 - Nginx applies rate limiting to the login page.
 
 ## Storage of secrets

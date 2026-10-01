@@ -11,7 +11,6 @@ Bu sayfa web platformunun güvenlik özelliklerini ve **bilinen sınırlarını*
 - **Davet tabanlı:** kendi kendine kayıt yoktur. Yalnızca veritabanı boşken ilk kurulum sayfası çalışır.
 - **Şifreler** bcrypt ile özetlenir. Geçici şifre 30 dakika geçerlidir ve ilk girişte değiştirilmek zorundadır.
 - **Oturum** JWT (HS256) ile yapılır; token ömrü 72 saattir. `ENVIRONMENT=production` iken zayıf veya yer tutucu `JWT_SECRET` ile uygulama **başlamayı reddeder**.
-- **Demo kiracısı:** parolasız, e-postaya tek kullanımlık 6 haneli kod (15 dk, dakikada bir sınır). Yalnızca `demo` şirketinde yönetici rolü verir.
 - Nginx giriş sayfasına hız sınırı uygular.
 
 ## Gizli verilerin saklanması
