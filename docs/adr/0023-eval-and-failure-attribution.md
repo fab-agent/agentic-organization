@@ -105,5 +105,6 @@ over time) is a later step and is built on these tables; an external viewer
 - **Accepted residual risk:** a wrong suspect layer; mitigated by labelling stage 1
   output as a hypothesis and requiring replay before any change is attributed.
 - **Follow-ups:** (0) gateway transport failures (timeout, parse error, cut stream) and `finish_reason`/`has_output` flags are not audited yet and need typed bounded events; (1) stage 1 service + tests (done); (2) persisted findings
-  and a read API with object-level checks; (3) judge interface and the first
+  and a read API with object-level checks (done: `RunDiagnosis`, `/eval/personas/{id}/runs`,
+  access follows the workstation persona rule, policy decisions now carry the verified run); (3) judge interface and the first
   TypeSafe criteria with calibration; (4) viewer page; (5) replay with ADR-0022 §5.

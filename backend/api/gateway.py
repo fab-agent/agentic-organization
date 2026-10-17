@@ -302,6 +302,7 @@ def policy_decide(
         persona_id=principal.persona_id,
         company_id=principal.company_id,
         session_ref=query.session_ref,
+        run=run_info(principal),
     )
     decision = decide(req)
     audit_decision(req, decision)

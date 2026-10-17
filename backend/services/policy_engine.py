@@ -58,6 +58,9 @@ class PolicyDecisionRequest:
     department_id: str | None = None
     agent_config_id: str | None = None
     session_ref: str | None = None
+    # Attribution block from the caller's *verified* token (gateway_auth.run_info);
+    # lets diagnosis join a decision to its run without trusting session_ref.
+    run: dict[str, Any] | None = None
 
 
 @dataclass
@@ -706,6 +709,7 @@ def audit_decision(req: PolicyDecisionRequest, decision: PolicyDecision) -> None
                 "source": req.source,
                 "provenance": req.provenance,
                 "session_ref": req.session_ref,
+                **({"run": req.run} if req.run else {}),
             },
         )
     except Exception:

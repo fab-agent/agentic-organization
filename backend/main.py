@@ -37,6 +37,7 @@ from api.dashboard import router as dashboard_router
 from api.database import router as database_router
 from api.demo_auth import router as demo_auth_router
 from api.departments import router as dept_router
+from api.eval import router as eval_router
 from api.flows import router as flows_router
 from api.gateway import router as gateway_router
 from api.git_sync import router as git_router
@@ -126,6 +127,7 @@ app.include_router(git_router)
 app.include_router(sessions_router)
 app.include_router(a2a_router)
 app.include_router(cr_router)
+app.include_router(eval_router)
 app.include_router(flows_router)
 app.include_router(inbox_router)
 app.include_router(task_router)

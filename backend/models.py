@@ -795,3 +795,25 @@ class WorkTrainingShare(SQLModel, table=True):
     criterion_id: str
     criterion_hash: str
     shared_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class RunDiagnosis(SQLModel, table=True):
+    """
+    Stored run diagnosis (ADR-0023). Lives beside the audit chain, which it never
+    touches; recomputable from the chain, so it carries the diagnoser version.
+    Findings hold identifier-shaped names and evidence references only, no text.
+    """
+
+    company_id: str = Field(primary_key=True, foreign_key="company.id")
+    persona_id: str = Field(primary_key=True)
+    run_id: str = Field(primary_key=True)
+    suspect_layer: str | None = None
+    scores_json: str = Field(default="{}")
+    findings_json: str = Field(default="[]")
+    events_seen: int = Field(default=0)
+    ignored_client_claims: int = Field(default=0)
+    invalid_events: int = Field(default=0)
+    truncated: bool = Field(default=False)
+    diagnoser_version: int = Field(default=1)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
