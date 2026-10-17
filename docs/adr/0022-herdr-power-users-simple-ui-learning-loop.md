@@ -98,7 +98,20 @@ Three things have changed since ADR-0014.
    - harness2 itself is used offline as a reference and for experiments in an
      isolated environment, not in the request path.
 
-5. **Observability.** Run traces and eval results stay in the server-side
+5. **Data retention.** Task transcripts, reasoning streams and outputs are kept
+   in the audit/eval log (ADR-0006) for a per-company retention period set at
+   installation (ADR-0016); replay for the learning loop only uses entries still
+   inside it, and erasing a person (ADR-0021's erase path) also removes their
+   entries from the replay set and the proposer's evidence. The number of days is
+   a deployment parameter, not decided here.
+
+6. **Out of scope for v1.** No automatic activation of any harness change; no
+   learning from policy or permission edits; no cross-company learning or shared
+   harness store; no server-side sync or backup of the local Assistant folder; no
+   editing of agents, skills or policies in the department view; no new
+   observability product built by us; no per-token cost optimisation in the loop.
+
+7. **Observability.** Run traces and eval results stay in the server-side
    configuration/eval log layer (owner: installation kit, ADR-0016). A viewer
    (Langfuse or Phoenix, self-hosted) is a separate decision.
 
