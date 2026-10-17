@@ -122,6 +122,35 @@ def _personnel_to_dict(p: Personnel, session) -> dict:
     return result
 
 
+ASSIGNABLE_ROLES = {"founder", "executive", "dept_head", "agent_owner", "user"}
+# Which membership roles may hand out which roles (company-wide memberships only,
+# except that a dept_head may hand out the non-managing roles).
+_GRANTORS = {
+    "founder": {"founder"},
+    "executive": {"founder"},
+    "dept_head": {"founder", "executive"},
+    "agent_owner": {"founder", "executive", "dept_head"},
+    "user": {"founder", "executive", "dept_head"},
+}
+
+
+def _require_may_grant(session, user_id: str, company_id: str | None, role: str):
+    """Only a sufficiently senior member of the company may assign `role`."""
+    if not company_id:
+        raise HTTPException(status_code=404, detail="Şirket bulunamadı")
+    mine = {
+        m.role
+        for m in session.exec(
+            select(CompanyMember).where(
+                CompanyMember.user_id == user_id,
+                CompanyMember.company_id == company_id,
+            )
+        ).all()
+    }
+    if not mine & _GRANTORS.get(role, {"founder"}):
+        raise HTTPException(status_code=403, detail="Bu rolü atama yetkiniz yok")
+
+
 def _get_person_and_check_membership(
     person_id: str, user_id: str, session
 ) -> Personnel:
@@ -247,9 +276,12 @@ def invite_personnel(
 ):
     role: str = body.get("role", "user")
     scope_id: str | None = body.get("scope_id")
+    if role not in ASSIGNABLE_ROLES:
+        raise HTTPException(status_code=422, detail="Bilinmeyen rol")
 
     with get_session() as session:
         person = _get_person_and_check_membership(person_id, current_user.id, session)
+        _require_may_grant(session, current_user.id, person.company_id, role)
         if not person.email:
             raise HTTPException(
                 status_code=422, detail="Bu personelin e-posta adresi yok"
@@ -287,6 +319,11 @@ def invite_personnel(
             )
         ).first()
         if existing_member:
+            # Nobody below founder may rewrite a founder's or executive's membership.
+            if existing_member.role in ("founder", "executive"):
+                _require_may_grant(
+                    session, current_user.id, company.id, existing_member.role
+                )
             existing_member.role = role
             existing_member.scope_id = scope_id
             session.add(existing_member)

@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, field_validator
 
 # ── Auth ────────────────────────────────────────────────────────────────────────
@@ -337,7 +339,8 @@ class PolicyLinkSet(BaseModel):
 
 class ChangeRequestCreate(BaseModel):
     personnel_id: str
-    change_type: str  # "agent_config" | "skill" | "policy"
+    # Closed set: anything else cannot be serialized or applied, so fail closed.
+    change_type: Literal["agent_config", "skill", "policy"]
     title: str
     proposed: dict  # will be JSON-serialized
     original: dict | None = None

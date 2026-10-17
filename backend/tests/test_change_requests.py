@@ -10,9 +10,19 @@ from unittest.mock import patch
 
 import pytest
 
-from tests.conftest import make_personnel
+from services.auth import create_access_token
+from tests.conftest import make_member, make_personnel, make_user
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _as(client, actor):
+    """Authorization header of one of the three actors set up by `cr_setup`.
+
+    proposer = plain member, dept = department head, admin = founder (the
+    `auth_client` user). Each stage needs a different person.
+    """
+    return {"Authorization": client._actors[actor]}
 
 
 def _post_cr(client, company_id, personnel_id, **overrides):
@@ -24,26 +34,43 @@ def _post_cr(client, company_id, personnel_id, **overrides):
         "proposed": overrides.pop("proposed", {"name": "web_search", "version": "1.0"}),
         **overrides,
     }
-    return client.post(f"/change-requests?company_id={company_id}", json=payload)
+    return client.post(
+        f"/change-requests?company_id={company_id}",
+        json=payload,
+        headers=_as(client, "proposer"),
+    )
 
 
 def _dept_approve(client, cr_id, note="LGTM"):
-    return client.post(f"/change-requests/{cr_id}/dept-approve", json={"note": note})
+    return client.post(
+        f"/change-requests/{cr_id}/dept-approve",
+        json={"note": note},
+        headers=_as(client, "dept"),
+    )
 
 
 def _dept_reject(client, cr_id, note="Not now"):
-    return client.post(f"/change-requests/{cr_id}/dept-reject", json={"note": note})
+    return client.post(
+        f"/change-requests/{cr_id}/dept-reject",
+        json={"note": note},
+        headers=_as(client, "dept"),
+    )
 
 
 def _admin_approve(client, cr_id, company_id, note="Approved"):
     return client.post(
         f"/change-requests/{cr_id}/admin-approve?company_id={company_id}",
         json={"note": note},
+        headers=_as(client, "admin"),
     )
 
 
 def _admin_reject(client, cr_id, note="Rejected"):
-    return client.post(f"/change-requests/{cr_id}/admin-reject", json={"note": note})
+    return client.post(
+        f"/change-requests/{cr_id}/admin-reject",
+        json={"note": note},
+        headers=_as(client, "admin"),
+    )
 
 
 # ── Fixture ───────────────────────────────────────────────────────────────────
@@ -61,7 +88,16 @@ def cr_setup(auth_client, db_session):
         type="agent",
         title="Test Agent",
     )
+    proposer = make_user(db_session, email="prop@test.com", name="Proposer")
+    make_member(db_session, proposer.id, co.id, role="user")
+    dept = make_user(db_session, email="dept@test.com", name="Dept Head")
+    make_member(db_session, dept.id, co.id, role="dept_head")
     db_session.commit()
+    auth_client._actors = {
+        "proposer": f"Bearer {create_access_token(proposer.id)}",
+        "dept": f"Bearer {create_access_token(dept.id)}",
+        "admin": auth_client.headers["Authorization"],
+    }
     return {"company_id": co.id, "personnel_id": agent.id}
 
 
@@ -453,3 +489,300 @@ def test_reject_at_admin_stage_flow(auth_client, cr_setup):
     assert d["dept_head_approved_at"] is not None  # stage 1 preserved
     assert d["admin_rejected_at"] is not None
     assert d["commit_sha"] is None
+
+
+# ── Authorisation ─────────────────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def outsider(auth_client, db_session):
+    """A user who belongs to a different company, with their own personnel."""
+    from tests.conftest import make_company
+
+    other = make_company(db_session, name="Other Corp", slug="other-corp")
+    u = make_user(db_session, email="out@test.com", name="Outsider")
+    make_member(db_session, u.id, other.id, role="founder")
+    p = make_personnel(db_session, other.id, name="OtherBot", slug="otherbot")
+    db_session.commit()
+    return {
+        "headers": {"Authorization": f"Bearer {create_access_token(u.id)}"},
+        "company_id": other.id,
+        "personnel_id": p.id,
+    }
+
+
+def _submitted(client, setup):
+    r = _post_cr(client, setup["company_id"], setup["personnel_id"])
+    assert r.status_code == 201
+    return r.json()["id"]
+
+
+def test_other_company_cannot_read_list_or_get(auth_client, cr_setup, outsider):
+    cr_id = _submitted(auth_client, cr_setup)
+    h = outsider["headers"]
+    assert auth_client.get(f"/change-requests/{cr_id}", headers=h).status_code == 404
+    assert (
+        auth_client.get(
+            f"/change-requests?company_id={cr_setup['company_id']}", headers=h
+        ).status_code
+        == 403
+    )
+    # no company filter: only the caller's own companies are listed
+    assert auth_client.get("/change-requests", headers=h).json() == []
+
+
+def test_other_company_cannot_approve_or_reject(auth_client, cr_setup, outsider):
+    cr_id = _submitted(auth_client, cr_setup)
+    h = outsider["headers"]
+    for path in ("dept-approve", "dept-reject", "admin-approve", "admin-reject"):
+        r = auth_client.post(
+            f"/change-requests/{cr_id}/{path}", json={"note": "x"}, headers=h
+        )
+        assert r.status_code == 404, path
+    assert auth_client.get(f"/change-requests/{cr_id}").json()["status"] == "submitted"
+
+
+def test_cannot_create_in_company_you_do_not_belong_to(auth_client, cr_setup, outsider):
+    r = auth_client.post(
+        f"/change-requests?company_id={cr_setup['company_id']}",
+        json={
+            "personnel_id": cr_setup["personnel_id"],
+            "change_type": "skill",
+            "title": "x",
+            "proposed": {},
+        },
+        headers=outsider["headers"],
+    )
+    assert r.status_code == 403
+
+
+def test_cannot_target_personnel_of_another_company(auth_client, cr_setup, outsider):
+    r = _post_cr(auth_client, cr_setup["company_id"], outsider["personnel_id"])
+    assert r.status_code == 404
+
+
+def test_plain_member_cannot_approve_at_either_stage(auth_client, cr_setup):
+    cr_id = _submitted(auth_client, cr_setup)
+    h = _as(auth_client, "proposer")
+    r = auth_client.post(f"/change-requests/{cr_id}/dept-approve", json={}, headers=h)
+    assert r.status_code == 403
+    assert _dept_approve(auth_client, cr_id).status_code == 200
+    r = auth_client.post(f"/change-requests/{cr_id}/admin-approve", json={}, headers=h)
+    assert r.status_code == 403
+
+
+def test_dept_head_cannot_do_company_stage(auth_client, cr_setup):
+    cr_id = _submitted(auth_client, cr_setup)
+    assert _dept_approve(auth_client, cr_id).status_code == 200
+    r = auth_client.post(
+        f"/change-requests/{cr_id}/admin-approve",
+        json={},
+        headers=_as(auth_client, "dept"),
+    )
+    assert r.status_code == 403
+
+
+def test_dept_head_of_another_department_cannot_approve(
+    auth_client, cr_setup, db_session
+):
+    from models import Department
+
+    co = cr_setup["company_id"]
+    mine = Department(name="Finance", slug="finance", company_id=co)
+    other = Department(name="HR", slug="hr", company_id=co)
+    db_session.add_all([mine, other])
+    db_session.flush()
+    from models import Personnel
+
+    db_session.get(Personnel, cr_setup["personnel_id"]).department_id = mine.id
+    hr = make_user(db_session, email="hr@test.com", name="HR Head")
+    m = make_member(db_session, hr.id, co, role="dept_head")
+    m.scope_id = other.id
+    db_session.commit()
+    cr_id = _submitted(auth_client, cr_setup)
+    r = auth_client.post(
+        f"/change-requests/{cr_id}/dept-approve",
+        json={},
+        headers={"Authorization": f"Bearer {create_access_token(hr.id)}"},
+    )
+    assert r.status_code == 403
+
+
+def test_proposer_cannot_approve_own_request(auth_client, cr_setup):
+    # the founder proposes and then tries to approve both stages
+    r = auth_client.post(
+        f"/change-requests?company_id={cr_setup['company_id']}",
+        json={
+            "personnel_id": cr_setup["personnel_id"],
+            "change_type": "skill",
+            "title": "mine",
+            "proposed": {},
+        },
+        headers=_as(auth_client, "admin"),
+    )
+    cr_id = r.json()["id"]
+    r = auth_client.post(
+        f"/change-requests/{cr_id}/dept-approve",
+        json={},
+        headers=_as(auth_client, "admin"),
+    )
+    assert r.status_code == 403
+
+
+def test_same_person_cannot_give_both_approvals(auth_client, cr_setup, db_session):
+    co = cr_setup["company_id"]
+    both = make_user(db_session, email="both@test.com", name="Both")
+    make_member(db_session, both.id, co, role="executive")  # scope None: both stages
+    db_session.commit()
+    h = {"Authorization": f"Bearer {create_access_token(both.id)}"}
+    cr_id = _submitted(auth_client, cr_setup)
+    assert (
+        auth_client.post(
+            f"/change-requests/{cr_id}/dept-approve", json={}, headers=h
+        ).status_code
+        == 200
+    )
+    r = auth_client.post(f"/change-requests/{cr_id}/admin-approve", json={}, headers=h)
+    assert r.status_code == 403
+    assert auth_client.get(f"/change-requests/{cr_id}").json()["status"] == (
+        "dept_head_approved"
+    )
+
+
+def test_admin_approve_rejects_mismatched_company_id(auth_client, cr_setup, outsider):
+    cr_id = _submitted(auth_client, cr_setup)
+    assert _dept_approve(auth_client, cr_id).status_code == 200
+    r = _admin_approve(auth_client, cr_id, outsider["company_id"])
+    assert r.status_code == 400
+
+
+def test_unknown_change_type_is_rejected(auth_client, cr_setup):
+    r = _post_cr(
+        auth_client,
+        cr_setup["company_id"],
+        cr_setup["personnel_id"],
+        change_type="harness",
+    )
+    assert r.status_code == 422
+
+
+# ── Review follow-ups: other producers, races, relations, role grants ─────────
+
+
+def test_policy_proposal_records_proposer_and_blocks_self_approval(
+    auth_client, cr_setup, db_session
+):
+    from models import Policy
+
+    pol = Policy(
+        company_id=cr_setup["company_id"],
+        name="Expenses",
+        slug="expenses",
+        content="v1",
+        scope="company",
+    )
+    db_session.add(pol)
+    db_session.commit()
+    r = auth_client.put(
+        f"/policies/{pol.id}?propose=true&personnel_id={cr_setup['personnel_id']}",
+        json={"content": "v2"},
+    )
+    assert r.status_code == 200, r.text
+    cr_id = r.json()["change_request_id"]
+    cr = auth_client.get(f"/change-requests/{cr_id}").json()
+    assert cr["created_by_user_id"] == auth_client._test_user.id
+    # the proposer is the founder: may not decide stage 1 or stage 2 on it
+    for path in ("dept-approve", "dept-reject"):
+        r = auth_client.post(f"/change-requests/{cr_id}/{path}", json={})
+        assert r.status_code == 403, path
+
+
+def test_policy_proposal_rejects_personnel_of_another_company(
+    auth_client, cr_setup, outsider, db_session
+):
+    from models import Policy
+
+    pol = Policy(
+        company_id=cr_setup["company_id"],
+        name="P",
+        slug="p",
+        content="v1",
+        scope="company",
+    )
+    db_session.add(pol)
+    db_session.commit()
+    r = auth_client.put(
+        f"/policies/{pol.id}?propose=true&personnel_id={outsider['personnel_id']}",
+        json={"content": "v2"},
+    )
+    assert r.status_code == 404
+
+
+def test_losing_a_concurrent_decision_gets_409_without_side_effects(
+    auth_client, cr_setup
+):
+    cr_id = _submitted(auth_client, cr_setup)
+    assert _dept_approve(auth_client, cr_id).status_code == 200
+    # a second stage-1 decision on the same request, as if it read the old state
+    from fastapi import HTTPException
+
+    from api.change_requests import _claim
+    from database import get_session
+    from models import ChangeRequest
+
+    with get_session() as session:
+        cr = session.get(ChangeRequest, cr_id)
+        with pytest.raises(HTTPException) as e:
+            _claim(session, cr, "submitted", "rejected")
+        assert e.value.status_code == 409
+    assert auth_client.get(f"/change-requests/{cr_id}").json()["status"] == (
+        "dept_head_approved"
+    )
+
+
+def test_proposed_relations_must_belong_to_the_company(
+    auth_client, cr_setup, outsider, db_session
+):
+    from models import Department
+
+    foreign = Department(
+        name="Foreign", slug="foreign", company_id=outsider["company_id"]
+    )
+    db_session.add(foreign)
+    db_session.commit()
+    r = _post_cr(
+        auth_client,
+        cr_setup["company_id"],
+        cr_setup["personnel_id"],
+        change_type="agent_config",
+        proposed={"department_id": foreign.id},
+    )
+    assert r.status_code == 422
+    r = _post_cr(
+        auth_client,
+        cr_setup["company_id"],
+        cr_setup["personnel_id"],
+        change_type="agent_config",
+        proposed={"responsible_id": outsider["personnel_id"]},
+    )
+    assert r.status_code == 422
+
+
+def test_plain_member_cannot_grant_founder_via_invite(
+    auth_client, cr_setup, db_session
+):
+    co = cr_setup["company_id"]
+    person = make_personnel(
+        db_session, co, name="Mallory", slug="mallory", type="human"
+    )
+    person.email = "mallory@test.com"
+    db_session.commit()
+    h = _as(auth_client, "proposer")  # plain "user" member
+    r = auth_client.post(
+        f"/personnel/{person.id}/invite", json={"role": "founder"}, headers=h
+    )
+    assert r.status_code == 403
+    r = auth_client.post(
+        f"/personnel/{person.id}/invite", json={"role": "emperor"}, headers=h
+    )
+    assert r.status_code == 422

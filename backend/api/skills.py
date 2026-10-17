@@ -12,6 +12,7 @@ from models import (
     AgentSkillLink,
     ChangeRequest,
     CompanySkill,
+    Personnel,
     User,
 )
 
@@ -180,6 +181,9 @@ def update_skill(
             raise HTTPException(status_code=404, detail="Skill not found")
 
         if propose and personnel_id:
+            target = session.get(Personnel, personnel_id)
+            if not target or target.company_id != skill.company_id:
+                raise HTTPException(status_code=404, detail="Personnel not found")
             original = {
                 "name": skill.name,
                 "description": skill.description,
@@ -196,6 +200,7 @@ def update_skill(
                 proposed_json=json.dumps({"skill_id": skill_id, **proposed}),
                 original_json=json.dumps(original),
                 status="submitted",
+                created_by_user_id=user.id,
             )
             session.add(cr)
             session.commit()

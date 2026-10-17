@@ -10,16 +10,113 @@ import json
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import select
+from sqlmodel import select, update
 
 from api.audit import log_action
-from api.auth import get_current_user
+from api.auth import check_company_membership, get_current_user
 from database import get_session
-from models import AgentConfig, ChangeRequest, GitConfig, Personnel, Skill, User
+from models import (
+    AgentConfig,
+    ChangeRequest,
+    CompanyMember,
+    Department,
+    GitConfig,
+    Personnel,
+    Skill,
+    User,
+)
 from schemas import ChangeRequestApprove, ChangeRequestCreate, ChangeRequestReject
 from services.github_commit import commit_change_request
 
 router = APIRouter(prefix="/change-requests", tags=["change-requests"])
+
+# Who may decide at each stage. `scope_id` on a membership is the department the
+# role manages (None = the whole company, see CompanyMember).
+STAGE1_ROLES = {"founder", "executive", "dept_head"}
+STAGE2_ROLES = {"founder", "executive"}
+
+
+def _memberships(session, user_id: str, company_id: str) -> list[CompanyMember]:
+    return list(
+        session.exec(
+            select(CompanyMember).where(
+                CompanyMember.user_id == user_id,
+                CompanyMember.company_id == company_id,
+            )
+        ).all()
+    )
+
+
+def _claim(session, cr: ChangeRequest, expected: str, new: str) -> None:
+    """Compare-and-swap the status inside the open transaction.
+
+    Two concurrent decisions on one request cannot both win: the loser's UPDATE
+    matches no row (it waits for the winner's row lock on PostgreSQL) and gets 409,
+    before any side effect such as the Git commit.
+    """
+    res = session.exec(
+        update(ChangeRequest)
+        .where(ChangeRequest.id == cr.id, ChangeRequest.status == expected)
+        .values(status=new)
+    )
+    if res.rowcount != 1:
+        raise HTTPException(status_code=409, detail="Change request changed state")
+    session.refresh(cr)
+
+
+def _validate_proposed(session, company_id: str, proposed: dict) -> None:
+    """Relations named in a proposal must belong to the request's own company."""
+    dept_id = proposed.get("department_id")
+    if dept_id is not None:
+        dept = session.get(Department, dept_id)
+        if not dept or dept.company_id != company_id:
+            raise HTTPException(status_code=422, detail="Unknown department")
+    resp_id = proposed.get("responsible_id")
+    if resp_id is not None:
+        resp = session.get(Personnel, resp_id)
+        if not resp or resp.company_id != company_id:
+            raise HTTPException(status_code=422, detail="Unknown responsible person")
+
+
+def _require_stage1(session, user: User, cr: ChangeRequest) -> None:
+    """Department-level approver of the target's department, not the proposer."""
+    target = session.get(Personnel, cr.personnel_id)
+    if not target or target.company_id != cr.company_id:
+        # A vanished or moved target must not fall through to an unscoped approver.
+        raise HTTPException(status_code=409, detail="Change request target is gone")
+    dept = target.department_id
+    allowed = any(
+        m.role in STAGE1_ROLES and (m.scope_id is None or m.scope_id == dept)
+        for m in _memberships(session, user.id, cr.company_id)
+    )
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Department approval not permitted")
+    if user.id == cr.created_by_user_id:
+        raise HTTPException(
+            status_code=403, detail="Proposer cannot approve own request"
+        )
+
+
+def _require_stage2(session, user: User, cr: ChangeRequest) -> None:
+    """Company-level approver, different from the proposer and the stage-1 approver."""
+    allowed = any(
+        m.role in STAGE2_ROLES and m.scope_id is None
+        for m in _memberships(session, user.id, cr.company_id)
+    )
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Company approval not permitted")
+    if user.id in (cr.created_by_user_id, cr.dept_head_id):
+        raise HTTPException(
+            status_code=403, detail="Approvers must differ from proposer and each other"
+        )
+
+
+def _get_visible_cr(session, user: User, cr_id: str) -> ChangeRequest:
+    """404 for unknown *and* for other companies' requests (no enumeration)."""
+    cr = session.get(ChangeRequest, cr_id)
+    if not cr or not _memberships(session, user.id, cr.company_id):
+        raise HTTPException(status_code=404, detail="Change request not found")
+    return cr
 
 
 def _cr_to_dict(cr: ChangeRequest) -> dict:
@@ -69,7 +166,15 @@ def list_change_requests(
     with get_session() as session:
         q = select(ChangeRequest)
         if company_id:
+            check_company_membership(current_user.id, company_id, session)
             q = q.where(ChangeRequest.company_id == company_id)
+        else:
+            mine = session.exec(
+                select(CompanyMember.company_id).where(
+                    CompanyMember.user_id == current_user.id
+                )
+            ).all()
+            q = q.where(ChangeRequest.company_id.in_(mine))
         if status:
             q = q.where(ChangeRequest.status == status)
         if personnel_id:
@@ -81,9 +186,7 @@ def list_change_requests(
 @router.get("/{cr_id}")
 def get_change_request(cr_id: str, current_user: User = Depends(get_current_user)):
     with get_session() as session:
-        cr = session.get(ChangeRequest, cr_id)
-        if not cr:
-            raise HTTPException(status_code=404, detail="Change request not found")
+        cr = _get_visible_cr(session, current_user, cr_id)
         return _cr_to_dict(cr)
 
 
@@ -97,10 +200,12 @@ def create_change_request(
     current_user: User = Depends(get_current_user),
 ):
     with get_session() as session:
+        check_company_membership(current_user.id, company_id, session)
         personnel = session.get(Personnel, body.personnel_id)
-        if not personnel:
+        if not personnel or personnel.company_id != company_id:
             raise HTTPException(status_code=404, detail="Personnel not found")
 
+        _validate_proposed(session, company_id, body.proposed)
         cr = ChangeRequest(
             company_id=company_id,
             personnel_id=body.personnel_id,
@@ -138,15 +243,15 @@ def dept_head_approve(
     current_user: User = Depends(get_current_user),
 ):
     with get_session() as session:
-        cr = session.get(ChangeRequest, cr_id)
-        if not cr:
-            raise HTTPException(status_code=404, detail="Not found")
+        cr = _get_visible_cr(session, current_user, cr_id)
+        _require_stage1(session, current_user, cr)
         if cr.status != "submitted":
             raise HTTPException(
                 status_code=400,
                 detail=f"CR is in '{cr.status}' status, expected 'submitted'",
             )
 
+        _claim(session, cr, "submitted", "dept_head_approved")
         cr.status = "dept_head_approved"
         cr.dept_head_id = current_user.id
         cr.dept_head_approved_at = datetime.utcnow()
@@ -175,14 +280,14 @@ def dept_head_reject(
     current_user: User = Depends(get_current_user),
 ):
     with get_session() as session:
-        cr = session.get(ChangeRequest, cr_id)
-        if not cr:
-            raise HTTPException(status_code=404, detail="Not found")
+        cr = _get_visible_cr(session, current_user, cr_id)
+        _require_stage1(session, current_user, cr)
         if cr.status != "submitted":
             raise HTTPException(
                 status_code=400, detail=f"CR is in '{cr.status}' status"
             )
 
+        _claim(session, cr, "submitted", "rejected")
         cr.status = "rejected"
         cr.dept_head_id = current_user.id
         cr.dept_head_rejected_at = datetime.utcnow()
@@ -257,20 +362,26 @@ def _apply_proposed_to_db(session, cr: ChangeRequest) -> None:
 def admin_approve(
     cr_id: str,
     body: ChangeRequestApprove,
-    company_id: str,
+    company_id: str | None = None,  # ignored for routing; kept for old clients
     current_user: User = Depends(get_current_user),
 ):
     with get_session() as session:
-        cr = session.get(ChangeRequest, cr_id)
-        if not cr:
-            raise HTTPException(status_code=404, detail="Not found")
+        cr = _get_visible_cr(session, current_user, cr_id)
+        _require_stage2(session, current_user, cr)
         if cr.status != "dept_head_approved":
             raise HTTPException(
                 status_code=400,
                 detail=f"CR is in '{cr.status}' status, expected 'dept_head_approved'",
             )
 
+        if company_id and company_id != cr.company_id:
+            raise HTTPException(
+                status_code=400, detail="company_id does not match request"
+            )
+
         # Mark admin approval
+        _claim(session, cr, "dept_head_approved", "admin_approved")
+        _validate_proposed(session, cr.company_id, json.loads(cr.proposed_json))
         cr.status = "admin_approved"
         cr.admin_id = current_user.id
         cr.admin_approved_at = datetime.utcnow()
@@ -279,7 +390,7 @@ def admin_approve(
 
         # Look up git config — company-specific first, fall back to global (company_id=None)
         git_cfg = session.exec(
-            select(GitConfig).where(GitConfig.company_id == company_id)
+            select(GitConfig).where(GitConfig.company_id == cr.company_id)
         ).first()
         if not git_cfg:
             git_cfg = session.exec(
@@ -331,14 +442,14 @@ def admin_reject(
     current_user: User = Depends(get_current_user),
 ):
     with get_session() as session:
-        cr = session.get(ChangeRequest, cr_id)
-        if not cr:
-            raise HTTPException(status_code=404, detail="Not found")
+        cr = _get_visible_cr(session, current_user, cr_id)
+        _require_stage2(session, current_user, cr)
         if cr.status != "dept_head_approved":
             raise HTTPException(
                 status_code=400, detail=f"CR is in '{cr.status}' status"
             )
 
+        _claim(session, cr, "dept_head_approved", "rejected")
         cr.status = "rejected"
         cr.admin_id = current_user.id
         cr.admin_rejected_at = datetime.utcnow()

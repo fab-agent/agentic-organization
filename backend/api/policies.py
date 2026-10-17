@@ -7,7 +7,7 @@ from sqlmodel import select
 
 from api.auth import get_current_user, require_manager
 from database import get_session
-from models import ChangeRequest, Policy, PolicyConfig, User
+from models import ChangeRequest, Personnel, Policy, PolicyConfig, User
 from services.policy_engine import VALID_EFFECTS, VALID_MODES, resolve_mode
 
 router = APIRouter(tags=["policies"])
@@ -206,6 +206,9 @@ def update_policy(
             raise HTTPException(status_code=404, detail="Policy not found")
 
         if propose and personnel_id:
+            target = session.get(Personnel, personnel_id)
+            if not target or target.company_id != p.company_id:
+                raise HTTPException(status_code=404, detail="Personnel not found")
             original = {"name": p.name, "content": p.content, "scope": p.scope}
             proposed = {k: v for k, v in body.model_dump().items() if v is not None}
             cr = ChangeRequest(
@@ -216,6 +219,7 @@ def update_policy(
                 proposed_json=json.dumps({"policy_id": policy_id, **proposed}),
                 original_json=json.dumps(original),
                 status="submitted",
+                created_by_user_id=user.id,
             )
             session.add(cr)
             session.commit()
