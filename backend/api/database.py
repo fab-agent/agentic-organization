@@ -2,7 +2,7 @@
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -130,7 +130,7 @@ def create_database(body: DBCreate, _: User = Depends(require_manager)) -> DBRes
             encrypted_dsn=encrypt(body.dsn),
             company_id=body.company_id,
             status="ok" if ok else "error",
-            last_checked=datetime.now(timezone.utc),
+            last_checked=datetime.now(UTC),
         )
         session.add(row)
         session.commit()
@@ -189,7 +189,7 @@ def discover(db_id: str, _: User = Depends(require_manager)) -> DBResponse:
 
         row.schema_json = json.dumps(fresh, ensure_ascii=False)
         row.status = "ok"
-        row.last_checked = datetime.now(timezone.utc)
+        row.last_checked = datetime.now(UTC)
         session.add(row)
         session.commit()
         session.refresh(row)

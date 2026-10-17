@@ -345,7 +345,7 @@ async def stream_task(task_id: str, current_user: User = Depends(get_current_use
             while True:
                 try:
                     event = await asyncio.wait_for(q.get(), timeout=180)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield f"data: {json.dumps({'type': 'timeout'})}\n\n"
                     break
                 yield f"data: {json.dumps(event)}\n\n"

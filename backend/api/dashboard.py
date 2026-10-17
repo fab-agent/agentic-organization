@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 from sqlmodel import func, select
@@ -22,7 +22,7 @@ router = APIRouter(tags=["dashboard"])
 
 
 def _today_start() -> datetime:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
@@ -70,9 +70,7 @@ def company_stats(
 
         total_sessions = len(all_sessions)
         today_sessions = sum(
-            1
-            for s in all_sessions
-            if s.created_at.replace(tzinfo=timezone.utc) >= today
+            1 for s in all_sessions if s.created_at.replace(tzinfo=UTC) >= today
         )
         active_sessions = sum(1 for s in all_sessions if s.status == "active")
 
@@ -87,7 +85,7 @@ def company_stats(
             for m in msgs:
                 t = m.tokens_used or 0
                 total_tokens += t
-                if m.created_at.replace(tzinfo=timezone.utc) >= today:
+                if m.created_at.replace(tzinfo=UTC) >= today:
                     today_tokens += t
 
         # Long-term memories count
@@ -177,7 +175,7 @@ def my_dashboard(company_id: str | None = None, user: User = Depends(get_current
             for m in msgs:
                 t = m.tokens_used or 0
                 total_tokens += t
-                if m.created_at.replace(tzinfo=timezone.utc) >= today:
+                if m.created_at.replace(tzinfo=UTC) >= today:
                     today_tokens += t
 
         # Memories for those agents
@@ -198,9 +196,7 @@ def my_dashboard(company_id: str | None = None, user: User = Depends(get_current
             "personnel_title": person.title,
             "total_sessions": len(sessions_q),
             "today_sessions": sum(
-                1
-                for s in sessions_q
-                if s.created_at.replace(tzinfo=timezone.utc) >= today
+                1 for s in sessions_q if s.created_at.replace(tzinfo=UTC) >= today
             ),
             "active_sessions": sum(1 for s in sessions_q if s.status == "active"),
             "total_tokens": total_tokens,

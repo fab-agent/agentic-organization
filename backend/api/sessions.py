@@ -332,7 +332,7 @@ async def send_message(
             while True:
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=300.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
                     return
                 if event is None:

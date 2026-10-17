@@ -5,7 +5,7 @@ import json
 import logging
 import sqlite3
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -202,7 +202,7 @@ def backup_now(_: User = Depends(require_manager)):
 
         history = _load_history(session)
 
-    ts = datetime.now(timezone.utc)
+    ts = datetime.now(UTC)
     filename = f"app_{ts.strftime('%Y%m%d_%H%M%S')}.db"
 
     try:

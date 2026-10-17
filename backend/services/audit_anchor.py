@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import logging
 import pathlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlmodel import select
 
@@ -101,7 +101,7 @@ def _push_s3(cfg: dict, body: bytes) -> None:
     }
     if cfg["lock_days"] > 0:
         put["ObjectLockMode"] = "COMPLIANCE"
-        put["ObjectLockRetainUntilDate"] = datetime.now(timezone.utc) + timedelta(
+        put["ObjectLockRetainUntilDate"] = datetime.now(UTC) + timedelta(
             days=cfg["lock_days"]
         )
     try:
@@ -124,7 +124,7 @@ def anchor_heads() -> dict:
     heads = _chain_heads()
     if not heads:
         return {"anchored": 0}
-    ts = datetime.now(timezone.utc).isoformat()
+    ts = datetime.now(UTC).isoformat()
     lines = [
         json.dumps({"ts": ts, "chain_key": k, "seq": v["seq"], "head": v["head"]})
         for k, v in sorted(heads.items())
