@@ -37,12 +37,29 @@ LAYERS = ("model", "prompt", "tool", "policy")
 _WEIGHT = {"high": 3, "medium": 2, "low": 1, "info": 0}
 _SERVER_ONLY = {"gateway_call", "policy_decision", "context_served"}
 MAX_EVENTS = 5000
-_IDENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,63}$")
+_IDENT = re.compile(r"[A-Za-z][A-Za-z0-9._:/-]{0,47}")
+# Shapes that look like credentials or opaque keys even though they are identifier-
+# shaped: provider key prefixes, long unbroken alphanumerics, UUIDs.
+_SECRETISH = re.compile(
+    r"(?i)^(sk-|ghp_|gho_|xox|akia|eyj|bearer)|[A-Za-z0-9]{24,}|"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+)
 
 
 def _ident(value: Any) -> str:
-    """A name we may print: short and identifier-shaped, else a placeholder."""
-    return value if isinstance(value, str) and _IDENT.match(value) else "[unrecognised]"
+    """A name we may print: short and identifier-shaped, else a placeholder.
+
+    A shape filter is not anonymisation: a deliberately crafted name can still pass.
+    Findings are therefore treated as untrusted data by every consumer, and only
+    registry-known names should ever be trusted (ADR-0023 follow-up).
+    """
+    if (
+        isinstance(value, str)
+        and _IDENT.fullmatch(value)
+        and not _SECRETISH.search(value)
+    ):
+        return value
+    return "[unrecognised]"
 
 
 @dataclass(frozen=True)

@@ -86,6 +86,15 @@ override the security veto. Judge input is minimised and redacted like ADR-0021'
 with the cloud/local path chosen at installation, and human-review data inherits
 ADR-0021's opt-in, shadow, contest and erasure rules.
 
+Access to stored diagnoses follows who is accountable for the persona today
+(company-wide roles, a department-scoped executive for that department only, the
+responsible human, the agent owner), and includes the persona's history: an
+ownership transfer hands the history over, which is an explicit decision. Stored
+diagnoses are erased with the person/persona (`erase_person`). Events written before
+the `origin` stamp existed cannot be told from server events; that historical trust
+gap is accepted and documented rather than hidden. A shape filter on names is not
+anonymisation, so every consumer treats findings as untrusted data.
+
 Findings and judge results are stored beside the chain (like `AuditSeverity`), keyed
 to `(chain_key, seq)` or run id, and never written into the chain. Access is per
 company and role; a person sees diagnoses of their own runs only.

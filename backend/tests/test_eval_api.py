@@ -102,7 +102,9 @@ def test_events_without_a_verified_run_stamp_are_not_part_of_any_run(
         target="bash",
         payload={"effect": "deny", "enforced": True, "session_ref": "r1"},
     )
-    assert _diagnose(auth_client, world["agent"], "r1").json()["events_seen"] == 0
+    # unknown run: 404 and nothing stored
+    assert _diagnose(auth_client, world["agent"], "r1").status_code == 404
+    assert auth_client.get(f"/eval/personas/{world['agent']}/runs").json() == []
 
 
 def test_get_and_list_return_the_stored_result(auth_client, world):
@@ -162,3 +164,155 @@ def test_policy_audit_carries_the_verified_run_block(auth_client, world, db_sess
         select(AuditEvent).where(AuditEvent.action == "policy_decision")
     ).first()
     assert ev is not None and '"run_id": "r9"' in ev.payload_json
+
+
+def test_bad_run_id_is_rejected_without_a_write(auth_client, world):
+    for bad in ("x" * 65, "a b", "a.b"):
+        assert _diagnose(auth_client, world["agent"], bad).status_code == 404
+    assert auth_client.get(f"/eval/personas/{world['agent']}/runs").json() == []
+
+
+def test_recent_result_is_reused_and_empty_recompute_keeps_the_old_one(
+    auth_client, world, monkeypatch
+):
+    from services import run_reader
+
+    _emit(world, world["agent"], "r1", "gateway_call", "gpt", upstream_status=500)
+    first = _diagnose(auth_client, world["agent"], "r1").json()
+    _emit(world, world["agent"], "r1", "gateway_call", "gpt", upstream_status=503)
+    again = _diagnose(auth_client, world["agent"], "r1").json()
+    assert again["updated_at"] == first["updated_at"]  # fresh: not recomputed
+    monkeypatch.setattr(run_reader, "FRESH_FOR", run_reader.timedelta(0))
+    third = _diagnose(auth_client, world["agent"], "r1").json()
+    assert third["events_seen"] == 2
+
+
+def test_truncation_is_reported_and_persisted(auth_client, world, monkeypatch):
+    from services import run_reader
+
+    monkeypatch.setattr(run_reader, "MAX_EVENTS", 2)
+    for _ in range(3):
+        _emit(world, world["agent"], "r1", "gateway_call", "gpt", upstream_status=500)
+    d = _diagnose(auth_client, world["agent"], "r1").json()
+    assert d["truncated"] is True and d["events_seen"] == 2
+    assert auth_client.get(f"/eval/personas/{world['agent']}/runs/r1").json()[
+        "truncated"
+    ]
+
+
+def test_scoped_executive_only_sees_their_department(auth_client, world, db_session):
+    from models import Department, Personnel
+
+    co = world["co"]
+    mine = Department(name="Fin", slug="fin", company_id=co)
+    other = Department(name="HR", slug="hr", company_id=co)
+    db_session.add_all([mine, other])
+    db_session.flush()
+    db_session.get(Personnel, world["agent"]).department_id = mine.id
+    db_session.get(Personnel, world["other"]).department_id = other.id
+    ex = make_user(db_session, email="ex@test.com", name="Ex")
+    m = make_member(db_session, ex.id, co, role="executive")
+    m.scope_id = mine.id
+    wide = make_user(db_session, email="wide@test.com", name="Wide")
+    make_member(db_session, wide.id, co, role="executive")  # no scope: company-wide
+    db_session.commit()
+    h_ex = {"Authorization": f"Bearer {create_access_token(ex.id)}"}
+    h_wide = {"Authorization": f"Bearer {create_access_token(wide.id)}"}
+    _emit(world, world["agent"], "r1", "gateway_call", "gpt", upstream_status=500)
+    _emit(world, world["other"], "r2", "gateway_call", "gpt", upstream_status=500)
+    assert _diagnose(auth_client, world["agent"], "r1", headers=h_ex).status_code == 200
+    assert _diagnose(auth_client, world["other"], "r2", headers=h_ex).status_code == 404
+    assert (
+        _diagnose(auth_client, world["other"], "r2", headers=h_wide).status_code == 200
+    )
+
+
+def test_responsible_human_and_agent_owner_can_read_others_cannot(
+    auth_client, world, db_session
+):
+    from sqlmodel import select
+
+    from models import AgentConfig
+
+    co = world["co"]
+    human = make_user(db_session, email="hum@test.com", name="Hum")
+    make_member(db_session, human.id, co, role="user")
+    hp = make_personnel(db_session, co, name="Hum", slug="hum", type="human")
+    hp.user_id = human.id
+    owner = make_user(db_session, email="own@test.com", name="Own")
+    om = make_member(db_session, owner.id, co, role="agent_owner")
+    om.scope_id = world["agent"]
+    wrong = make_user(db_session, email="wrong@test.com", name="Wrong")
+    wm = make_member(db_session, wrong.id, co, role="agent_owner")
+    wm.scope_id = world["other"]
+    cfg = db_session.exec(
+        select(AgentConfig).where(AgentConfig.personnel_id == world["agent"])
+    ).first()
+    cfg.responsible_id = hp.id
+    db_session.commit()
+    _emit(world, world["agent"], "r1", "gateway_call", "gpt", upstream_status=500)
+
+    def h(u):
+        return {"Authorization": f"Bearer {create_access_token(u.id)}"}
+
+    assert (
+        _diagnose(auth_client, world["agent"], "r1", headers=h(human)).status_code
+        == 200
+    )
+    assert (
+        _diagnose(auth_client, world["agent"], "r1", headers=h(owner)).status_code
+        == 200
+    )
+    assert (
+        _diagnose(auth_client, world["agent"], "r1", headers=h(wrong)).status_code
+        == 404
+    )
+
+
+def test_erasing_a_person_removes_their_stored_diagnoses(
+    auth_client, world, db_session
+):
+    from sqlmodel import select
+
+    from models import RunDiagnosis
+    from services.work_review import erase_person
+
+    _emit(world, world["agent"], "r1", "gateway_call", "gpt", upstream_status=500)
+    _diagnose(auth_client, world["agent"], "r1")
+    erase_person(db_session, world["agent"])
+    db_session.commit()
+    assert db_session.exec(select(RunDiagnosis)).all() == []
+
+
+def test_client_cannot_stamp_a_run_or_origin_through_ingest(
+    auth_client, world, db_session
+):
+    from sqlmodel import select
+
+    from models import AuditEvent
+
+    n = audit_chain.ingest_batch(
+        [
+            {
+                "action": "gateway_call",
+                "target": "m",
+                "payload": {
+                    "upstream_status": 503,
+                    "run": {"run_id": "forged"},
+                    "origin": "server",
+                },
+            }
+        ],
+        actor_id=world["agent"],
+        company_id=world["co"],
+        run={"run_id": "real"},
+    )
+    assert n == 1
+    ev = db_session.exec(
+        select(AuditEvent).where(AuditEvent.action == "gateway_call")
+    ).all()[-1]
+    assert '"run_id": "real"' in ev.payload_json and "forged" not in ev.payload_json
+    assert '"origin": "client"' in ev.payload_json
+    # as a client claim it is ignored in the diagnosis of the real run
+    d = _diagnose(auth_client, world["agent"], "real").json()
+    assert d["findings"] == [] and d["ignored_client_claims"] == 1

@@ -45,6 +45,7 @@ from models import (
     CompanyMember,
     Department,
     Personnel,
+    RunDiagnosis,
     WorkNote,
     WorkRating,
     WorkSignal,
@@ -268,6 +269,13 @@ def erase_person(session, personnel_id: str) -> int:
             ).rowcount
             or 0
         )
+    # Stored run diagnoses of this persona (ADR-0023) are derived data as well.
+    n += (
+        session.execute(
+            delete(RunDiagnosis).where(RunDiagnosis.persona_id == personnel_id)
+        ).rowcount
+        or 0
+    )
     return n
 
 

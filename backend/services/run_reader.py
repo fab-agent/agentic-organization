@@ -9,70 +9,108 @@ used to join events to a run: an event without that stamp is simply not part of 
 from __future__ import annotations
 
 import json
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from models import AuditEvent, RunDiagnosis
 from services.run_diagnosis import MAX_EVENTS, diagnose
 
 DIAGNOSER_VERSION = 1
-# Bounded scan: a persona's recent rows on its company chain, newest first.
-_SCAN_LIMIT = 20000
+# Run ids are minted by the server (uuid-like); anything else is not a run.
+RUN_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+# Re-diagnosing the same run inside this window returns the stored result.
+FRESH_FOR = timedelta(seconds=10)
 
 
 def events_for_run(
     session, company_id: str, persona_id: str, run_id: str
-) -> list[dict]:
+) -> tuple[list[dict], bool]:
+    """The run's events (oldest first) and whether more existed than we return.
+
+    A SQL substring prefilter on the stored JSON keeps the scan to this run's rows;
+    the exact `payload.run.run_id` match is still checked in Python.
+    """
     rows = session.exec(
         select(AuditEvent)
-        .where(AuditEvent.chain_key == company_id, AuditEvent.actor_id == persona_id)
-        .order_by(AuditEvent.seq.desc())
-        .limit(_SCAN_LIMIT)
+        .where(
+            AuditEvent.chain_key == company_id,
+            AuditEvent.actor_id == persona_id,
+            AuditEvent.payload_json.contains(run_id),
+        )
+        .order_by(AuditEvent.seq)
     ).all()
     out: list[dict] = []
-    for r in reversed(rows):
+    truncated = False
+    for r in rows:
         try:
             payload = json.loads(r.payload_json) if r.payload_json else {}
         except ValueError:
             continue
         run = payload.get("run") if isinstance(payload, dict) else None
-        if isinstance(run, dict) and run.get("run_id") == run_id:
-            out.append(
-                {
-                    "action": r.action,
-                    "target": r.target,
-                    "reason": r.reason,
-                    "payload": payload,
-                    "chain_key": r.chain_key,
-                    "seq": r.seq,
-                }
-            )
-            if len(out) >= MAX_EVENTS:
-                break
-    return out
+        if not (isinstance(run, dict) and run.get("run_id") == run_id):
+            continue
+        if len(out) >= MAX_EVENTS:
+            truncated = True
+            break
+        out.append(
+            {
+                "action": r.action,
+                "target": r.target,
+                "reason": r.reason,
+                "payload": payload,
+                "chain_key": r.chain_key,
+                "seq": r.seq,
+            }
+        )
+    return out, truncated
 
 
-def diagnose_and_store(
-    session, company_id: str, persona_id: str, run_id: str
-) -> RunDiagnosis:
-    """Recompute from the chain and upsert; safe to call repeatedly."""
-    d = diagnose(events_for_run(session, company_id, persona_id, run_id), run_id=run_id)
-    row = session.get(RunDiagnosis, (company_id, persona_id, run_id))
-    now = datetime.utcnow()
-    if row is None:
-        row = RunDiagnosis(company_id=company_id, persona_id=persona_id, run_id=run_id)
+def _apply(row: RunDiagnosis, d, truncated: bool) -> None:
     row.suspect_layer = d.suspect_layer
     row.scores_json = json.dumps(d.scores)
     row.findings_json = json.dumps([f.as_dict() for f in d.findings])
     row.events_seen = d.events_seen
     row.ignored_client_claims = d.ignored_client_claims
     row.invalid_events = d.invalid_events
-    row.truncated = d.truncated
+    row.truncated = bool(d.truncated or truncated)
     row.diagnoser_version = DIAGNOSER_VERSION
-    row.updated_at = now
-    session.add(row)
-    session.commit()
+    row.updated_at = datetime.utcnow()
+
+
+def diagnose_and_store(
+    session, company_id: str, persona_id: str, run_id: str
+) -> RunDiagnosis | None:
+    """Recompute from the chain and store. None when the run has no events at all.
+
+    Nothing is written for an unknown run, a fresh stored result is returned as is,
+    and an empty recomputation never replaces an earlier non-empty one.
+    """
+    key = (company_id, persona_id, run_id)
+    row = session.get(RunDiagnosis, key)
+    if row and datetime.utcnow() - row.updated_at < FRESH_FOR:
+        return row
+    events, truncated = events_for_run(session, company_id, persona_id, run_id)
+    if not events:
+        return row  # earlier result (if any) is kept; unknown run stays unknown
+    d = diagnose(events, run_id=run_id)
+    for attempt in (1, 2):
+        row = session.get(RunDiagnosis, key)
+        if row is None:
+            row = RunDiagnosis(
+                company_id=company_id, persona_id=persona_id, run_id=run_id
+            )
+        _apply(row, d, truncated)
+        session.add(row)
+        try:
+            session.commit()
+            break
+        except IntegrityError:  # a concurrent request created it first: update that
+            session.rollback()
+            if attempt == 2:
+                raise
     session.refresh(row)
     return row
 

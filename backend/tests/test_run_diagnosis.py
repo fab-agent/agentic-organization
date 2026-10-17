@@ -237,3 +237,24 @@ def test_output_never_contains_message_text():
 def test_malformed_payload_does_not_crash():
     d = diagnose([{"action": "gateway_call", "payload": None}, {"action": "x"}])
     assert d.findings == []
+
+
+def test_identifier_shaped_secrets_are_not_printed():
+    secretish = [
+        "alice@example.com",
+        "sk-abcdefghijklmnopqrstuvwx1234",
+        "123e4567-e89b-12d3-a456-426614174000",
+        "a" * 40,
+        "secrettool\n",
+        "ghp_abcdefghijklmnop",
+    ]
+    d = diagnose(
+        [ev("tool_event", i, name, error="x") for i, name in enumerate(secretish, 1)]
+    )
+    text = str(d.as_dict())
+    for name in secretish:
+        assert name.strip() not in text
+    assert "[unrecognised]" in text
+    assert "read_file" in str(
+        diagnose([ev("tool_event", 1, "read_file", error="x")]).as_dict()
+    )
