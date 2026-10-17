@@ -39,6 +39,7 @@ Format: a [MADR](https://adr.github.io/madr/) derivative — see [`0000-template
 | [0020](0020-prompt-assembly-and-intent-breakdown.md) | Prompt assembly with a token budget, and intent breakdown with Jev | proposed |
 | [0021](0021-fit-rubric.md) | The fit rubric — goals, values and policies as typed questions | proposed |
 | [0022](0022-herdr-power-users-simple-ui-learning-loop.md) | Herdr for power users, a minimal web view for departments, and an approved learning loop | proposed |
+| [0023](0023-eval-and-failure-attribution.md) | Evaluation and failure attribution on the audit trail | proposed |
 
 ## Adding a new ADR
 
