@@ -266,7 +266,8 @@ def ingest_batch(
 
     `run` is the attribution block from the caller's *verified* token
     (ADR-0019 §4). A `run` key in a client payload is discarded and replaced, so a
-    client can never claim to be a different run.
+    client can never claim to be a different run. Likewise `origin` is always set
+    to "client" here (ADR-0023): the chain proves integrity, not that the event is true.
     """
     n = 0
     for item in events:
@@ -277,8 +278,12 @@ def ingest_batch(
         payload = dict(payload) if isinstance(payload, dict) else None
         if payload is not None:
             payload.pop("run", None)
+            payload.pop("origin", None)
+        # Server-set, never taken from the client: lets readers tell what the
+        # platform itself observed from what a workstation reported.
+        payload = {**(payload or {}), "origin": "client"}
         if run:
-            payload = {**(payload or {}), "run": run}
+            payload["run"] = run
         append(
             actor_type="agent",
             actor_id=actor_id,

@@ -74,6 +74,7 @@ def ingest_tool_event(
         "provenance": event.provenance,
         "error": event.error,
         "client_ts": event.client_ts,
+        "origin": "client",
         **({"extra": event.extra} if event.extra else {}),
         # Attribution comes from the verified token, never from the request body.
         **({"run": run_info(principal)} if principal.run_id else {}),

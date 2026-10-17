@@ -72,6 +72,9 @@ class Assembled:
     sections: list[Section]
     dropped: list[Section]
     budget: int
+    # Names left out on purpose because the intent did not need them; the rest of
+    # `dropped` was cut to fit the budget.
+    intent_skipped: frozenset[str] = frozenset()
 
     @property
     def total_tokens(self) -> int:
@@ -91,7 +94,14 @@ class Assembled:
                 {"name": s.name, "tier": s.tier, "tokens": s.tokens}
                 for s in self.sections
             ],
-            "dropped": [{"name": s.name, "tokens": s.tokens} for s in self.dropped],
+            "dropped": [
+                {
+                    "name": s.name,
+                    "tokens": s.tokens,
+                    "reason": "intent" if s.name in self.intent_skipped else "budget",
+                }
+                for s in self.dropped
+            ],
         }
 
 
@@ -263,6 +273,7 @@ def assemble(
         secs.append(Section("knowledge", "\n".join(kn), 2))
 
     dropped = [s for s in secs if s.name in skip and not s.required]
+    intent_skipped = frozenset(s.name for s in dropped)
     kept = [s for s in secs if s not in dropped]
     for name in DROP_ORDER:
         if sum(s.tokens for s in kept) <= budget:
@@ -270,4 +281,6 @@ def assemble(
         for s in [s for s in kept if s.name == name and not s.required]:
             kept.remove(s)
             dropped.append(s)
-    return Assembled(sections=kept, dropped=dropped, budget=budget)
+    return Assembled(
+        sections=kept, dropped=dropped, budget=budget, intent_skipped=intent_skipped
+    )
