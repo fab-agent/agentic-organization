@@ -96,6 +96,8 @@ verification steps: https://agent-docs.fab.engineering/docs/fab/overview.
 
 ## Documentation
 
+The docs source lives in this repository under `apps/docs`, so a change to code, an ADR and its documentation can land in one pull request.
+
 Product and platform guides (onboarding, A2A delegation, autonomous flows, change requests,
 personnel portal, …) live on the docs site, not in this README: **https://agent-docs.fab.engineering**
 (source: [fab-agent/docs](https://github.com/fab-agent/docs)). Architecture decisions stay here
@@ -243,6 +245,8 @@ After the first launch, follow the guides on the docs site: https://agent-docs.f
 | `packages/cli` | `3pa` workstation CLI |
 | `packages/agent-plugin` | opencode org plugin (policy, audit, taint tracking) |
 | `packages/tui` | `fab`, the department terminal client (Rust + Ratatui) |
+| `apps/docs` | Documentation site (Docusaurus, TR/EN) → agent-docs.fab.engineering |
+| `apps/landing` | Marketing site (static + Worker) → agent.fab.engineering |
 | `sandbox/` | Developer sandbox + egress proxy; `sandbox/workspace/` is the department workspace image |
 | `docs/` | `ROADMAP.md`, `architecture/`, `adr/` |
 | `.github/workflows/` | One path-scoped workflow per component, plus `adr-guard` |
