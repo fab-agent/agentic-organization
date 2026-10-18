@@ -100,7 +100,7 @@ The docs source lives in this repository under `apps/docs`, so a change to code,
 
 Product and platform guides (onboarding, A2A delegation, autonomous flows, change requests,
 personnel portal, …) live on the docs site, not in this README: **https://agent-docs.fab.engineering**
-(source: [fab-agent/docs](https://github.com/fab-agent/docs)). Architecture decisions stay here
+(source: [`apps/docs`](apps/docs); the old fab-agent/docs repository is retired). Architecture decisions stay here
 in [`docs/adr/`](docs/adr/).
 
 ---
