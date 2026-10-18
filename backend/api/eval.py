@@ -93,6 +93,39 @@ def list_runs(persona_id: str, user: User = Depends(get_current_user)):
         return [to_dict(r) for r in rows]
 
 
+GROUP_FLOOR = 3  # people; below it only "not enough data" is shown (ADR-0021)
+
+
+def _feedback(session, company_id: str, persona_id: str) -> dict:
+    """Counts of human signals on this persona's answers over 30 days. No text, no
+    names; below the group floor of distinct people the numbers are withheld so a
+    single person's opinion cannot be read off."""
+    from datetime import datetime, timedelta
+
+    from models import LearningSignal
+
+    since = datetime.utcnow() - timedelta(days=30)
+    rows = session.exec(
+        select(LearningSignal.kind, LearningSignal.user_id).where(
+            LearningSignal.company_id == company_id,
+            LearningSignal.persona_id == persona_id,
+            LearningSignal.created_at >= since,
+        )
+    ).all()
+    people = len({u for _, u in rows})
+    if people < GROUP_FLOOR:
+        return {"enough": False, "people": people if people == 0 else None}
+    count = lambda k: sum(1 for kind, _ in rows if kind == k)  # noqa: E731
+    return {
+        "enough": True,
+        "people": people,
+        "thumbs_up": count("thumbs_up"),
+        "thumbs_down": count("thumbs_down"),
+        "corrections": count("correction"),
+        "days": 30,
+    }
+
+
 @router.get("/personas/{persona_id}/summary")
 def persona_summary(persona_id: str, user: User = Depends(get_current_user)):
     """Success and suspect-layer counts over the stored diagnoses of one persona.
@@ -121,7 +154,10 @@ def persona_summary(persona_id: str, user: User = Depends(get_current_user)):
             c[v.value] += 1
         if r.suspect_layer:
             suspects[r.suspect_layer] = suspects.get(r.suspect_layer, 0) + 1
+    with get_session() as session:
+        feedback = _feedback(session, company_id, persona_id)
     return {
+        "feedback": feedback,
         "runs": len(rows),
         "criteria": {
             cid: {**c, "success": success_interval(c["yes"], c["yes"] + c["no"])}

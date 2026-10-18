@@ -134,3 +134,41 @@ def test_erasing_a_person_erases_their_signals(auth_client, world, db_session):
     erase_person(db_session, world["human"])
     db_session.commit()
     assert db_session.query(LearningSignal).count() == 0
+
+
+def test_feedback_counts_reach_the_eval_summary_only_above_the_group_floor(
+    auth_client, world, db_session
+):
+    _give(auth_client, world, "thumbs_down")
+    s = auth_client.get(f"/eval/personas/{world['agent']}/summary").json()
+    assert s["feedback"] == {"enough": False, "people": None}  # one person: withheld
+    for i in range(2):
+        u = make_user(db_session, email=f"x{i}@a.com", name=f"X{i}")
+        make_member(db_session, u.id, world["co"], role="user")
+        h = make_personnel(
+            db_session, world["co"], name=f"H{i}", slug=f"h{i}", type="human"
+        )
+        h.user_id = u.id
+        sess = AgentSession(personnel_id=world["agent"], user_id=u.id)
+        db_session.add_all([h, sess])
+        db_session.flush()
+        m = SessionMessage(session_id=sess.id, role="assistant", content="a")
+        db_session.add(m)
+        db_session.commit()
+        assert (
+            _give(
+                auth_client,
+                world,
+                "thumbs_up" if i else "thumbs_down",
+                mid=m.id,
+                h=_h(u),
+            ).status_code
+            == 201
+        )
+    s = auth_client.get(f"/eval/personas/{world['agent']}/summary").json()["feedback"]
+    assert (
+        s["enough"]
+        and s["people"] == 3
+        and s["thumbs_down"] == 2
+        and s["thumbs_up"] == 1
+    )

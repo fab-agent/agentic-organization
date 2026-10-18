@@ -101,6 +101,14 @@
 				</div>
 			{/each}
 		</section>
+		<p class="text-sm">
+			Kullanıcı geri bildirimi:
+			{#if summary.feedback.enough}
+				son {summary.feedback.days} gün, {summary.feedback.people} kişi: 👍 {summary.feedback.thumbs_up} · 👎 {summary.feedback.thumbs_down} · düzeltme {summary.feedback.corrections}
+			{:else}
+				<span class="text-muted-foreground">yeterli veri yok (gizlilik için en az 3 kişi gerekir)</span>
+			{/if}
+		</p>
 		{#if Object.keys(summary.suspect_counts).length}
 			<p class="text-sm">
 				Şüpheli katman sayıları (varsayım):

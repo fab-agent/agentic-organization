@@ -24,7 +24,12 @@ export type RunDiagnosis = {
 
 export type Interval = { n: number; share: number | null; low: number | null; high: number | null };
 
+export type Feedback =
+	| { enough: false; people: number | null }
+	| { enough: true; people: number; thumbs_up: number; thumbs_down: number; corrections: number; days: number };
+
 export type EvalSummary = {
+	feedback: Feedback;
 	runs: number;
 	criteria: Record<string, { yes: number; no: number; unclear: number; success: Interval }>;
 	suspect_counts: Record<string, number>;
