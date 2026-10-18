@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { assistantApi, type AssistantContext } from '$lib/api/assistant';
+	import { outputsApi, isRisky, type OutputFile } from '$lib/api/outputs';
 	import { sessionsApi, streamMessage, type Attachment } from '$lib/api/sessions';
 	import { companyStore } from '$lib/stores/company.svelte';
 	import MessageContent from '$lib/components/MessageContent.svelte';
@@ -25,6 +26,7 @@
 	const activeCompanyId = $derived(companyStore.active?.id ?? '');
 	const canChat = $derived(((c: AssistantContext | null) => !!c?.agent && c.agent.status === 'active')(ctx));
 
+	let outputs: { id: string; files: OutputFile[] } | null = $state(null);
 	let generation = 0;
 	// Bumped by every reset: any create/upload/send that started before it is stale.
 	let epoch = 0;
@@ -44,6 +46,7 @@
 		streamingText = '';
 		status = '';
 		ctx = null;
+		outputs = null;
 	}
 
 	async function load() {
@@ -53,6 +56,8 @@
 			const next = await assistantApi.context(company || undefined);
 			if (mine !== generation) return; // a newer load or a company switch won
 			ctx = next;
+			outputs = await outputsApi.list(company || undefined);
+			if (mine !== generation) return;
 			loadedFor = company;
 			error = null;
 		} catch (e) {
@@ -253,6 +258,24 @@
 				<summary class="font-medium cursor-pointer">Politikalar ({ctx.policies.length})</summary>
 				<div class="mt-2 space-y-3">{#each ctx.policies as p}<div><p class="font-medium">{p.name}</p><div class="text-muted-foreground"><MessageContent content={p.content} /></div></div>{:else}<p class="text-muted-foreground">Uygulanan politika yok.</p>{/each}</div>
 			</details>
+			{#if outputs}
+				<details class="rounded-xl border p-3">
+					<summary class="font-medium cursor-pointer">Çıktılarım ({outputs.files.length})</summary>
+					<ul class="mt-2 space-y-1">
+						{#each outputs.files as f}
+							<li class="flex items-center justify-between gap-2">
+								<span class="truncate" title={f.path}>{f.path}</span>
+								<button
+									class="underline text-xs"
+									onclick={() => {
+										if (isRisky(f.path) && !confirm('Bu dosya türü makro/komut içerebilir. Yine de kaydedilsin mi? Açmadan önce kontrol edin.')) return;
+										outputsApi.download(outputs!.id, f.path).catch((e) => (error = e.message));
+									}}>İndir</button>
+							</li>
+						{:else}<li class="text-muted-foreground">Henüz çıktı yok.</li>{/each}
+					</ul>
+				</details>
+			{/if}
 			{#if ctx.learned.length}
 				<details class="rounded-xl border p-3">
 					<summary class="font-medium cursor-pointer">Öğrenilmiş yönergeler ({ctx.learned.length})</summary>
