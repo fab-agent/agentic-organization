@@ -11,10 +11,12 @@ import hmac
 import logging
 import os
 import threading
+import time
 
 from docker_ops import MAX_FILE_BYTES, BadInput, Config, Docker, DockerError, TooLarge
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.background import BackgroundTask
 
 MIN_SECRET = 32
 log = logging.getLogger("workspace-controller")
@@ -25,7 +27,11 @@ class CreateBody(BaseModel):
     env: dict[str, str] = Field(default_factory=dict)
 
 
-def build_app(docker: Docker | None = None, secret: str | None = None) -> FastAPI:
+def build_app(
+    docker: Docker | None = None,
+    secret: str | None = None,
+    reap_interval: float | None = None,
+) -> FastAPI:
     secret = (
         secret if secret is not None else os.getenv("WORKSPACE_CONTROLLER_SECRET", "")
     )
@@ -33,6 +39,8 @@ def build_app(docker: Docker | None = None, secret: str | None = None) -> FastAP
         raise RuntimeError(
             "WORKSPACE_CONTROLLER_SECRET must be a random secret of at least 32 characters"
         )
+    if reap_interval is None and docker is None:  # a real controller sweeps by default
+        reap_interval = float(os.getenv("WORKSPACE_REAP_SECONDS", "60"))
     docker = docker or Docker(
         Config(
             image=os.environ["WORKSPACE_IMAGE"],
@@ -42,6 +50,19 @@ def build_app(docker: Docker | None = None, secret: str | None = None) -> FastAP
             public_base_url=os.getenv("FABAGENT_BASE_URL", ""),
         )
     )
+    if reap_interval and reap_interval > 0:
+
+        def reaper():
+            while True:
+                try:
+                    n = docker.reap_helpers()
+                    if n:
+                        log.warning("removed %d orphaned helper container(s)", n)
+                except Exception:  # noqa: BLE001 - a failed sweep must never stop the next
+                    log.exception("helper sweep failed")
+                time.sleep(reap_interval)
+
+        threading.Thread(target=reaper, name="helper-reaper", daemon=True).start()
     app = FastAPI(
         title="workspace-controller", docs_url=None, redoc_url=None, openapi_url=None
     )
@@ -69,6 +90,10 @@ def build_app(docker: Docker | None = None, secret: str | None = None) -> FastAP
     transfers = threading.BoundedSemaphore(
         int(os.getenv("WORKSPACE_MAX_TRANSFERS", "4"))
     )
+
+    def hold_slot():
+        if not transfers.acquire(timeout=30):
+            raise HTTPException(status_code=503, detail="busy")
 
     def transfer(fn):
         """At most a few file transfers at once: each can hold up to the size cap."""
@@ -131,8 +156,19 @@ def build_app(docker: Docker | None = None, secret: str | None = None) -> FastAP
 
     @app.get("/v1/workspaces/{wid}/file", dependencies=[Depends(auth)])
     def read(wid: str, path: str):
-        data = transfer(lambda: guarded(lambda: docker.read_file(wid, path)))
-        return Response(content=data, media_type="application/octet-stream")
+        # The slot is kept until the bytes have been sent, so buffered downloads are
+        # bounded by the number of slots, not by how slowly clients read.
+        hold_slot()
+        try:
+            data = guarded(lambda: docker.read_file(wid, path))
+        except BaseException:
+            transfers.release()
+            raise
+        return Response(
+            content=data,
+            media_type="application/octet-stream",
+            background=BackgroundTask(transfers.release),
+        )
 
     @app.put("/v1/workspaces/{wid}/file", dependencies=[Depends(auth)])
     async def write(wid: str, path: str, request: Request):

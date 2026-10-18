@@ -20,10 +20,12 @@ import os
 import re
 import subprocess
 import threading
+import time
 import uuid
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 from fileio import SCRIPT
 
@@ -35,6 +37,11 @@ MAX_FILE_BYTES = 100 * 1024 * 1024
 MAX_LIST_BYTES = 400 * 1024 * 1024
 EXTERNAL = "fab-ws-external"
 EGRESS = "fab-ws-egress"
+# Shorter than the backend client's 120 s, so a caller never gives up on a call the
+# controller is still executing.
+CALL_TIMEOUT = 100
+HELPER_TIMEOUT = 90
+HELPER_PREFIX = "fab-ws-helper-"
 LABEL = "fab.managed=workspace-controller"
 
 # (args, stdin, extra env) -> stdout bytes; raises DockerError on failure.
@@ -96,7 +103,7 @@ def default_runner(args, stdin=None, env=None) -> bytes:
             input=stdin,
             capture_output=True,
             env=full_env,
-            timeout=300,
+            timeout=CALL_TIMEOUT,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired, ValueError) as e:
@@ -119,7 +126,7 @@ def default_helper(args, stdin=None, max_out=MAX_FILE_BYTES) -> tuple[int, bytes
         )
     except (OSError, ValueError) as e:
         raise DockerError("docker unavailable", type(e).__name__) from e
-    timer = threading.Timer(300, p.kill)
+    timer = threading.Timer(HELPER_TIMEOUT, p.kill)
     timer.start()
     try:
         if stdin is not None:
@@ -413,6 +420,54 @@ class Docker:
                     pass
                 self.run(["network", "rm", name], None, None)
 
+    def reap_helpers(self, max_age: int = HELPER_TIMEOUT + 30) -> int:
+        """Remove helper containers left behind (controller killed mid-call).
+
+        A live helper never runs longer than HELPER_TIMEOUT, so anything older is an
+        orphan. Returns how many were removed.
+        """
+        try:
+            names = (
+                self.run(
+                    [
+                        "ps",
+                        "-a",
+                        "--filter",
+                        f"name={HELPER_PREFIX}",
+                        "--filter",
+                        f"label={LABEL}",
+                        "--format",
+                        "{{.Names}}",
+                    ],
+                    None,
+                    None,
+                )
+                .decode()
+                .split()
+            )
+        except DockerError:
+            return 0
+        removed = 0
+        now = time.time()
+        for name in names:
+            if not name.startswith(HELPER_PREFIX):
+                continue
+            try:
+                created = (
+                    self.run(
+                        ["container", "inspect", "-f", "{{.Created}}", name], None, None
+                    )
+                    .decode()
+                    .strip()
+                )
+                age = now - datetime.fromisoformat(created[:19] + "+00:00").timestamp()
+                if age > max_age:
+                    self.run(["rm", "-f", name], None, None)
+                    removed += 1
+            except (DockerError, ValueError):
+                continue
+        return removed
+
     def status_of(self, name: str) -> str:
         out = self._inspect("container", name, "{{.State.Running}}")
         if out is None:
@@ -433,12 +488,20 @@ class Docker:
         data: bytes | None = None,
         max_out: int = MAX_FILE_BYTES,
     ) -> bytes:
+        # Under the workspace lock: a purge cannot remove the volume between the check
+        # below and the helper's `-v` (which would silently create an empty one).
+        with self.lock(wid):
+            return self._helper_locked(
+                wid, mode, rel, rw=rw, data=data, max_out=max_out
+            )
+
+    def _helper_locked(self, wid, mode, rel, *, rw, data, max_out) -> bytes:
         if self._inspect("volume", self.vol(wid, "files"), "{{.Name}}") is None:
             raise FileNotFoundError(rel)  # never let `-v` create a volume
         # A unique name so the container can be removed even if the CLI is killed; the
         # interpreter runs isolated (-I: no cwd or environment imports) from `/`, so
         # nothing in the agent-controlled volume is ever imported.
-        hname = f"fab-ws-helper-{uuid.uuid4()}"
+        hname = f"{HELPER_PREFIX}{uuid.uuid4()}"
         # fmt: off
         args = [
             "run", "--rm", "-i", "--name", hname, "--network", "none",

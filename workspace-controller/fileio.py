@@ -85,6 +85,10 @@ def walk(dfd, prefix, out, budget, seen=None, depth=0):
                 fd = os.open(e.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=dfd)
             except OSError:
                 continue
+            st = os.fstat(fd)  # what we hold, not what the name was a moment ago
+            if not stat.S_ISREG(st.st_mode):
+                os.close(fd)
+                continue
             if st.st_size > CAP:
                 # listed (so the person sees it) but never read: no hash, download is refused
                 os.close(fd)

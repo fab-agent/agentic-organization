@@ -40,6 +40,7 @@ Format: a [MADR](https://adr.github.io/madr/) derivative — see [`0000-template
 | [0021](0021-fit-rubric.md) | The fit rubric — goals, values and policies as typed questions | accepted |
 | [0022](0022-herdr-power-users-simple-ui-learning-loop.md) | Herdr for power users, a minimal web view for departments, and an approved learning loop | accepted |
 | [0023](0023-eval-and-failure-attribution.md) | Evaluation and failure attribution on the audit trail | accepted |
+| [0024](0024-workspace-controller-hardening.md) | Workspace controller hardening follow-ups | accepted |
 
 ## Adding a new ADR
 

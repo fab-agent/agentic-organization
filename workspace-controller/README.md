@@ -58,3 +58,7 @@ FABAGENT_BASE_URL=https://agents.example.com \
 
 `pytest workspace-controller/tests` (fake Docker runner and helper), and the opt-in live
 test `backend/tests/test_workspace_controller_live.py` against a real Docker.
+
+## Known limits (ADR-0024)
+
+Run **one controller process** (locks are per process). A sweep (`WORKSPACE_REAP_SECONDS`, default 60) removes orphaned helper containers. Downloads are buffered; a slot is held until the response is sent (`WORKSPACE_MAX_TRANSFERS`). Calls time out at 100 s (helper 90 s). Open: DB/container reconciliation with operation ids, infrastructure drift checks, disk quotas and Docker socket policy (deployment-owned).

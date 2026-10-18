@@ -30,6 +30,12 @@ class Fake:
     def __call__(self, args, stdin=None, env=None):
         self.calls.append((list(args), env))
         a = args
+        if a[:3] == ["container", "inspect", "-f"] and a[3] == "{{.Created}}":
+            import datetime as _dt
+
+            age = self.containers[a[4]].get("age", 0)
+            ts = _dt.datetime.now(_dt.UTC) - _dt.timedelta(seconds=age)
+            return ts.strftime("%Y-%m-%dT%H:%M:%S.000000000Z").encode()
         if a[1:3] == ["inspect", "-f"] or (len(a) > 2 and a[1] == "inspect"):
             kind, fmt, name = a[0], a[3], a[4]
             if kind == "container":
@@ -94,6 +100,10 @@ class Fake:
             if net in self.networks:
                 self.networks[net]["members"].add(name)
             return b"cid"
+        if a[:2] == ["ps", "-a"]:
+            return "\n".join(
+                n for n in self.containers if n.startswith("fab-ws-helper-")
+            ).encode()
         if a[0] == "start":
             self.containers[a[1]]["running"] = True
             return b""
@@ -402,3 +412,30 @@ def test_docker_text_is_not_returned_to_the_caller(ctl):
     client = TestClient(build_app(docker, SECRET))
     r = client.post(f"/v1/workspaces/{WID}", json={"env": {}}, headers=H)
     assert r.status_code == 502 and "registry.internal" not in r.text
+
+
+def test_reaper_removes_only_old_helper_containers():
+    fake = Fake()
+    d = Docker(Config(IMG, EGR), run=fake, helper=Helper())
+    fake.containers["fab-ws-helper-old"] = {
+        "running": True,
+        "image": IMG,
+        "label": "x",
+        "age": 600,
+    }
+    fake.containers["fab-ws-helper-new"] = {
+        "running": True,
+        "image": IMG,
+        "label": "x",
+        "age": 5,
+    }
+    fake.containers["fab-ws-someone"] = {
+        "running": True,
+        "image": IMG,
+        "label": "x",
+        "age": 9999,
+    }
+    assert d.reap_helpers() == 1
+    assert "fab-ws-helper-old" not in fake.containers
+    assert "fab-ws-helper-new" in fake.containers
+    assert "fab-ws-someone" in fake.containers  # workspaces are never touched
