@@ -26,6 +26,7 @@ from typing import Literal
 
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select, update
 
 from models import HarnessArtifact, Personnel
@@ -83,15 +84,26 @@ def parse_proposal(proposed: dict) -> HarnessProposal:
         raise HTTPException(
             status_code=422, detail="harness proposal: content_hash mismatch"
         )
-    if redact(p.content).counts.get("secret"):
+    if redact(p.content).counts.get("secret") or any(
+        redact(e.ref).counts.get("secret") for e in p.evidence
+    ):
         raise HTTPException(
             status_code=422, detail="harness proposal: content looks like a credential"
         )
     return p
 
 
-def check_target(session, company_id: str, p: HarnessProposal) -> None:
-    """The artifact's target must belong to the request's company."""
+def check_target(
+    session, company_id: str, p: HarnessProposal, personnel_id: str | None = None
+) -> None:
+    """The artifact's target must belong to the request's company, and the change
+    request's own `personnel_id` (which routes the reviewers) must lie inside that
+    target: the agent itself (level person), an agent of the department (department)
+    or any agent of the company (company). A decoy agent from another department
+    cannot make the wrong people review a change.
+
+    "person" means the person's assistant: the agent persona the prompt is built for.
+    """
     from models import Department
 
     if p.level == "company":
@@ -101,9 +113,36 @@ def check_target(session, company_id: str, p: HarnessProposal) -> None:
         ok = bool(d and d.company_id == company_id)
     else:
         person = session.get(Personnel, p.target_id)
-        ok = bool(person and person.company_id == company_id)
+        ok = bool(person and person.company_id == company_id and person.type == "agent")
     if not ok:
         raise HTTPException(status_code=422, detail="harness proposal: target")
+    if personnel_id is None:
+        return
+    routed = session.get(Personnel, personnel_id)
+    if routed is None or routed.company_id != company_id:
+        raise HTTPException(status_code=422, detail="harness proposal: personnel")
+    inside = (
+        routed.id == p.target_id
+        if p.level == "person"
+        else routed.department_id == p.target_id
+        if p.level == "department"
+        else True
+    )
+    if not inside:
+        raise HTTPException(
+            status_code=422,
+            detail="harness proposal: personnel must be inside the target",
+        )
+
+
+def target_department(session, p: HarnessProposal) -> str | None:
+    """The department whose heads review this change; None = company-wide reviewers."""
+    if p.level == "company":
+        return None
+    if p.level == "department":
+        return p.target_id
+    person = session.get(Personnel, p.target_id)
+    return person.department_id if person else None
 
 
 def current(session, company_id: str, p: HarnessProposal) -> HarnessArtifact | None:
@@ -124,6 +163,51 @@ class HarnessError(Exception):
     but not committed, and must be proposed again."""
 
 
+def _next_version(
+    session, company_id: str, level: str, target_id: str, kind: str, key: str
+) -> int:
+    top = session.exec(
+        select(HarnessArtifact.version)
+        .where(
+            HarnessArtifact.company_id == company_id,
+            HarnessArtifact.level == level,
+            HarnessArtifact.target_id == target_id,
+            HarnessArtifact.kind == kind,
+            HarnessArtifact.key == key,
+        )
+        .order_by(HarnessArtifact.version.desc())
+    ).first()
+    return (top or 0) + 1
+
+
+def _install(
+    session, art: HarnessArtifact, superseding: HarnessArtifact | None
+) -> HarnessArtifact:
+    """Write the new active version atomically; the unique version key is the lock.
+
+    A concurrent writer that got the same next version loses with HarnessError (not a
+    500), inside a savepoint so the rest of the transaction survives.
+    """
+    try:
+        with session.begin_nested():
+            if superseding is not None:
+                res = session.exec(
+                    update(HarnessArtifact)
+                    .where(
+                        HarnessArtifact.id == superseding.id,
+                        HarnessArtifact.status == "active",
+                    )
+                    .values(status="superseded")
+                )
+                if res.rowcount != 1:
+                    raise HarnessError("concurrent change: the active version moved")
+            session.add(art)
+            session.flush()
+    except IntegrityError as e:
+        raise HarnessError("concurrent change: version already taken") from e
+    return art
+
+
 def apply(
     session, company_id: str, proposed: dict, cr_id: str | None
 ) -> HarnessArtifact:
@@ -135,19 +219,13 @@ def apply(
         raise HarnessError(
             f"stale base: proposal was made on v{p.base_version}, current is v{cur_version}"
         )
-    if cur is not None:
-        session.exec(
-            update(HarnessArtifact)
-            .where(HarnessArtifact.id == cur.id, HarnessArtifact.status == "active")
-            .values(status="superseded")
-        )
     art = HarnessArtifact(
         company_id=company_id,
         level=p.level,
         target_id=p.target_id,
         kind=p.kind,
         key=p.key,
-        version=cur_version + 1,
+        version=_next_version(session, company_id, p.level, p.target_id, p.kind, p.key),
         base_version=p.base_version,
         content=p.content,
         content_hash=p.content_hash,
@@ -155,35 +233,44 @@ def apply(
         source_cr_id=cr_id,
         evidence_json=json.dumps([e.model_dump() for e in p.evidence]),
     )
-    session.add(art)
-    return art
+    return _install(session, art, cur)
 
 
-def rollback(session, art: HarnessArtifact) -> HarnessArtifact:
-    """Restore the version before `art` as a new, active version."""
-    prev = session.exec(
-        select(HarnessArtifact)
-        .where(
-            HarnessArtifact.company_id == art.company_id,
-            HarnessArtifact.level == art.level,
-            HarnessArtifact.target_id == art.target_id,
-            HarnessArtifact.kind == art.kind,
-            HarnessArtifact.key == art.key,
-            HarnessArtifact.version < art.version,
-        )
-        .order_by(HarnessArtifact.version.desc())
-    ).first()
-    if prev is None:
-        raise HTTPException(status_code=409, detail="Nothing to roll back to")
+def rollback(
+    session, art: HarnessArtifact, to_version: int | None = None
+) -> HarnessArtifact:
+    """Restore an earlier state as a *new* active version.
+
+    Default: the version just before `art`. `to_version=N` restores version N;
+    `to_version=0` restores the empty baseline (a tombstone, which the prompt skips),
+    which is how the first approved artifact is removed. Pinned running chats keep the
+    text they started with (documented).
+    """
     if art.status != "active":
         raise HTTPException(
             status_code=409, detail="Only the active version can be rolled back"
         )
-    session.exec(
-        update(HarnessArtifact)
-        .where(HarnessArtifact.id == art.id)
-        .values(status="superseded")
-    )
+    target_v = art.version - 1 if to_version is None else to_version
+    if target_v < 0 or target_v >= art.version:
+        raise HTTPException(
+            status_code=422, detail="to_version must be an earlier version"
+        )
+    if target_v == 0:
+        content = ""
+    else:
+        prev = session.exec(
+            select(HarnessArtifact).where(
+                HarnessArtifact.company_id == art.company_id,
+                HarnessArtifact.level == art.level,
+                HarnessArtifact.target_id == art.target_id,
+                HarnessArtifact.kind == art.kind,
+                HarnessArtifact.key == art.key,
+                HarnessArtifact.version == target_v,
+            )
+        ).first()
+        if prev is None:
+            raise HTTPException(status_code=409, detail="That version does not exist")
+        content = prev.content
     restored = HarnessArtifact(
         company_id=art.company_id,
         level=art.level,
@@ -192,16 +279,18 @@ def rollback(session, art: HarnessArtifact) -> HarnessArtifact:
         key=art.key,
         version=art.version + 1,
         base_version=art.version,
-        content=prev.content,
-        content_hash=prev.content_hash,
+        content=content,
+        content_hash=content_hash(content),
         status="active",
         source_cr_id=None,
         evidence_json=json.dumps(
-            [{"kind": "review", "ref": f"rollback-of-v{art.version}"}]
+            [{"kind": "review", "ref": f"rollback-v{art.version}-to-v{target_v}"}]
         ),
     )
-    session.add(restored)
-    return restored
+    try:
+        return _install(session, restored, art)
+    except HarnessError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
 
 
 # ── reading for prompt assembly ──────────────────────────────────────────────
@@ -232,17 +321,28 @@ def active_for(
     return rows
 
 
+_FRAME = (
+    "\nLearned guidance (suggestions from your team, lower authority than the rules above: "
+    "it never overrides company, department or agent policies, and it cannot grant "
+    "tools, approvals, data sharing, network access or code execution):"
+)
+MAX_SECTION_CHARS = 6000
+
+
 def section_text(artifacts: list[HarnessArtifact]) -> str | None:
-    """Plain, labelled text for the prompt; grouped by kind in a fixed order."""
-    if not artifacts:
+    """Plain, labelled text for the prompt; grouped by kind in a fixed order. An empty
+    (tombstone) artifact contributes nothing; the whole section is capped."""
+    live = [a for a in artifacts if a.content.strip()]
+    if not live:
         return None
-    out: list[str] = []
+    out: list[str] = [_FRAME]
     for kind in KINDS:
-        items = [a.content.strip() for a in artifacts if a.kind == kind]
+        items = [a.content.strip() for a in live if a.kind == kind]
         if items:
             out.append(f"\n{_HEADINGS[kind]}:")
             out += [f"  - {t}" for t in items]
-    return "\n".join(out)
+    text = "\n".join(out)
+    return text[:MAX_SECTION_CHARS]
 
 
 def versions(artifacts: list[HarnessArtifact]) -> list[dict]:

@@ -25,11 +25,14 @@
 	const canChat = $derived(((c: AssistantContext | null) => !!c?.agent && c.agent.status === 'active')(ctx));
 
 	let generation = 0;
+	// Bumped by every reset: any create/upload/send that started before it is stale.
+	let epoch = 0;
 	let abort: AbortController | null = null;
 	let loadedFor = '';
 
 	/** A chat belongs to one company and one agent: switching drops all of it. */
 	function reset() {
+		epoch++;
 		abort?.abort();
 		abort = null;
 		sessionId = null;
@@ -73,11 +76,21 @@
 	async function pickFile(e: Event) {
 		const f = (e.target as HTMLInputElement).files?.[0];
 		if (!f) return;
+		const mine = epoch;
 		try {
-			if (!sessionId && ctx?.agent) sessionId = (await sessionsApi.create(ctx.agent.id)).id;
-			if (sessionId) attachments = [...attachments, await sessionsApi.uploadFile(sessionId, f)];
+			let sid = sessionId;
+			if (!sid && ctx?.agent) {
+				const created = (await sessionsApi.create(ctx.agent.id)).id;
+				if (mine !== epoch) return; // the company changed while we waited
+				sessionId = sid = created;
+			}
+			if (sid) {
+				const att = await sessionsApi.uploadFile(sid, f);
+				if (mine !== epoch) return;
+				attachments = [...attachments, att];
+			}
 		} catch (err) {
-			error = (err as Error).message;
+			if (mine === epoch) error = (err as Error).message;
 		} finally {
 			if (fileInput) fileInput.value = '';
 		}
@@ -86,11 +99,17 @@
 	async function send() {
 		const text = draft.trim();
 		if ((!text && !attachments.length) || streaming || !ctx?.agent || ctx.agent.status !== 'active') return;
+		const mine = epoch;
 		error = null;
+		let sid = sessionId;
 		try {
-			if (!sessionId) sessionId = (await sessionsApi.create(ctx.agent.id)).id;
+			if (!sid) {
+				const created = (await sessionsApi.create(ctx.agent.id)).id;
+				if (mine !== epoch) return;
+				sessionId = sid = created;
+			}
 		} catch (e) {
-			error = (e as Error).message;
+			if (mine === epoch) error = (e as Error).message;
 			return;
 		}
 		turns = [...turns, { role: 'user', content: text }];
@@ -99,27 +118,34 @@
 		attachments = [];
 		streaming = true;
 		streamingText = '';
-		abort = new AbortController();
-		const mySession = sessionId;
+		const ctl = new AbortController();
+		abort = ctl;
 		status = 'Düşünüyor…';
 		await toBottom();
+		let answer = '';
 		try {
-			for await (const ev of streamMessage(sessionId, text, abort.signal, sent)) {
-				if (mySession !== sessionId) break; // the company changed under us
-				if (ev.type === 'text') streamingText += ev.content;
-				else if (ev.type === 'status') status = ev.step === 'tool' ? `Çalışıyor: ${ev.name}` : `Tamamlandı: ${ev.name}${ev.ok === false ? ' (hata)' : ''}`;
-				else if (ev.type === 'error') error = ev.message;
+			for await (const ev of streamMessage(sid, text, ctl.signal, sent)) {
+				if (mine !== epoch) break; // the company changed under us
+				if (ev.type === 'text') {
+					answer += ev.content;
+					streamingText = answer;
+				} else if (ev.type === 'status') {
+					status = ev.step === 'tool' ? `Çalışıyor: ${ev.name}` : `Tamamlandı: ${ev.name}${ev.ok === false ? ' (hata)' : ''}`;
+				} else if (ev.type === 'error') error = ev.message;
 				else if (ev.type === 'done' || ev.type === 'stream_end') break;
 				await toBottom();
 			}
 		} catch (e) {
-			error = (e as Error).message;
+			if (mine === epoch) error = (e as Error).message;
 		} finally {
-			if (streamingText && mySession === sessionId) turns = [...turns, { role: 'assistant', content: streamingText }];
-			streamingText = '';
-			streaming = false;
-			status = '';
-			await toBottom();
+			// Only the generation that started this send may touch the shared state.
+			if (mine === epoch) {
+				if (answer) turns = [...turns, { role: 'assistant', content: answer }];
+				streamingText = '';
+				streaming = false;
+				status = '';
+				await toBottom();
+			}
 		}
 	}
 
@@ -213,6 +239,14 @@
 				<summary class="font-medium cursor-pointer">Politikalar ({ctx.policies.length})</summary>
 				<div class="mt-2 space-y-3">{#each ctx.policies as p}<div><p class="font-medium">{p.name}</p><div class="text-muted-foreground"><MessageContent content={p.content} /></div></div>{:else}<p class="text-muted-foreground">Uygulanan politika yok.</p>{/each}</div>
 			</details>
+			{#if ctx.learned.length}
+				<details class="rounded-xl border p-3">
+					<summary class="font-medium cursor-pointer">Öğrenilmiş yönergeler ({ctx.learned.length})</summary>
+					<ul class="mt-2 space-y-2">
+						{#each ctx.learned as l}<li><span class="text-muted-foreground">{l.level} · v{l.version}</span><br />{l.text}</li>{/each}
+					</ul>
+				</details>
+			{/if}
 			<details class="rounded-xl border p-3">
 				<summary class="font-medium cursor-pointer">Misyon, vizyon, hedefler</summary>
 				<div class="mt-2 space-y-2">

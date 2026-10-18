@@ -6,6 +6,17 @@ sidebar_position: 99
 
 The platform's changes, newest first. For technical detail see the repository's commit history and `docs/adr/` records.
 
+## v1.5 — 18 October 2026: department view, learned guidance, multi-company authorisation
+
+- **Assistant view (ADR-0022 §7):** the new `assistant_user` role; chat with their own assistant, send files, status events and "my context". Company-wide lists, developer credentials and installation-wide settings are closed to this role. → [Assistant](/guide/assistant)
+- **Learned guidance (ADR-0022 §2):** the `harness` change-request type; four allowed kinds, versioned storage, rollback, per-chat version pinning. Guidance enters the prompt framed as lower-authority suggestions.
+- **Multi-company authorisation:** policies, skills, departments, memberships, flows, sessions, invites, token minting, Git, audit, A2A, task streams, journal, dashboard and Telegram are now tied to the role in the owning company. Every endpoint requires sign-in (protected by a test).
+- **Evaluation (ADR-0023):** gateway failures (timeout, connection, unparseable reply, cut stream) are written to the audit; deterministic judges, success intervals and the **Evaluation** page.
+- **A2A:** the target agent's result does not reach the chat or the requester until the responsible human approves it.
+- **Security:** chat output HTML is sanitised synchronously and fails closed; Git sync uses a separate working copy per connection; the legacy admin-identity endpoints follow the same rules.
+
+**Limits:** the proposer/probe/judge half of the learning loop, an outputs list and sources panel, the herdr plugin and the local Assistant folder do not exist yet. → [Known limits](/developer-notes/known-limits)
+
 ## v1.4 — 18 October 2026: Authorisation hardening, evaluation, monorepo
 
 - **Change requests:** company and role checks, scope (a department head only for their own department), the same person cannot approve both stages, one winner on concurrent approval.

@@ -117,7 +117,7 @@ def _may_decide(session, user: User, req: A2ARequest) -> bool:
 def _result_visible(session, user: User, req: A2ARequest) -> bool:
     """The result is released to the requesting side only once it is approved; until
     then only those who may decide on it can read it."""
-    return req.status in ("completed", "rejected") or _may_decide(session, user, req)
+    return req.status == "completed" or _may_decide(session, user, req)
 
 
 def _own_request(session, user: User, req_id: str) -> A2ARequest:

@@ -127,6 +127,23 @@ def my_context(company_id: str | None = None, user: User = Depends(get_current_u
             ).all():
                 colleagues.append({"name": c.name, "role": c.title or c.role})
 
+        learned: list[dict] = []
+        if agent is not None:
+            from services import harness as _h
+            from services.policy_engine import _department_chain
+
+            chain = list(reversed(_department_chain(session, agent.department_id)))
+            for art in _h.active_for(session, agent, chain):
+                if art.content.strip():
+                    learned.append(
+                        {
+                            "kind": art.kind,
+                            "level": art.level,
+                            "version": art.version,
+                            "text": art.content[:500],
+                        }
+                    )
+
         policies = [
             {"name": name, "content": body[:_MAX_POLICY_CHARS]}
             for name, body in applicable_policies(
@@ -155,6 +172,7 @@ def my_context(company_id: str | None = None, user: User = Depends(get_current_u
                 "colleagues": colleagues,
             },
             "policies": policies,
+            "learned": learned,
             "company": {
                 "name": company.name if company else None,
                 "mission": _text(meta.get("mission")),

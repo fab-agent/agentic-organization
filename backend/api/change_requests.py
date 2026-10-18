@@ -66,13 +66,17 @@ def _claim(session, cr: ChangeRequest, expected: str, new: str) -> None:
 
 
 def _validate_proposed(
-    session, company_id: str, proposed: dict, change_type: str | None = None
+    session,
+    company_id: str,
+    proposed: dict,
+    change_type: str | None = None,
+    personnel_id: str | None = None,
 ) -> None:
     """Relations named in a proposal must belong to the request's own company."""
     if change_type == "harness":
         # Typed artifact: allowlisted kinds, hash bound, evidence by reference.
         p = harness.parse_proposal(proposed)
-        harness.check_target(session, company_id, p)
+        harness.check_target(session, company_id, p, personnel_id)
         return
     dept_id = proposed.get("department_id")
     if dept_id is not None:
@@ -86,15 +90,34 @@ def _validate_proposed(
             raise HTTPException(status_code=422, detail="Unknown responsible person")
 
 
+def _review_scope(session, cr: ChangeRequest, target: Personnel | None):
+    """(company_wide_only, department_id) for the reviewers of this request.
+
+    Normally the target agent's department. A harness change is reviewed where it
+    takes effect: a company-level artifact by company-wide reviewers only, a
+    department-level one by that department's heads.
+    """
+    if cr.change_type == "harness":
+        try:
+            p = harness.parse_proposal(json.loads(cr.proposed_json))
+        except HTTPException:
+            return True, None
+        if p.level == "company":
+            return True, None
+        return False, harness.target_department(session, p)
+    return False, target.department_id if target else None
+
+
 def _require_stage1(session, user: User, cr: ChangeRequest) -> None:
     """Department-level approver of the target's department, not the proposer."""
     target = session.get(Personnel, cr.personnel_id)
     if not target or target.company_id != cr.company_id:
         # A vanished or moved target must not fall through to an unscoped approver.
         raise HTTPException(status_code=409, detail="Change request target is gone")
-    dept = target.department_id
+    company_only, dept = _review_scope(session, cr, target)
     allowed = any(
-        m.role in STAGE1_ROLES and (m.scope_id is None or m.scope_id == dept)
+        m.role in STAGE1_ROLES
+        and (m.scope_id is None or (not company_only and m.scope_id == dept))
         for m in _memberships(session, user.id, cr.company_id)
     )
     if not allowed:
@@ -127,12 +150,18 @@ def _can_see_cr(session, user: User, cr: ChangeRequest) -> bool:
     if cr.created_by_user_id == user.id or cr.dept_head_id == user.id:
         return True
     person = session.get(Personnel, cr.personnel_id)
+    company_only, dept = _review_scope(session, cr, person)
     for m in _memberships(session, user.id, cr.company_id):
         if m.role in STAGE1_ROLES and (
-            m.scope_id is None or (person and m.scope_id == person.department_id)
+            m.scope_id is None or (not company_only and m.scope_id == dept)
         ):
             return True
-        if m.role == "agent_owner" and person and m.scope_id == person.id:
+        if (
+            m.role == "agent_owner"
+            and person
+            and m.scope_id == person.id
+            and cr.change_type != "harness"  # a harness change is read where it lands
+        ):
             return True
     return False
 
@@ -237,7 +266,9 @@ def create_change_request(
         if not personnel or personnel.company_id != company_id:
             raise HTTPException(status_code=404, detail="Personnel not found")
 
-        _validate_proposed(session, company_id, body.proposed, body.change_type)
+        _validate_proposed(
+            session, company_id, body.proposed, body.change_type, body.personnel_id
+        )
         cr = ChangeRequest(
             company_id=company_id,
             personnel_id=body.personnel_id,
@@ -414,7 +445,11 @@ def admin_approve(
         # Mark admin approval
         _claim(session, cr, "dept_head_approved", "admin_approved")
         _validate_proposed(
-            session, cr.company_id, json.loads(cr.proposed_json), cr.change_type
+            session,
+            cr.company_id,
+            json.loads(cr.proposed_json),
+            cr.change_type,
+            cr.personnel_id,
         )
         cr.status = "admin_approved"
         cr.admin_id = current_user.id

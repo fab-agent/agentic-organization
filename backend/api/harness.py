@@ -98,8 +98,14 @@ def get_artifact(artifact_id: str, user: User = Depends(get_current_user)):
 
 
 @router.post("/{artifact_id}/rollback", status_code=201)
-def rollback_artifact(artifact_id: str, user: User = Depends(get_current_user)):
-    """Restore the version before this (active) one as a new version."""
+def rollback_artifact(
+    artifact_id: str,
+    to_version: int | None = None,
+    user: User = Depends(get_current_user),
+):
+    """Restore an earlier state as a new version: the previous one by default,
+    `to_version=N` for version N, `to_version=0` for the empty baseline (removes the
+    guidance). Chats already running keep the text they started with."""
     with get_session() as session:
         a = session.get(HarnessArtifact, artifact_id)
         if not a or not authz.is_member(session, user.id, a.company_id):
@@ -107,7 +113,7 @@ def rollback_artifact(artifact_id: str, user: User = Depends(get_current_user)):
         authz.require_role(
             session, user.id, a.company_id, authz.FINAL, company_wide=True
         )
-        restored = svc.rollback(session, a)
+        restored = svc.rollback(session, a, to_version)
         log_action(
             session,
             "rollback",

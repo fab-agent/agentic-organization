@@ -10,6 +10,7 @@ export type AssistantContext = {
 		colleagues: { name: string; role: string | null }[];
 	};
 	policies: { name: string; content: string }[];
+	learned: { kind: string; level: string; version: number; text: string }[];
 	company: {
 		name: string | null;
 		mission: string | null;

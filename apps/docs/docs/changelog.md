@@ -6,6 +6,17 @@ sidebar_position: 99
 
 Platformun değişiklikleri, yeniden eskiye doğru. Teknik ayrıntı için depodaki commit geçmişine ve `docs/adr/` kayıtlarına bakın.
 
+## v1.5 — 18 Ekim 2026: Birim görünümü, öğrenilmiş yönergeler, çok şirketli yetki
+
+- **Asistan görünümü (ADR-0022 §7):** yeni `assistant_user` rolü; kendi asistanıyla sohbet, dosya gönderme, durum olayları ve "benim bağlamım". Şirket geneli listeler, geliştirici kimlik bilgileri ve sunucu geneli ayarlar bu rol için kapalıdır. → [Asistan](/guide/assistant)
+- **Öğrenilmiş yönergeler (ADR-0022 §2):** `harness` türünde değişiklik talebi; dört izinli tür, sürümlü depolama, geri alma, sohbet başına sürüm sabitleme. Yönerge istemde "düşük yetkili öneri" çerçevesiyle girer.
+- **Çok şirketli yetki:** politika, yetenek, bölüm, üyelik, akış, oturum, davet, token üretimi, Git, denetim, A2A, görev akışı, günlük, panel ve Telegram artık sahibi olan şirketin rolüne bağlı. Her uç oturum ister (testle korunur).
+- **Değerlendirme (ADR-0023):** gateway hataları (zaman aşımı, bağlantı, çözümlenemeyen yanıt, kesilen akış) denetime yazılır; kesin yargıçlar, başarı aralıkları ve **Değerlendirme** sayfası.
+- **A2A:** hedef ajanın sonucu sorumlu insan onaylayana kadar sohbete düşmez ve istekte bulunana gösterilmez.
+- **Güvenlik:** sohbet çıktısı HTML'i eşzamanlı ve hataya kapalı biçimde temizlenir; Git eşitleme bağlantı başına ayrı çalışma kopyası kullanır; eski yönetici-kimlik uçları aynı kurallara bağlandı.
+
+**Sınırlar:** öğrenme döngüsünün öneri/deneme/yargı yarısı, çıktı listesi ve kaynak paneli, herdr eklentisi ve yerel Asistan klasörü henüz yok. → [Bilinen sınırlar](/developer-notes/known-limits)
+
 ## v1.4 — 18 Ekim 2026: Yetki sertleştirme, değerlendirme, monorepo
 
 - **Değişiklik talepleri:** şirket ve rol denetimi, kapsam (bölüm yöneticisi yalnızca kendi bölümü), aynı kişinin iki aşamayı onaylayamaması, eşzamanlı onayda tek kazanan.

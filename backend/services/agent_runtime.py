@@ -12,7 +12,7 @@ import json
 import logging
 from collections.abc import AsyncGenerator
 
-from sqlmodel import select
+from sqlmodel import select, update
 
 from database import get_session
 from models import (
@@ -87,11 +87,31 @@ def _load_harness(
             chain = list(reversed(_department_chain(session, dept.id))) if dept else []
             arts = harness.active_for(session, person, chain)
             if sess is not None:
-                sess.harness_json = _json.dumps([a.id for a in arts])
-                session.add(sess)
+                # Claim the pin atomically: of two concurrent first turns only one
+                # writes it, the other adopts the winner's set.
+                won = session.exec(
+                    update(AgentSession)
+                    .where(
+                        AgentSession.id == sess.id, AgentSession.harness_json.is_(None)
+                    )
+                    .values(harness_json=_json.dumps([a.id for a in arts]))
+                )
                 session.commit()
+                if won.rowcount != 1:
+                    session.refresh(sess)
+                    return [
+                        art
+                        for art in (
+                            session.get(HarnessArtifact, aid)
+                            for aid in _json.loads(sess.harness_json or "[]")
+                        )
+                        if art is not None and art.company_id == person.company_id
+                    ]
             return arts
-    except Exception:  # noqa: BLE001 - learned guidance is optional
+    except Exception as e:  # noqa: BLE001 - learned guidance is optional
+        _log.warning(
+            "harness_load_failed", extra={"extra": {"error": type(e).__name__}}
+        )
         return []
 
 
