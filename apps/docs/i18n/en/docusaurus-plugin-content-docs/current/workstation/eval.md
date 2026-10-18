@@ -42,7 +42,7 @@ Access: founder; company-wide executive and department head; a department-scoped
 ## Not there yet
 
 - **Judges:** the first slice works. Deterministic judges derived from the diagnosis (`answered`, `no_tool_error`, `no_policy_block`) and `GET /eval/personas/{id}/summary` (success share with a confidence interval; abstentions counted apart; suspect layers are hypotheses, not fault rates). A TypeSafe `Noul` text judge exists in code but is not wired to stored session text, and no criterion counts before calibration.
-- **Viewer page:** none; API only.
+- **Viewer page:** a first version exists (**Evaluation**, department head and above): agent picker, success shares, runs table and findings. No timeline or trend charts yet.
 - **Replay:** re-running with only one layer changed to confirm a suspicion; needs the probe environment, which does not exist.
 - Guardrail and data layers emit no events, so they show as "no signal".
 - Gateway failures (timeout, connection, unparseable reply, cut stream) and empty output / `length` finishes are recorded on the `gateway_call` event and become `model` findings; a client hang-up is shown but not scored.

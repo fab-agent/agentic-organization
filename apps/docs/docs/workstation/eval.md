@@ -42,7 +42,7 @@ Erişim: kurucu; şirket genelindeki yönetici ve bölüm yöneticisi; yalnızca
 ## Henüz yok
 
 - **Yargıçlar:** ilk dilim çalışır. Teşhisten türeyen kesin yargıçlar (`answered`, `no_tool_error`, `no_policy_block`) ve `GET /eval/personas/{id}/summary` (güven aralıklı başarı payı; belirsiz kararlar ayrı sayılır; şüpheli katmanlar varsayımdır, hata oranı değildir). TypeSafe `Noul` ile metin yargıcı kodda var ama saklanan oturum metnine bağlı değil ve kalibrasyondan geçmeden hiçbir ölçüt sayılmaz.
-- **Görüntüleme sayfası:** yok; yalnızca API.
+- **Görüntüleme sayfası:** ilk sürüm var (**Değerlendirme**, bölüm yöneticisi ve üstü): ajan seçimi, başarı payları, çalışma tablosu ve bulgular. Zaman çizelgesi ve eğilim grafikleri yok.
 - **Tekrar oynatma (replay):** şüpheyi doğrulamak için tek katmanı değiştirip yeniden çalıştırma; probe ortamı gerekir, yok.
 - Guardrail ve veri katmanları olay üretmediği için "sinyal yok" görünür.
 - Gateway hataları (zaman aşımı, bağlantı, çözümlenemeyen yanıt, kesilen akış) ve boş çıktı/`length` bitişi `gateway_call` olayında kayıtlıdır ve `model` katmanına bulgu olur; istemcinin bağlantıyı kapatması gösterilir ama puanlanmaz.
