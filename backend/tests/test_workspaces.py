@@ -453,3 +453,16 @@ def test_fails_closed_without_a_runtime(world, monkeypatch):
     r = world["client"].post("/workspaces")
     assert r.status_code == 503
     assert world["client"].get("/workspaces/me").status_code == 404  # nothing created
+
+
+def test_attachment_header_is_safe_for_unicode_and_control_characters():
+    from api.workspaces import _attachment
+
+    h = _attachment("rapor çok önemli 📄.xlsx")
+    assert 'filename="rapor ' in h and "filename*=UTF-8''" in h and h.isascii()
+    bad = _attachment('a"b\r\nSet-Cookie: x=1;.txt')
+    assert "\r" not in bad and "\n" not in bad and '"b' not in bad
+    assert (
+        _attachment("\x00\x01")
+        == "attachment; filename=\"file\"; filename*=UTF-8''file"
+    )

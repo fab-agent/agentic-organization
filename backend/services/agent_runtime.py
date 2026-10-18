@@ -60,6 +60,9 @@ def _build_message_with_attachments(
 # ── System prompt builder ─────────────────────────────────────────────────────
 
 
+from services.rag_service import _ALL  # noqa: E402
+
+
 def source_refs(knowledge: list[dict]) -> list[dict]:
     """What the person may see about the knowledge behind an answer: kind, date and a
     short redacted snippet. Never the full chunk, scores or internal ids."""
@@ -143,6 +146,7 @@ def build_system_prompt_assembled(
     skip: frozenset[str] | set[str] = frozenset(),
     session_ref: str | None = None,
     sources_out: list | None = None,
+    viewer=_ALL,
 ) -> Assembled:
     """The prompt as named, token-counted sections (see services.context_assembly).
 
@@ -152,7 +156,7 @@ def build_system_prompt_assembled(
     knowledge: list[dict] = []
     # Never block session start due to a memory / RAG failure.
     try:
-        memories = load_agent_memories(person.id, limit=3)
+        memories = load_agent_memories(person.id, limit=3, viewer=viewer)
     except Exception:
         pass
     if rag_query:
@@ -160,7 +164,11 @@ def build_system_prompt_assembled(
             from services.rag_service import search as rag_search
 
             knowledge = rag_search(
-                rag_query, company_id=company_id, personnel_id=person.id, k=4
+                rag_query,
+                company_id=company_id,
+                personnel_id=person.id,
+                k=4,
+                viewer=viewer,
             )
             if sources_out is not None:
                 sources_out.extend(source_refs(knowledge))
@@ -261,6 +269,7 @@ def build_system_prompt(
     intent_message: str | None = None,
     session_ref: str | None = None,
     sources_out: list | None = None,
+    viewer=_ALL,
 ) -> str:
     """`intent_message` is the user's first message of a session: when given, and the
     classifier is enabled, Jev may narrow the prompt (and skip retrieval). Callers
@@ -288,6 +297,7 @@ def build_system_prompt(
         skip=skip,
         session_ref=session_ref,
         sources_out=sources_out,
+        viewer=viewer,
     )
     # Sizes only, never text: shows where the tokens go for every real prompt.
     _log.info(
@@ -1282,6 +1292,8 @@ async def run_session(
                 intent_message=user_message if not history_rows else None,
                 session_ref=session_id,
                 sources_out=sources,
+                # What this chat may recall is its own person's work, nobody else's.
+                viewer=sess.user_id,
             )
         )
         tool_defs = build_tool_definitions(list(skills))

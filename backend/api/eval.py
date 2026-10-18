@@ -103,17 +103,22 @@ def _feedback(session, company_id: str, persona_id: str) -> dict:
     from datetime import datetime, timedelta
 
     from models import LearningSignal
+    from services import work_review as wr
 
+    if not wr.enabled(session, company_id):
+        # Review switched off: collected feedback is not shown either.
+        return {"enough": False, "people": None}
     since = datetime.utcnow() - timedelta(days=30)
     rows = session.exec(
         select(LearningSignal.kind, LearningSignal.user_id).where(
+            LearningSignal.withdrawn_at.is_(None),
             LearningSignal.company_id == company_id,
             LearningSignal.persona_id == persona_id,
             LearningSignal.created_at >= since,
         )
     ).all()
     people = len({u for _, u in rows})
-    if people < GROUP_FLOOR:
+    if people < max(GROUP_FLOOR, wr.min_group()):
         return {"enough": False, "people": people if people == 0 else None}
     count = lambda k: sum(1 for kind, _ in rows if kind == k)  # noqa: E731
     return {

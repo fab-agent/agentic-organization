@@ -30,6 +30,9 @@ BATCH_SIZE = 200
 MIN_RECORDS_FOR_SEARCH = 20
 TOP_K_DEFAULT = 5
 
+# `viewer` default of `search`: no owner filter (system callers, never a chat).
+_ALL = object()
+
 _model = None
 
 
@@ -141,6 +144,7 @@ def _insert_one(
     company_id: str | None,
     chunk_text: str,
     created_at: str,
+    owner_user_id: str | None = None,
 ) -> bool:
     """Embed and insert one record. Returns False if source_id already exists."""
     from sqlmodel import select
@@ -159,6 +163,7 @@ def _insert_one(
         source_id=source_id,
         personnel_id=personnel_id,
         company_id=company_id,
+        owner_user_id=owner_user_id,
         chunk_text=chunk_text[:2000],
         embedding=vec.tobytes(),
         created_at=datetime.fromisoformat(created_at),
@@ -175,6 +180,13 @@ def _insert_one(
             ).bindparams(v=_vec_literal(vec), id=rec.id)
         )
     return True
+
+
+def _memory_owner(session, mem) -> str | None:
+    from models import AgentSession
+
+    sess = session.get(AgentSession, mem.session_id) if mem.session_id else None
+    return sess.user_id if sess else None
 
 
 def index_new_records() -> dict[str, int]:
@@ -211,6 +223,7 @@ def index_new_records() -> dict[str, int]:
                     None,
                     text_,
                     msg.created_at.isoformat(),
+                    sess.user_id,
                 ):
                     stats["session_message"] += 1
                 last_at = msg.created_at.isoformat()
@@ -241,6 +254,7 @@ def index_new_records() -> dict[str, int]:
                     task.company_id,
                     f"{task.title}\n\n{result}",
                     task.created_at.isoformat(),
+                    task.requester_user_id,
                 ):
                     stats["task_result"] += 1
                 last_at = task.created_at.isoformat()
@@ -269,6 +283,7 @@ def index_new_records() -> dict[str, int]:
                     person.company_id,
                     text_,
                     mem.created_at.isoformat(),
+                    _memory_owner(session, mem),
                 ):
                     stats["agent_memory"] += 1
                 last_at = mem.created_at.isoformat()
@@ -288,7 +303,9 @@ def index_new_records() -> dict[str, int]:
 # ── Search ───────────────────────────────────────────────────────────────────
 
 
-def _search_pg(session, q_vec: np.ndarray, company_id, personnel_id, k: int):
+def _search_pg(
+    session, q_vec: np.ndarray, company_id, personnel_id, k: int, viewer=_ALL
+):
     from sqlalchemy import text
 
     clauses = ["embedding_vec IS NOT NULL"]
@@ -299,6 +316,12 @@ def _search_pg(session, q_vec: np.ndarray, company_id, personnel_id, k: int):
     if personnel_id:
         clauses.append("personnel_id = :pid")
         params["pid"] = personnel_id
+    if viewer is not _ALL:
+        if viewer is None:
+            clauses.append("owner_user_id IS NULL")
+        else:
+            clauses.append("owner_user_id = :viewer")
+            params["viewer"] = viewer
     sql = (
         "SELECT source_type, source_id, chunk_text, created_at, "
         "1 - (embedding_vec <=> (:q)::vector) AS score "
@@ -308,7 +331,9 @@ def _search_pg(session, q_vec: np.ndarray, company_id, personnel_id, k: int):
     return session.exec(text(sql).bindparams(**params)).all()
 
 
-def _search_bruteforce(session, q_vec: np.ndarray, company_id, personnel_id, k: int):
+def _search_bruteforce(
+    session, q_vec: np.ndarray, company_id, personnel_id, k: int, viewer=_ALL
+):
     from sqlmodel import select
 
     from models import EmbeddingRecord
@@ -321,6 +346,12 @@ def _search_bruteforce(session, q_vec: np.ndarray, company_id, personnel_id, k: 
         )
     if personnel_id:
         q = q.where(EmbeddingRecord.personnel_id == personnel_id)
+    if viewer is not _ALL:
+        q = q.where(
+            EmbeddingRecord.owner_user_id.is_(None)
+            if viewer is None
+            else EmbeddingRecord.owner_user_id == viewer
+        )
     rows = session.exec(q).all()
     if not rows:
         return []
@@ -347,10 +378,15 @@ def search(
     company_id: str | None = None,
     personnel_id: str | None = None,
     k: int = TOP_K_DEFAULT,
+    viewer=_ALL,
 ) -> list[dict]:
     """
     Top-k semantically similar records. Returns [] on cold start
     (< MIN_RECORDS_FOR_SEARCH indexed) or any error (never raises).
+
+    `viewer` is the human the answer is for: a user id (only that person's own
+    records), None (only records without a human owner), or omitted (no owner filter:
+    system callers only, never a chat).
     """
     try:
         from sqlmodel import func, select
@@ -367,9 +403,11 @@ def search(
 
             q_vec = embed(query)
             if _is_postgres():
-                rows = _search_pg(session, q_vec, company_id, personnel_id, k)
+                rows = _search_pg(session, q_vec, company_id, personnel_id, k, viewer)
             else:
-                rows = _search_bruteforce(session, q_vec, company_id, personnel_id, k)
+                rows = _search_bruteforce(
+                    session, q_vec, company_id, personnel_id, k, viewer
+                )
 
         return [
             {

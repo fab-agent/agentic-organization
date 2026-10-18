@@ -104,6 +104,8 @@ is not treated as such.
 
 > **Status (2026-10-18):** signal intake exists (`LearningSignal`, `POST /learning/signals`): thumbs and short corrections from the owner of the chat, tied to their person record, redacted, deduplicated per answer and kind, capped per day, only when work review is on, erased with the person, withdrawable. Nothing consumes the signals yet.
 
+> **Hardening (2026-10-18):** a chat recalls only its own person's past work (`EmbeddingRecord.owner_user_id`, set at indexing, backfilled by migration; ownerless chats read only the ownerless tier); memories follow the same rule. Withdrawn signals leave a content-free tombstone so the daily intake cap cannot be reset; edits per signal are bounded; a thumb is one exclusive vote; collected feedback is hidden when work review is switched off, withheld below the configured group size, and purged by retention. The group floor is small-group suppression, not anonymity: a differencing observer can still infer a single change.
+
 ### 4. Poisoning and judge integrity
 
 Signals are deduplicated, capped per person, and need a minimum number of

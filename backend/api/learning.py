@@ -42,7 +42,9 @@ def my_signals(user: User = Depends(get_current_user)):
     with get_session() as session:
         rows = session.exec(
             select(LearningSignal)
-            .where(LearningSignal.user_id == user.id)
+            .where(
+                LearningSignal.user_id == user.id, LearningSignal.withdrawn_at.is_(None)
+            )
             .order_by(LearningSignal.created_at.desc())
             .limit(200)
         ).all()
@@ -52,14 +54,6 @@ def my_signals(user: User = Depends(get_current_user)):
 @router.delete("/signals/{message_id}/{kind}", status_code=204)
 def withdraw_signal(message_id: str, kind: str, user: User = Depends(get_current_user)):
     with get_session() as session:
-        sig = session.exec(
-            select(LearningSignal).where(
-                LearningSignal.user_id == user.id,
-                LearningSignal.message_id == message_id,
-                LearningSignal.kind == kind,
-            )
-        ).first()
-        if not sig:
+        if not learning.withdraw(session, user.id, message_id, kind):
             raise HTTPException(status_code=404, detail="Not found")
-        session.delete(sig)
         session.commit()

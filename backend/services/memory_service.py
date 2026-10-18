@@ -110,13 +110,23 @@ def _call_summary_llm(
     return resp.choices[0].message.content or ""
 
 
-def load_agent_memories(personnel_id: str, limit: int = 3) -> list[str]:
-    """Return the most recent memory summaries for an agent."""
+_ALL = object()
+
+
+def load_agent_memories(personnel_id: str, limit: int = 3, viewer=_ALL) -> list[str]:
+    """Return the most recent memory summaries for an agent.
+
+    `viewer` is the human the chat is for: their own sessions' summaries only; None =
+    summaries without a human owner; omitted = no filter (system callers).
+    """
     with get_session() as db:
-        rows = db.exec(
-            select(AgentMemory)
-            .where(AgentMemory.personnel_id == personnel_id)
-            .order_by(AgentMemory.created_at.desc())
-            .limit(limit)
-        ).all()
+        q = select(AgentMemory).where(AgentMemory.personnel_id == personnel_id)
+        if viewer is not _ALL:
+            q = q.outerjoin(AgentSession, AgentSession.id == AgentMemory.session_id)
+            q = q.where(
+                AgentSession.user_id.is_(None)
+                if viewer is None
+                else AgentSession.user_id == viewer
+            )
+        rows = db.exec(q.order_by(AgentMemory.created_at.desc()).limit(limit)).all()
         return [r.summary for r in rows]

@@ -33,6 +33,7 @@
 	let epoch = 0;
 	let abort: AbortController | null = null;
 	let loadedFor = '';
+	let activeFor = ''; // the company the page last started working for (set synchronously)
 
 	/** A chat belongs to one company and one agent: switching drops all of it. */
 	function reset() {
@@ -57,8 +58,9 @@
 			const next = await assistantApi.context(company || undefined);
 			if (mine !== generation) return; // a newer load or a company switch won
 			ctx = next;
-			outputs = await outputsApi.list(company || undefined);
+			const out = await outputsApi.list(company || undefined);
 			if (mine !== generation) return;
+			outputs = out;
 			loadedFor = company;
 			error = null;
 		} catch (e) {
@@ -70,8 +72,10 @@
 	onMount(load);
 	$effect(() => {
 		const company = activeCompanyId;
-		if (!company || company === loadedFor) return;
-		if (loadedFor) reset();
+		if (!company || company === activeFor) return;
+		// Every effective switch drops the old chat, even if its context never finished loading.
+		if (activeFor) reset();
+		activeFor = company;
 		load();
 	});
 
@@ -164,16 +168,16 @@
 	async function rate(i: number, kind: SignalKind) {
 		const t = turns[i];
 		if (!t?.id) return;
+		const mine = epoch;
+		const mid = t.id;
 		try {
-			if (t.rated === kind) {
-				await learningApi.withdraw(t.id, kind);
-				turns[i] = { ...t, rated: undefined };
-			} else {
-				await learningApi.give(t.id, kind);
-				turns[i] = { ...t, rated: kind };
-			}
+			const next = t.rated === kind ? undefined : kind;
+			if (next) await learningApi.give(mid, kind);
+			else await learningApi.withdraw(mid, kind);
+			// Apply only if it is still the same company and the same answer.
+			if (mine === epoch && turns[i]?.id === mid) turns[i] = { ...turns[i], rated: next };
 		} catch (e) {
-			error = (e as Error).message;
+			if (mine === epoch) error = (e as Error).message;
 		}
 	}
 

@@ -375,6 +375,18 @@ def list_files(
     }
 
 
+def _attachment(name: str) -> str:
+    """A header-safe attachment disposition: no control characters, an ASCII fallback
+    plus the real (UTF-8) name in the RFC 5987 form."""
+    from urllib.parse import quote
+
+    clean = (
+        "".join(ch for ch in name if ch.isprintable() and ch not in '"\\/;') or "file"
+    )
+    ascii_name = clean.encode("ascii", "replace").decode().replace("?", "_")
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(clean)}"
+
+
 @router.get("/{workspace_id}/files/{path:path}")
 def download_file(
     workspace_id: str,
@@ -395,11 +407,13 @@ def download_file(
             raise HTTPException(status_code=413, detail="File too large")
         _audit(session, ws, user, "workspace_file_download", path=rel, size=len(data))
         session.commit()
-    name = rel.rsplit("/", 1)[-1].replace('"', "")
     return Response(
         content=data,
         media_type="application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+        headers={
+            "Content-Disposition": _attachment(rel.rsplit("/", 1)[-1]),
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

@@ -210,3 +210,99 @@ def test_an_identical_signal_inserted_meanwhile_is_idempotent(
     r = _give(auth_client, world, "thumbs_up")
     assert r.status_code == 201
     assert db_session.query(LearningSignal).count() == 1
+
+
+def test_withdrawing_frees_no_daily_quota_and_rewrites_are_bounded(
+    auth_client, world, db_session, monkeypatch
+):
+    monkeypatch.setattr(learning, "MAX_PER_DAY", 1)
+    assert _give(auth_client, world, "thumbs_up").status_code == 201
+    auth_client.delete(
+        f"/learning/signals/{world['answer']}/thumbs_up", headers=world["h"]
+    )
+    assert (
+        _give(auth_client, world, "thumbs_down").status_code == 429
+    )  # the withdrawn one still counts
+    monkeypatch.setattr(learning, "MAX_PER_DAY", 50)
+    for i in range(learning.MAX_REVISIONS):
+        assert _give(auth_client, world, "correction", f"note {i}").status_code == 201
+    assert (
+        _give(auth_client, world, "correction", "one more").status_code == 201
+    )  # creation, revision 0
+    for i in range(learning.MAX_REVISIONS):
+        _give(auth_client, world, "correction", f"rev {i}")
+    assert _give(auth_client, world, "correction", "too many").status_code == 429
+
+
+def test_a_thumb_is_one_mutually_exclusive_vote(auth_client, world, db_session):
+    _give(auth_client, world, "thumbs_up")
+    _give(auth_client, world, "thumbs_down")
+    live = [
+        s["kind"]
+        for s in auth_client.get("/learning/signals/me", headers=world["h"]).json()
+    ]
+    assert live == ["thumbs_down"]
+
+
+def test_a_person_removed_from_the_company_cannot_contribute(
+    auth_client, world, db_session
+):
+    from models import CompanyMember
+
+    db_session.query(CompanyMember).filter_by(user_id=world["user"].id).delete()
+    db_session.commit()
+    assert _give(auth_client, world, "thumbs_up").status_code == 404
+
+
+def test_switching_review_off_hides_collected_feedback_and_retention_purges(
+    auth_client, world, db_session
+):
+    from datetime import datetime, timedelta
+
+    for i in range(3):
+        u = make_user(db_session, email=f"q{i}@a.com", name=f"Q{i}")
+        make_member(db_session, u.id, world["co"], role="user")
+        h = make_personnel(
+            db_session, world["co"], name=f"QH{i}", slug=f"qh{i}", type="human"
+        )
+        h.user_id = u.id
+        sess = AgentSession(personnel_id=world["agent"], user_id=u.id)
+        db_session.add_all([h, sess])
+        db_session.flush()
+        m = SessionMessage(session_id=sess.id, role="assistant", content="a")
+        db_session.add(m)
+        db_session.commit()
+        assert (
+            _give(auth_client, world, "thumbs_up", mid=m.id, h=_h(u)).status_code == 201
+        )
+    assert (
+        auth_client.get(f"/eval/personas/{world['agent']}/summary").json()["feedback"][
+            "enough"
+        ]
+        is True
+    )
+    wr.set_enabled(db_session, world["co"], False)
+    db_session.commit()
+    assert (
+        auth_client.get(f"/eval/personas/{world['agent']}/summary").json()["feedback"][
+            "enough"
+        ]
+        is False
+    )
+    # retention: old signals are purged even though review is off
+    for r in db_session.query(LearningSignal).all():
+        r.created_at = datetime.utcnow() - timedelta(days=4000)
+        db_session.add(r)
+    db_session.commit()
+    wr.purge_expired()
+    db_session.expire_all()
+    assert db_session.query(LearningSignal).count() == 0
+
+
+def test_erasing_the_agent_persona_erases_feedback_about_it(
+    auth_client, world, db_session
+):
+    _give(auth_client, world, "thumbs_up")
+    wr.erase_person(db_session, world["agent"])
+    db_session.commit()
+    assert db_session.query(LearningSignal).count() == 0

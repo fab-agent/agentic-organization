@@ -17,12 +17,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import func, select
 
 from models import AgentSession, LearningSignal, Personnel, SessionMessage, User
+from services import authz
 from services import work_review as wr
 from services.redact import redact
 
 KINDS = ("thumbs_up", "thumbs_down", "correction")
 MAX_NOTE = 500
 MAX_PER_DAY = 50
+MAX_REVISIONS = 5  # edits of one signal; beyond it the signal is final
 
 
 def record(
@@ -51,6 +53,8 @@ def record(
         raise HTTPException(
             status_code=409, detail="No person record is linked to this account"
         )
+    if not authz.is_member(session, user.id, agent.company_id):
+        raise HTTPException(status_code=404, detail="Not found")
     if not wr.enabled(session, agent.company_id):
         # With review off the loop produces and uses nothing (ADR-0022 §3).
         raise HTTPException(
@@ -68,10 +72,18 @@ def record(
         )
     ).first()
     if existing:
+        if existing.revisions >= MAX_REVISIONS:
+            raise HTTPException(
+                status_code=429, detail="Too many changes to this feedback"
+            )
+        existing.revisions += 1
+        existing.withdrawn_at = None
         existing.note = clean if kind == "correction" else None
         session.add(existing)
+        _drop_other_thumb(session, user.id, message_id, kind)
         return existing
     since = datetime.utcnow() - timedelta(days=1)
+    # Counts every signal created today, withdrawn or not: withdrawing frees no quota.
     today = session.exec(
         select(func.count())
         .select_from(LearningSignal)
@@ -105,4 +117,42 @@ def record(
         if won is None:
             raise HTTPException(status_code=409, detail="Conflict, try again")
         return won
+    _drop_other_thumb(session, user.id, message_id, kind)
     return sig
+
+
+def _drop_other_thumb(session, user_id: str, message_id: str, kind: str) -> None:
+    """A thumb is one mutually exclusive vote: giving one withdraws the opposite."""
+    if kind not in ("thumbs_up", "thumbs_down"):
+        return
+    other = "thumbs_down" if kind == "thumbs_up" else "thumbs_up"
+    row = session.exec(
+        select(LearningSignal).where(
+            LearningSignal.user_id == user_id,
+            LearningSignal.message_id == message_id,
+            LearningSignal.kind == other,
+            LearningSignal.withdrawn_at.is_(None),
+        )
+    ).first()
+    if row:
+        row.withdrawn_at = datetime.utcnow()
+        row.note = None
+        session.add(row)
+
+
+def withdraw(session, user_id: str, message_id: str, kind: str) -> bool:
+    """Withdraw = a content-free tombstone (it still counts toward today's intake)."""
+    row = session.exec(
+        select(LearningSignal).where(
+            LearningSignal.user_id == user_id,
+            LearningSignal.message_id == message_id,
+            LearningSignal.kind == kind,
+            LearningSignal.withdrawn_at.is_(None),
+        )
+    ).first()
+    if not row:
+        return False
+    row.withdrawn_at = datetime.utcnow()
+    row.note = None
+    session.add(row)
+    return True

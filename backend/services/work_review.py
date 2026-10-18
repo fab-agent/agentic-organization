@@ -256,6 +256,13 @@ def purge_expired(today: date | None = None) -> int:
                 )
             )
             n += res.rowcount or 0
+            res = session.execute(
+                delete(LearningSignal).where(
+                    LearningSignal.company_id == cid,
+                    LearningSignal.created_at < cutoff_at,
+                )
+            )
+            n += res.rowcount or 0
         session.commit()
     return n
 
@@ -270,6 +277,13 @@ def erase_person(session, personnel_id: str) -> int:
             ).rowcount
             or 0
         )
+    # Feedback given about this persona's answers goes with the persona.
+    n += (
+        session.execute(
+            delete(LearningSignal).where(LearningSignal.persona_id == personnel_id)
+        ).rowcount
+        or 0
+    )
     # Stored run diagnoses of this persona (ADR-0023) are derived data as well.
     n += (
         session.execute(

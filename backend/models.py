@@ -629,6 +629,10 @@ class EmbeddingRecord(SQLModel, table=True):
     source_id: str = Field(unique=True, index=True)
     personnel_id: str | None = Field(default=None, index=True)
     company_id: str | None = Field(default=None, index=True)
+    # Whose work this came from (the chat's/task's human). A chat retrieves only its
+    # own person's records; NULL = no human owner (legacy, channel, shared tier) and
+    # is read only by ownerless sessions.
+    owner_user_id: str | None = Field(default=None, index=True)
     chunk_text: str
     embedding: bytes  # float32[dim].tobytes()
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -899,4 +903,8 @@ class LearningSignal(SQLModel, table=True):
     message_id: str = Field(foreign_key="sessionmessage.id")
     kind: str  # thumbs_up | thumbs_down | correction
     note: str | None = None
+    # Withdrawing keeps a content-free tombstone so the daily intake cap cannot be
+    # reset by delete/re-add; counts and readers ignore withdrawn rows.
+    withdrawn_at: datetime | None = None
+    revisions: int = Field(default=0)
     created_at: datetime = Field(default_factory=datetime.utcnow)
