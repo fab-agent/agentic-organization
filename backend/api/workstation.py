@@ -286,6 +286,8 @@ def _personas_for_user(
         select(CompanyMember).where(CompanyMember.user_id == user.id)
     ).all()
     for m in memberships:
+        if authz.is_assistant_only(session, user.id, m.company_id):
+            continue  # the department view gets no terminal/developer credentials
         my_person = session.exec(
             select(Personnel).where(
                 Personnel.user_id == user.id,
@@ -719,16 +721,13 @@ def audit_chain_anchors(user: User = Depends(get_current_user)):
         mine = set(_final_companies(session, user))
     if not mine:
         raise HTTPException(status_code=403, detail="Yönetici yetkisi gerekli")
-    full = audit_anchor.check_anchors()
-    chains = {k: v for k, v in full["chains"].items() if k in mine}
-    issues = [i for i in full["issues"] if i["chain_key"] in mine]
-    internal = audit_chain.verify_all()["chains"]
-    internal_ok = all(v["ok"] for k, v in internal.items() if k in mine)
+    # Only the caller's own chains are selected, before any work is done.
+    full = audit_anchor.check_anchors(only=mine)
     return {
-        "ok": not issues and internal_ok,
-        "chains": chains,
-        "issues": issues,
-        "internal_verify_ok": internal_ok,
+        "ok": full["ok"],
+        "chains": full["chains"],
+        "issues": full["issues"],
+        "internal_verify_ok": full["internal_verify_ok"],
     }
 
 
@@ -738,6 +737,7 @@ def audit_chain_anchor_now(user: User = Depends(get_current_user)):
     from services import audit_anchor
 
     with get_session() as session:
-        if not _final_companies(session, user):
-            raise HTTPException(status_code=403, detail="Yönetici yetkisi gerekli")
-    return audit_anchor.anchor_heads()
+        mine = set(_final_companies(session, user))
+    if not mine:
+        raise HTTPException(status_code=403, detail="Yönetici yetkisi gerekli")
+    return audit_anchor.anchor_heads(only=mine)

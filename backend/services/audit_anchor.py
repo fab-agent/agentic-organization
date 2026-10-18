@@ -36,11 +36,15 @@ GLOBAL_CHAIN = "__global__"
 # ── chain heads ─────────────────────────────────────────────────────────────
 
 
-def _chain_heads() -> dict[str, dict]:
-    """{chain_key: {"seq": int, "head": str}} — the last event of every chain."""
+def _chain_heads(only: set[str] | None = None) -> dict[str, dict]:
+    """{chain_key: {"seq": int, "head": str}} — the last event of every chain
+    (or only of `only`: selected before any work is done)."""
     heads: dict[str, dict] = {}
     with get_session() as session:
-        keys = list(session.exec(select(AuditEvent.chain_key).distinct()).all())
+        q = select(AuditEvent.chain_key).distinct()
+        if only is not None:
+            q = q.where(AuditEvent.chain_key.in_(only))
+        keys = list(session.exec(q).all())
         for k in keys:
             row = session.exec(
                 select(AuditEvent)
@@ -119,9 +123,9 @@ def _push_s3(cfg: dict, body: bytes) -> None:
 # ── public API ──────────────────────────────────────────────────────────────
 
 
-def anchor_heads() -> dict:
+def anchor_heads(only: set[str] | None = None) -> dict:
     """Append the current chain heads to the local log + push to S3 if configured."""
-    heads = _chain_heads()
+    heads = _chain_heads(only)
     if not heads:
         return {"anchored": 0}
     ts = datetime.now(UTC).isoformat()
@@ -165,15 +169,15 @@ def _last_anchored() -> dict[str, dict]:
     return out
 
 
-def check_anchors() -> dict:
+def check_anchors(only: set[str] | None = None) -> dict:
     """
     Compare live chain heads to the last anchored ones. An issue = the chain
     shrank (truncation) or its head at the anchored seq changed (rewrite).
     """
     from services import audit_chain
 
-    live = _chain_heads()
-    anchored = _last_anchored()
+    live = _chain_heads(only)
+    anchored = {k: v for k, v in _last_anchored().items() if only is None or k in only}
     issues: list[dict] = []
     chains: dict[str, dict] = {}
 
@@ -197,7 +201,11 @@ def check_anchors() -> dict:
         if issue:
             issues.append({"chain_key": k, "issue": issue})
 
-    internal = audit_chain.verify_all()
+    if only is None:
+        internal = audit_chain.verify_all()
+    else:
+        chains_ok = {k: audit_chain.verify(k) for k in sorted(only) if k in live}
+        internal = {"ok": all(c["ok"] for c in chains_ok.values())}
     return {
         "ok": not issues and internal["ok"],
         "chains": chains,

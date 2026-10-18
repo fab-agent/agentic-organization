@@ -34,7 +34,7 @@ router = APIRouter(prefix="/a2a", tags=["a2a"])
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _req_to_dict(req: A2ARequest, session) -> dict:
+def _req_to_dict(req: A2ARequest, session, *, show_result: bool = True) -> dict:
     from_agent = session.get(Personnel, req.from_agent_id)
     to_agent = session.get(Personnel, req.to_agent_id)
     approver = session.get(Personnel, req.approver_id) if req.approver_id else None
@@ -49,7 +49,7 @@ def _req_to_dict(req: A2ARequest, session) -> dict:
         "task": req.task,
         "context": req.context,
         "status": req.status,
-        "result": req.result,
+        "result": req.result if show_result else None,
         "approver_id": req.approver_id,
         "approver_name": approver.name if approver else None,
         "approved_at": req.approved_at.isoformat() if req.approved_at else None,
@@ -114,6 +114,12 @@ def _may_decide(session, user: User, req: A2ARequest) -> bool:
     )
 
 
+def _result_visible(session, user: User, req: A2ARequest) -> bool:
+    """The result is released to the requesting side only once it is approved; until
+    then only those who may decide on it can read it."""
+    return req.status in ("completed", "rejected") or _may_decide(session, user, req)
+
+
 def _own_request(session, user: User, req_id: str) -> A2ARequest:
     req = session.get(A2ARequest, req_id)
     if not req or not _can_see_req(session, user, req):
@@ -148,7 +154,10 @@ def list_requests(
         rows = _visible_requests(
             session, user, company_id, approver_id, status, from_agent_id, to_agent_id
         )
-        return [_req_to_dict(r, session) for r in rows]
+        return [
+            _req_to_dict(r, session, show_result=_result_visible(session, user, r))
+            for r in rows
+        ]
 
 
 def _visible_requests(
@@ -251,7 +260,10 @@ def create_request(body: A2ARequestCreate, user: User = Depends(get_current_user
 @router.get("/requests/{req_id}")
 def get_request(req_id: str, user: User = Depends(get_current_user)):
     with get_session() as session:
-        return _req_to_dict(_own_request(session, user, req_id), session)
+        req = _own_request(session, user, req_id)
+        return _req_to_dict(
+            req, session, show_result=_result_visible(session, user, req)
+        )
 
 
 @router.post("/requests/{req_id}/approve")

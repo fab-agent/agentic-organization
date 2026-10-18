@@ -218,11 +218,17 @@
 	const userRole   = $derived(currentUser?.companies.find(c => c.company_id === active?.id)?.role ?? 'user');
 	const roleWeight = $derived(ROLE_WEIGHT[userRole] ?? 1);
 	// ADR-0022 §7: departments get a small view (chat, files, outputs, my context).
-	const isAssistant = $derived(userRole === 'assistant_user');
+	// Restricted only when assistant_user is the person's *only* role in the company.
+	const isAssistant = $derived(
+		(() => {
+			const rows = currentUser?.companies.filter((c) => c.company_id === active?.id) ?? [];
+			return rows.length > 0 && rows.every((c) => c.role === 'assistant_user');
+		})()
+	);
 	$effect(() => {
 		if (!isAssistant || !authStore.isLoggedIn) return;
 		const p = $page.url.pathname;
-		if (!['/assistant', '/profile', '/login', '/set-password'].some((r) => p.startsWith(r))) goto('/assistant');
+		if (!['/assistant', '/profile', '/login', '/set-password'].some((r) => p === r || p.startsWith(r + '/'))) goto('/assistant');
 	});
 	function can(minRole: string): boolean { return roleWeight >= (ROLE_WEIGHT[minRole] ?? 1); }
 </script>

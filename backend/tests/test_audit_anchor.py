@@ -64,7 +64,7 @@ def test_truncation_is_flagged(client, db_session, monkeypatch):
     monkeypatch.setattr(
         audit_anchor,
         "_chain_heads",
-        lambda: {"c1": {"seq": 1, "head": "deadbeef"}},
+        lambda only=None: {"c1": {"seq": 1, "head": "deadbeef"}},
     )
     check = audit_anchor.check_anchors()
     assert check["ok"] is False
@@ -82,7 +82,7 @@ def test_rewrite_at_anchored_seq_is_flagged(client, db_session, monkeypatch):
     monkeypatch.setattr(
         audit_anchor,
         "_chain_heads",
-        lambda: {"c1": {"seq": 2, "head": "tampered-hash"}},
+        lambda only=None: {"c1": {"seq": 2, "head": "tampered-hash"}},
     )
     check = audit_anchor.check_anchors()
     assert check["ok"] is False
@@ -90,7 +90,10 @@ def test_rewrite_at_anchored_seq_is_flagged(client, db_session, monkeypatch):
 
 
 def test_anchor_endpoints(auth_client, db_session):
-    _event()
+    _event(auth_client._test_company.id)
+    _event(
+        "someone-elses-company"
+    )  # another tenant's chain is neither anchored nor shown
     r = auth_client.post("/audit/chain/anchors")
     assert r.status_code == 202
     assert r.json()["anchored"] == 1
@@ -98,6 +101,7 @@ def test_anchor_endpoints(auth_client, db_session):
     g = auth_client.get("/audit/chain/anchors")
     assert g.status_code == 200
     assert g.json()["ok"] is True
+    assert set(g.json()["chains"]) == {auth_client._test_company.id}
 
 
 def test_anchor_file_is_append_only_ndjson(client, db_session):

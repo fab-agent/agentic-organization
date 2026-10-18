@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
 
 from api.audit import log_action
-from api.auth import get_current_user, require_manager
+from api.auth import get_current_user, require_manager, require_staff
 from core.security import decrypt, encrypt
 from database import get_session
 from models import AppConfig, ProviderKey, User
@@ -25,7 +25,7 @@ from services.provider_service import (
     test_provider_key,
 )
 
-router = APIRouter(tags=["providers"])
+router = APIRouter(tags=["providers"], dependencies=[Depends(require_staff)])
 
 
 # ── Platform Config ────────────────────────────────────────────────────────────

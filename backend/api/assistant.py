@@ -34,7 +34,8 @@ _MAX_POLICY_CHARS = 4000
 
 
 def _my_agent(session, person: Personnel) -> tuple[Personnel, AgentConfig] | None:
-    """The caller's own agent: their workspace agent, else one they are responsible for."""
+    """The caller's own agent: an *active* one they are responsible for (their
+    workspace agent first); an inactive one only when there is no other."""
     rows = session.exec(
         select(Personnel, AgentConfig)
         .join(AgentConfig, AgentConfig.personnel_id == Personnel.id)
@@ -45,7 +46,30 @@ def _my_agent(session, person: Personnel) -> tuple[Personnel, AgentConfig] | Non
         )
         .order_by(AgentConfig.is_workspace_agent.desc(), Personnel.name)
     ).all()
-    return rows[0] if rows else None
+    active = [r for r in rows if r[1].status == "active"]
+    return (active or rows or [None])[0]
+
+
+def _metadata(company: Company | None) -> dict:
+    """Company metadata as a plain dict; malformed or unexpected shapes become {}."""
+    try:
+        meta = (
+            json.loads(company.metadata_json)
+            if company and company.metadata_json
+            else {}
+        )
+    except ValueError:
+        return {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def _text(value, limit: int = 2000) -> str | None:
+    return value[:limit] if isinstance(value, str) else None
+
+
+def _same_company(row, company_id: str):
+    """A referenced row counts only if it belongs to the caller's company."""
+    return row if row is not None and row.company_id == company_id else None
 
 
 @router.get("/context")
@@ -53,18 +77,16 @@ def my_context(company_id: str | None = None, user: User = Depends(get_current_u
     with get_session() as session:
         person, cid = person_for_user(session, user, company_id)
         company = session.get(Company, cid)
-        meta = (
-            json.loads(company.metadata_json)
-            if company and company.metadata_json
-            else {}
-        )
-        dept = (
+        meta = _metadata(company)
+        dept = _same_company(
             session.get(Department, person.department_id)
             if person.department_id
-            else None
+            else None,
+            cid,
         )
-        manager = (
-            session.get(Personnel, person.manager_id) if person.manager_id else None
+        manager = _same_company(
+            session.get(Personnel, person.manager_id) if person.manager_id else None,
+            cid,
         )
 
         mine = _my_agent(session, person)
@@ -135,9 +157,13 @@ def my_context(company_id: str | None = None, user: User = Depends(get_current_u
             "policies": policies,
             "company": {
                 "name": company.name if company else None,
-                "mission": meta.get("mission"),
-                "vision": meta.get("vision"),
-                "goals": meta.get("goals"),
-                "department_goals": dept.goals if dept else None,
+                "mission": _text(meta.get("mission")),
+                "vision": _text(meta.get("vision")),
+                "goals": [g for g in (meta.get("goals") or []) if isinstance(g, str)][
+                    :20
+                ]
+                if isinstance(meta.get("goals"), list)
+                else _text(meta.get("goals")),
+                "department_goals": _text(dept.goals) if dept else None,
             },
         }

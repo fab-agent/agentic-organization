@@ -22,18 +22,47 @@
 	let scroller: HTMLDivElement | undefined = $state();
 
 	const activeCompanyId = $derived(companyStore.active?.id ?? '');
+	const canChat = $derived(((c: AssistantContext | null) => !!c?.agent && c.agent.status === 'active')(ctx));
+
+	let generation = 0;
+	let abort: AbortController | null = null;
+	let loadedFor = '';
+
+	/** A chat belongs to one company and one agent: switching drops all of it. */
+	function reset() {
+		abort?.abort();
+		abort = null;
+		sessionId = null;
+		turns = [];
+		draft = '';
+		attachments = [];
+		streaming = false;
+		streamingText = '';
+		status = '';
+		ctx = null;
+	}
 
 	async function load() {
+		const mine = ++generation;
+		const company = activeCompanyId;
 		try {
-			ctx = await assistantApi.context(activeCompanyId || undefined);
+			const next = await assistantApi.context(company || undefined);
+			if (mine !== generation) return; // a newer load or a company switch won
+			ctx = next;
+			loadedFor = company;
 			error = null;
 		} catch (e) {
+			if (mine !== generation) return;
+			ctx = null;
 			error = (e as Error).message;
 		}
 	}
 	onMount(load);
 	$effect(() => {
-		if (activeCompanyId) load();
+		const company = activeCompanyId;
+		if (!company || company === loadedFor) return;
+		if (loadedFor) reset();
+		load();
 	});
 
 	async function toBottom() {
@@ -56,7 +85,7 @@
 
 	async function send() {
 		const text = draft.trim();
-		if ((!text && !attachments.length) || streaming || !ctx?.agent) return;
+		if ((!text && !attachments.length) || streaming || !ctx?.agent || ctx.agent.status !== 'active') return;
 		error = null;
 		try {
 			if (!sessionId) sessionId = (await sessionsApi.create(ctx.agent.id)).id;
@@ -70,10 +99,13 @@
 		attachments = [];
 		streaming = true;
 		streamingText = '';
+		abort = new AbortController();
+		const mySession = sessionId;
 		status = 'Düşünüyor…';
 		await toBottom();
 		try {
-			for await (const ev of streamMessage(sessionId, text, undefined, sent)) {
+			for await (const ev of streamMessage(sessionId, text, abort.signal, sent)) {
+				if (mySession !== sessionId) break; // the company changed under us
 				if (ev.type === 'text') streamingText += ev.content;
 				else if (ev.type === 'status') status = ev.step === 'tool' ? `Çalışıyor: ${ev.name}` : `Tamamlandı: ${ev.name}${ev.ok === false ? ' (hata)' : ''}`;
 				else if (ev.type === 'error') error = ev.message;
@@ -83,7 +115,7 @@
 		} catch (e) {
 			error = (e as Error).message;
 		} finally {
-			if (streamingText) turns = [...turns, { role: 'assistant', content: streamingText }];
+			if (streamingText && mySession === sessionId) turns = [...turns, { role: 'assistant', content: streamingText }];
 			streamingText = '';
 			streaming = false;
 			status = '';
@@ -105,7 +137,9 @@
 	<section class="flex flex-col min-h-0 rounded-xl border">
 		<header class="px-4 py-3 border-b">
 			<h1 class="font-display text-xl tracking-tight">{ctx?.agent?.name ?? 'Asistan'}</h1>
-			{#if ctx && !ctx.agent}
+			{#if ctx && ctx.agent && ctx.agent.status !== 'active'}
+				<p class="text-sm text-muted-foreground">Asistanınız şu an etkin değil ({ctx.agent.status}).</p>
+			{:else if ctx && !ctx.agent}
 				<p class="text-sm text-muted-foreground">Size atanmış bir asistan henüz yok. Yöneticinizle konuşun.</p>
 			{/if}
 		</header>
@@ -138,7 +172,7 @@
 			{/if}
 			<div class="flex items-end gap-2">
 				<input bind:this={fileInput} type="file" class="hidden" accept=".pdf,.txt,.md,.csv,image/*" onchange={pickFile} />
-				<Button variant="outline" size="icon" aria-label="Dosya ekle" disabled={!ctx?.agent || streaming} onclick={() => fileInput?.click()}>
+				<Button variant="outline" size="icon" aria-label="Dosya ekle" disabled={!canChat || streaming} onclick={() => fileInput?.click()}>
 					<Paperclip class="w-4 h-4" />
 				</Button>
 				<textarea
@@ -147,10 +181,10 @@
 					placeholder="Bir şey sorun veya bir iş verin…"
 					bind:value={draft}
 					onkeydown={onKey}
-					disabled={!ctx?.agent}
+					disabled={!canChat}
 					aria-label="Mesaj"
 				></textarea>
-				<Button onclick={send} disabled={streaming || !ctx?.agent || (!draft.trim() && !attachments.length)} aria-label="Gönder">
+				<Button onclick={send} disabled={streaming || !canChat || (!draft.trim() && !attachments.length)} aria-label="Gönder">
 					<Send class="w-4 h-4" />
 				</Button>
 			</div>

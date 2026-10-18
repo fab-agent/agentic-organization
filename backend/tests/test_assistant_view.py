@@ -269,3 +269,182 @@ def test_stored_tool_data_is_stripped_for_the_department_view(
     # the founder (a manager of the agent) still sees the detail
     full = auth_client.get(f"/sessions/{sid}").text
     assert "9999" in full
+
+
+# ═══ Codex review #4: "my assistant" is not management of everyone's work ═══
+
+
+def test_a_shared_agent_does_not_expose_other_peoples_work(
+    auth_client, world, db_session
+):
+    from models import SessionMessage
+
+    other = make_user(db_session, email="other@a.com", name="Other")
+    make_member(db_session, other.id, world["co"], role="user")
+    db_session.commit()
+    theirs = auth_client.post(
+        "/sessions", json={"personnel_id": world["agent"]}, headers=_h(other)
+    ).json()["id"]
+    db_session.add(
+        SessionMessage(session_id=theirs, role="user", content="their private question")
+    )
+    db_session.commit()
+    h = world["h"]
+    assert auth_client.get(f"/sessions/{theirs}", headers=h).status_code == 404
+    assert auth_client.delete(f"/sessions/{theirs}", headers=h).status_code == 404
+    assert all(
+        s["id"] != theirs for s in auth_client.get("/sessions", headers=h).json()
+    )
+    assert (
+        auth_client.get(
+            f"/sessions/memories?personnel_id={world['agent']}", headers=h
+        ).status_code
+        == 200
+    )
+    assert (
+        auth_client.get(
+            f"/sessions/memories?personnel_id={world['agent']}", headers=h
+        ).json()
+        == []
+    )
+    # agent-level surfaces are management, not "my assistant"
+    ag = world["agent"]
+    assert auth_client.get(f"/journal/{ag}", headers=h).status_code == 404
+    assert auth_client.get(f"/eval/personas/{ag}/runs", headers=h).status_code == 404
+    assert auth_client.get(f"/flows?company_id={world['co']}", headers=h).json() == []
+    body = {"personnel_id": ag, "name": "x", "schedule": "0 9 * * *", "prompt": "p"}
+    assert (
+        auth_client.post(
+            f"/flows?company_id={world['co']}", json=body, headers=h
+        ).status_code
+        == 403
+    )
+    me = auth_client.get(f"/dashboard/me?company_id={world['co']}", headers=h).json()
+    assert "their private question" not in json.dumps(me)
+
+
+def test_the_department_view_gets_no_developer_credentials(auth_client, world):
+    h, ag = world["h"], world["agent"]
+    assert auth_client.get("/workstation/personas", headers=h).json()["personas"] == []
+    assert auth_client.post(
+        "/workstation/persona-token", json={"personnel_id": ag}, headers=h
+    ).status_code in (403, 404)
+    assert (
+        auth_client.post(
+            "/gateway/persona-token", params={"personnel_id": ag}, headers=h
+        ).status_code
+        == 404
+    )
+    cmd = {"personnel_id": ag, "kind": "stop"}
+    assert (
+        auth_client.post("/workstation/commands", json=cmd, headers=h).status_code
+        == 403
+    )
+
+
+def test_instance_level_surfaces_are_closed_to_a_department_only_account(
+    auth_client, world
+):
+    h = world["h"]
+    for path in (
+        "/databases",
+        "/providers/status",
+        "/backup/config",
+        "/social-media/config",
+        "/builtin-tools",
+        "/providers/custom",
+    ):
+        assert auth_client.get(path, headers=h).status_code == 403, path
+    r = auth_client.post("/companies", json={"name": "Mine", "slug": "mine"}, headers=h)
+    assert r.status_code == 403
+
+
+def test_other_roles_lift_the_restriction_explicitly(auth_client, world, db_session):
+    # union of roles: assistant_user restricts only when it is the person's only role
+    make_member(db_session, world["user"].id, world["co"], role="user")
+    db_session.commit()
+    assert (
+        auth_client.get(
+            f"/personnel?company_id={world['co']}", headers=world["h"]
+        ).status_code
+        == 200
+    )
+    assert auth_client.get("/builtin-tools", headers=world["h"]).status_code == 200
+
+
+def test_a2a_result_is_withheld_until_approved(auth_client, world, db_session):
+    from models import A2ARequest
+
+    co = world["co"]
+    src = auth_client.post(
+        "/sessions", json={"personnel_id": world["agent"]}, headers=world["h"]
+    ).json()["id"]
+    dst = make_personnel(db_session, co, name="Dst", slug="dst", type="agent")
+    make_agent_config(db_session, dst.id)
+    req = A2ARequest(
+        from_session_id=src,
+        from_agent_id=world["agent"],
+        to_agent_id=dst.id,
+        task="t",
+        status="pending_result_approval",
+        result="UNAPPROVED RESULT",
+    )
+    db_session.add(req)
+    db_session.commit()
+    mine = auth_client.get(f"/a2a/requests/{req.id}", headers=world["h"])
+    assert mine.status_code == 200 and mine.json()["result"] is None
+    assert "UNAPPROVED" not in json.dumps(
+        auth_client.get("/a2a/requests", headers=world["h"]).json()
+    )
+    # the founder may review it before approving
+    assert (
+        auth_client.get(f"/a2a/requests/{req.id}").json()["result"]
+        == "UNAPPROVED RESULT"
+    )
+    req.status = "completed"
+    db_session.add(req)
+    db_session.commit()
+    assert (
+        auth_client.get(f"/a2a/requests/{req.id}", headers=world["h"]).json()["result"]
+        == "UNAPPROVED RESULT"
+    )
+
+
+def test_stream_projection_rebuilds_allowed_fields_only():
+    from api.sessions import project_event
+
+    out = project_event(
+        {
+            "type": "text",
+            "content": "hi",
+            "debug": "chain of thought",
+            "tool_args": {"q": 1},
+        }
+    )
+    assert out == {"type": "text", "content": "hi"}
+    assert project_event({"type": "stream_end", "trace": "x"}) == {"type": "stream_end"}
+
+
+def test_context_survives_bad_metadata_and_prefers_an_active_agent(
+    auth_client, world, db_session
+):
+    from models import AgentConfig, Company, Personnel
+
+    co = db_session.get(Company, world["co"])
+    co.metadata_json = "{not json"
+    db_session.add(co)
+    # a second, active agent for the same person; the first becomes inactive
+    first = db_session.query(AgentConfig).filter_by(personnel_id=world["agent"]).one()
+    first.status = "inactive"
+    me = db_session.query(Personnel).filter_by(slug="ayse").one()
+    second_p = make_personnel(
+        db_session, world["co"], name="Second", slug="second", type="agent"
+    )
+    make_agent_config(db_session, second_p.id, responsible_id=me.id)
+    db_session.add(first)
+    db_session.commit()
+    r = auth_client.get("/assistant/context", headers=world["h"])
+    assert r.status_code == 200
+    assert (
+        r.json()["agent"]["name"] == "Second" and r.json()["company"]["mission"] is None
+    )

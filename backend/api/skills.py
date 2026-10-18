@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import select
 
-from api.auth import get_current_user
+from api.auth import get_current_user, require_staff
 from api.personnel import _agent_is_live, _require_direct_agent_edit
 from database import get_session
 from models import (
@@ -75,7 +75,7 @@ PLATFORM_BUILTIN_TOOLS = [
 ]
 
 
-@router.get("/builtin-tools")
+@router.get("/builtin-tools", dependencies=[Depends(require_staff)])
 def list_builtin_tools(_: User = Depends(get_current_user)):
     """Return all platform-implemented builtin tools. Model-agnostic — any provider
     that supports function calling can use these tools."""

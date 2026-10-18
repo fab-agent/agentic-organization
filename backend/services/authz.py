@@ -113,6 +113,10 @@ def can_manage_agent(session, user_id: str, person) -> bool:
     """
     from models import AgentConfig, Personnel
 
+    # The department view is not a management role: "my assistant" is the person's
+    # own agent, not authority over everyone's work on it (see is_my_agent).
+    if is_assistant_only(session, user_id, person.company_id):
+        return False
     if has_role(
         session,
         user_id,
@@ -288,3 +292,26 @@ def deny_assistant(session, user_id: str, company_id: str | None) -> None:
         raise HTTPException(
             status_code=403, detail="Bu görünümde şirket geneli listeler yok"
         )
+
+
+def is_my_agent(session, user_id: str, person) -> bool:
+    """The agent is the one this user is accountable for (responsible human)."""
+    from models import AgentConfig, Personnel
+
+    cfg = session.exec(
+        select(AgentConfig).where(AgentConfig.personnel_id == person.id)
+    ).first()
+    if not cfg or not cfg.responsible_id:
+        return False
+    mine = session.exec(
+        select(Personnel).where(
+            Personnel.user_id == user_id, Personnel.company_id == person.company_id
+        )
+    ).all()
+    return any(p.id == cfg.responsible_id for p in mine)
+
+
+def is_assistant_everywhere(session, user_id: str) -> bool:
+    """Every membership of the user is `assistant_user` (and there is at least one)."""
+    rows = memberships_all(session, user_id)
+    return bool(rows) and all(m.role == "assistant_user" for m in rows)

@@ -153,7 +153,9 @@ def my_dashboard(company_id: str | None = None, user: User = Depends(get_current
 
         # Own chats, plus chats with agents this user is responsible for.
         cond = AgentSession.user_id == user.id
-        if agent_personnel_ids:
+        if agent_personnel_ids and not authz.is_assistant_only(
+            session, user.id, company_id
+        ):
             cond = cond | AgentSession.personnel_id.in_(agent_personnel_ids)
         sessions_q = session.exec(
             select(AgentSession).where(cond).order_by(AgentSession.updated_at.desc())

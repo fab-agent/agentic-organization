@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { marked, Renderer, type Tokens } from 'marked';
+	import DOMPurify from 'dompurify';
+	import { escHtml, previewHtml as previewHtmlSafe, sanitizeHtml, sanitizeSvg } from '$lib/sanitize';
 
 	let { content, streaming = false }: { content: string; streaming?: boolean } = $props();
 
@@ -9,10 +11,8 @@
 	let mermaidReady = $state(false);
 	let copiedMap = $state<Record<string, boolean>>({});
 
-	// ── HTML escape helper ────────────────────────────────────────────────────
-	function escHtml(s: string) {
-		return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-	}
+	const sanitize = (html: string) => sanitizeHtml(DOMPurify, html);
+	const previewHtml = (fragment: string) => previewHtmlSafe(DOMPurify, fragment);
 
 	// ── Custom marked renderer ────────────────────────────────────────────────
 	function buildRenderer() {
@@ -43,7 +43,7 @@
 						<summary>
 							<span>HTML Önizleme</span>
 						</summary>
-						<div class="html-render" id="${previewId}">${text}</div>
+						<div class="html-render" id="${previewId}">${previewHtml(text)}</div>
 					</details>
 				</div>`;
 			}
@@ -64,10 +64,10 @@
 
 			return `<div class="code-wrap">
 				<div class="code-header">
-					<span class="lang-badge">${language || 'code'}</span>
+					<span class="lang-badge">${escHtml(language || 'code')}</span>
 					<button class="copy-btn" data-code="${encodeURIComponent(text)}"><span class="copy-label">Kopyala</span></button>
 				</div>
-				<pre class="code-block"><code class="lang-${language}">${escHtml(text)}</code></pre>
+				<pre class="code-block"><code class="lang-${escHtml(language)}">${escHtml(text)}</code></pre>
 			</div>`;
 		};
 
@@ -100,19 +100,7 @@
 		});
 
 		const raw = marked.parse(text) as string;
-
-		// Sanitize but allow class/data attributes and style
-		if (typeof window !== 'undefined') {
-			const DOMPurify = (window as unknown as { DOMPurify: { sanitize: (h: string, opts: object) => string } }).DOMPurify;
-			if (DOMPurify) {
-				return DOMPurify.sanitize(raw, {
-					ADD_ATTR: ['data-code', 'data-id', 'class', 'id', 'src', 'alt'],
-					ADD_TAGS: ['details', 'summary', 'img'],
-					FORCE_BODY: true,
-				});
-			}
-		}
-		return raw;
+		return sanitize(raw);
 	}
 
 	// ── Mermaid initialization ────────────────────────────────────────────────
@@ -123,7 +111,7 @@
 			startOnLoad: false,
 			theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
 			fontFamily: 'inherit',
-			securityLevel: 'loose',
+			securityLevel: 'strict',
 		});
 		mermaidReady = true;
 	}
@@ -141,7 +129,7 @@
 
 			try {
 				const { svg } = await mermaid.render(`${id}-svg`, code);
-				target.innerHTML = svg;
+				target.innerHTML = sanitizeSvg(DOMPurify, svg);
 				target.setAttribute('data-rendered', 'true');
 				target.className = 'mermaid-rendered';
 			} catch (e) {
@@ -170,8 +158,6 @@
 
 	// ── DOMPurify lazy load ───────────────────────────────────────────────────
 	onMount(async () => {
-		const dp = await import('dompurify');
-		(window as unknown as Record<string, unknown>).DOMPurify = dp.default;
 		await initMermaid();
 	});
 

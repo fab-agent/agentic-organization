@@ -17,6 +17,7 @@ from sqlmodel import select
 from api.auth import get_current_user
 from database import get_session
 from models import AgentConfig, CompanyMember, Personnel, RunDiagnosis, User
+from services import authz
 from services.judges import judge_run, success_interval
 from services.run_reader import RUN_ID, diagnose_and_store, diagnosis_from_row, to_dict
 
@@ -49,7 +50,13 @@ def _persona_company(session, user: User, persona_id: str) -> str:
             Personnel.user_id == user.id, Personnel.company_id == person.company_id
         )
     ).first()
-    allowed = bool(my_person and cfg.responsible_id == my_person.id)
+    # The department view is not a management role (ADR-0022 §7): being "responsible"
+    # for one's own assistant does not open agent-wide diagnoses.
+    allowed = bool(
+        my_person
+        and cfg.responsible_id == my_person.id
+        and not authz.is_assistant_only(session, user.id, person.company_id)
+    )
     for m in mine:
         if m.role == "founder":
             allowed = True

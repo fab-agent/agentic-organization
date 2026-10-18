@@ -79,6 +79,15 @@ def require_manager(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+def require_staff(user: User = Depends(get_current_user)) -> User:
+    """Not available to a department-only account (`assistant_user` everywhere):
+    instance-level data and action surfaces are outside the assistant view."""
+    with get_session() as session:
+        if authz.is_assistant_everywhere(session, user.id):
+            raise HTTPException(status_code=403, detail="Bu görünümde yok")
+    return user
+
+
 def require_founder(user: User = Depends(get_current_user)) -> User:
     with get_session() as session:
         member = session.exec(

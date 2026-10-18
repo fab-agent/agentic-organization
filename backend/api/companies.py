@@ -78,6 +78,9 @@ def list_companies(current_user: User = Depends(get_current_user)):
 @router.post("", status_code=201)
 def create_company(body: CompanyCreate, current_user: User = Depends(get_current_user)):
     with get_session() as session:
+        if authz.is_assistant_everywhere(session, current_user.id):
+            # a department account must not bootstrap itself into a founder elsewhere
+            raise HTTPException(status_code=403, detail="Bu görünümde şirket kurulamaz")
         company = Company(
             name=body.name,
             slug=body.slug,

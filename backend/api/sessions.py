@@ -59,8 +59,10 @@ def project_event(event: dict) -> dict | None:
     """The department view's stream: user-facing status events, never raw reasoning,
     tool arguments or tool results (ADR-0022 §7). Unknown event types are dropped."""
     t = event.get("type")
-    if t in ("text", "stream_end"):
-        return event
+    if t == "text":
+        return {"type": "text", "content": str(event.get("content", ""))}
+    if t == "stream_end":
+        return {"type": "stream_end"}
     if t == "done":
         return {"type": "done", "message_id": event.get("message_id")}
     if t == "error":
@@ -188,7 +190,7 @@ def create_session(body: SessionCreate, user: User = Depends(get_current_user)):
         person = _agent_for(session, user, body.personnel_id)
         if authz.is_assistant_only(
             session, user.id, person.company_id
-        ) and not authz.can_manage_agent(session, user.id, person):
+        ) and not authz.is_my_agent(session, user.id, person):
             # the department view chats with the person's own agent only
             raise HTTPException(status_code=404, detail="Personnel not found")
         if not authz.agent_is_active(session, body.personnel_id):

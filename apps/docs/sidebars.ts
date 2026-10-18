@@ -18,6 +18,7 @@ const sidebars: SidebarsConfig = {
         'guide/agents',
         'guide/skills-and-policies',
         'guide/chat',
+        'guide/assistant',
         'guide/flows',
         'guide/tasks-and-inbox',
         'guide/delegation',
