@@ -254,7 +254,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DIST_TAG: ${{ needs.version.outputs.latest == 'true' && 'latest' || (needs.version.outputs.prerelease == 'true' && 'next' || 'maintenance') }}
-        run: npm publish out/*.tgz --ignore-scripts --tag "$DIST_TAG"
+        run: npm publish ./out/*.tgz --ignore-scripts --tag "$DIST_TAG"
 
   release:
     needs: [version, npm-publish, images-publish, cli-bundle]
