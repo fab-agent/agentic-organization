@@ -340,7 +340,7 @@ class PolicyLinkSet(BaseModel):
 class ChangeRequestCreate(BaseModel):
     personnel_id: str
     # Closed set: anything else cannot be serialized or applied, so fail closed.
-    change_type: Literal["agent_config", "skill", "policy"]
+    change_type: Literal["agent_config", "skill", "policy", "harness"]
     title: str
     proposed: dict  # will be JSON-serialized
     original: dict | None = None

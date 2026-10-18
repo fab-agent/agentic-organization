@@ -42,6 +42,7 @@ from api.eval import router as eval_router
 from api.flows import router as flows_router
 from api.gateway import router as gateway_router
 from api.git_sync import router as git_router
+from api.harness import router as harness_router
 from api.inbox import router as inbox_router
 from api.journal import router as journal_router
 from api.mcp_server import router as mcp_router
@@ -123,6 +124,7 @@ app.include_router(workstation_router)
 app.include_router(workspaces_router)
 app.include_router(work_review_router)
 app.include_router(assistant_router)
+app.include_router(harness_router)
 app.include_router(mcp_router)
 app.include_router(well_known_router)
 app.include_router(git_router)

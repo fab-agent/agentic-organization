@@ -66,6 +66,8 @@ cross-company access, wrong role, and the same person approving twice.
 
 ### 2. Harness changes are typed artifacts, not free strings
 
+> **Status (2026-10-18):** the storage and approval half is built: change type `harness` (strict model with an allowlist of four kinds, base version, content hash, evidence by reference, credential-shaped content refused), the versioned `HarnessArtifact` table, activation on stage-2 approval with a stale base failing closed, rollback as a new version (final approvers), a `harness` prompt section whose versions each assembly reports, and per-chat pinning of the versions used. **Not built:** the proposer / probe / judge loop that creates proposals, the hidden-holdout probe environment, signal intake (§3–§5), and reading the versions into the audit run record beyond the `context_served` report.
+
 A `harness` change request carries a target (person / department / company), a
 base version, a typed artifact and a content hash. Mutable fields are an
 allowlist: prompt text, memory entries, tool *guidance* (descriptions), and

@@ -211,8 +211,20 @@ def workstation_context(
     names = [
         n for n, _ in applicable_policies(company_id, department_id, agent_config_id)
     ]
+    from services import harness as _harness
+    from services.policy_engine import _department_chain
+
+    with get_session() as session:
+        chain = list(reversed(_department_chain(session, dept.id))) if dept else []
+        learned = _harness.active_for(session, person, chain)
     assembled = assemble(
-        person, dept, [], names, company_id=company_id, stable_only=True
+        person,
+        dept,
+        [],
+        names,
+        company_id=company_id,
+        stable_only=True,
+        harness_artifacts=learned,
     )
     text = assembled.text()
     etag = '"' + hashlib.sha256(text.encode()).hexdigest()[:16] + '"'

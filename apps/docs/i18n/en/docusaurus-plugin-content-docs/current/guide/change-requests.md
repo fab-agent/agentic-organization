@@ -15,6 +15,7 @@ The skills and permissions given to agents affect the company's risk. That is wh
 | **Agent configuration** (`agent_config`) | Name, title, department, model, status, owner, agent-specific skills |
 | **Skill** (`skill`) | The content or setting of a company skill |
 | **Policy** (`policy`) | The text of a policy |
+| **Learned guidance** (`harness`) | Approved guidance text used in an agent's prompt (prompt text, a note to remember, tool guidance, skill instructions). Policies, permissions, code and access rules cannot be changed with this type; it is versioned, reversible, and a chat finishes on the version it started with |
 
 A request is opened in these ways: the **Change Request** button on the **Agents** page (title, type and proposed values are entered); editing a record on the **Skills** and **Policies** pages and pressing **Submit for Approval**.
 

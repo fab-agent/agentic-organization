@@ -341,7 +341,7 @@ def test_build_system_prompt_logs_the_breakdown_without_text(
 @pytest.mark.parametrize("name", DROP_ORDER)
 def test_drop_order_names_are_real_section_names(name):
     # guards against renaming a section and silently disabling its budget drop
-    assert name in {"knowledge", "memory", "department", "job", "company"}
+    assert name in {"knowledge", "memory", "department", "job", "harness", "company"}
 
 
 # ── stable_only: the context document for a client with its own prompt ─────────

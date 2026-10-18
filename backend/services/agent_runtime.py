@@ -60,6 +60,41 @@ def _build_message_with_attachments(
 # ── System prompt builder ─────────────────────────────────────────────────────
 
 
+def _load_harness(
+    person: Personnel, dept: Department | None, session_ref: str | None = None
+) -> list:
+    """Approved learned guidance for this person (never blocks the prompt).
+
+    The first turn of a chat pins the artifact ids it used; later turns reuse them,
+    so a version approved mid-conversation applies from the next conversation.
+    """
+    try:
+        import json as _json
+
+        from models import AgentSession, HarnessArtifact
+        from services import harness
+        from services.policy_engine import _department_chain
+
+        with get_session() as session:
+            sess = session.get(AgentSession, session_ref) if session_ref else None
+            if sess is not None and sess.harness_json is not None:
+                pinned = []
+                for aid in _json.loads(sess.harness_json):
+                    art = session.get(HarnessArtifact, aid)
+                    if art is not None and art.company_id == person.company_id:
+                        pinned.append(art)
+                return pinned
+            chain = list(reversed(_department_chain(session, dept.id))) if dept else []
+            arts = harness.active_for(session, person, chain)
+            if sess is not None:
+                sess.harness_json = _json.dumps([a.id for a in arts])
+                session.add(sess)
+                session.commit()
+            return arts
+    except Exception:  # noqa: BLE001 - learned guidance is optional
+        return []
+
+
 def build_system_prompt_assembled(
     person: Personnel,
     dept: Department | None,
@@ -68,6 +103,7 @@ def build_system_prompt_assembled(
     rag_query: str | None = None,
     company_id: str | None = None,
     skip: frozenset[str] | set[str] = frozenset(),
+    session_ref: str | None = None,
 ) -> Assembled:
     """The prompt as named, token-counted sections (see services.context_assembly)."""
     memories: list[str] = []
@@ -95,6 +131,7 @@ def build_system_prompt_assembled(
         knowledge=knowledge,
         company_id=company_id,
         skip=skip,
+        harness_artifacts=_load_harness(person, dept, session_ref),
     )
 
 
@@ -204,6 +241,7 @@ def build_system_prompt(
         None if "knowledge" in skip else rag_query,
         company_id,
         skip=skip,
+        session_ref=session_ref,
     )
     # Sizes only, never text: shows where the tokens go for every real prompt.
     _log.info(

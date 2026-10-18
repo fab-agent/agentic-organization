@@ -11,7 +11,7 @@ export type ChangeRequest = {
 	id: string;
 	company_id: string;
 	personnel_id: string;
-	change_type: 'agent_config' | 'skill' | 'policy';
+	change_type: 'agent_config' | 'skill' | 'policy' | 'harness';
 	title: string;
 	proposed: Record<string, unknown>;
 	original: Record<string, unknown> | null;
@@ -33,7 +33,7 @@ export type ChangeRequest = {
 
 export type CRCreate = {
 	personnel_id: string;
-	change_type: 'agent_config' | 'skill' | 'policy';
+	change_type: 'agent_config' | 'skill' | 'policy' | 'harness';
 	title: string;
 	proposed: Record<string, unknown>;
 	original?: Record<string, unknown> | null;

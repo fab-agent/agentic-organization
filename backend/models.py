@@ -165,6 +165,9 @@ class AgentSession(SQLModel, table=True):
     # Who started the chat. None = legacy / channel-created (only the agent's
     # managers see those); otherwise the owner and the agent's managers.
     user_id: str | None = Field(default=None, foreign_key="user.id", index=True)
+    # Learned-harness artifact ids pinned at the first turn: a running session
+    # finishes on the version it started with (ADR-0022 §2). None = not pinned yet.
+    harness_json: str | None = None
     title: str | None = None
     status: str = Field(default="active")  # "active" | "closed"
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -821,3 +824,41 @@ class RunDiagnosis(SQLModel, table=True):
     diagnoser_version: int = Field(default=1)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class HarnessArtifact(SQLModel, table=True):
+    """A learned, approved piece of an agent's harness (ADR-0022 §2).
+
+    Only an allowlist of kinds exists: prompt text, memory entries, tool *guidance*
+    and skill *instructions*. Policy, ACLs, identity, egress, approval gates and any
+    executable code are never stored here. A row is immutable; a change is a new
+    version, activation flips `status`, and rollback writes a new version that
+    restores the previous content.
+    """
+
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "level",
+            "target_id",
+            "kind",
+            "key",
+            "version",
+            name="uq_harness_version",
+        ),
+    )
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    company_id: str = Field(foreign_key="company.id", index=True)
+    level: str  # person | department | company
+    target_id: str  # personnel id / department id / company id
+    kind: str  # prompt_text | memory_entry | tool_guidance | skill_instructions
+    key: str = Field(default="main")
+    version: int = Field(default=1)
+    base_version: int = Field(default=0)
+    content: str
+    content_hash: str
+    status: str = Field(default="active")  # active | superseded
+    source_cr_id: str | None = Field(default=None, foreign_key="changerequest.id")
+    evidence_json: str = Field(default="[]")  # references only, never text
+    created_at: datetime = Field(default_factory=datetime.utcnow)

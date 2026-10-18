@@ -32,7 +32,7 @@ from models import AgentConfig, Company, Department, Personnel, Skill
 
 # When the budget is exceeded, optional sections go in this order (largest, most
 # per-turn first). Sections not listed here, and `required` ones, are never dropped.
-DROP_ORDER = ("knowledge", "memory", "department", "job", "company")
+DROP_ORDER = ("knowledge", "memory", "department", "job", "harness", "company")
 
 _DEFAULT_BUDGET = 2000  # tokens; a starting value to tune from real reports
 
@@ -75,6 +75,8 @@ class Assembled:
     # Names left out on purpose because the intent did not need them; the rest of
     # `dropped` was cut to fit the budget.
     intent_skipped: frozenset[str] = frozenset()
+    # Learned-harness artifact versions this prompt used (ids and versions only).
+    harness: list[dict] = field(default_factory=list)
 
     @property
     def total_tokens(self) -> int:
@@ -90,6 +92,7 @@ class Assembled:
             "budget": self.budget,
             "total_tokens": self.total_tokens,
             "over_budget": self.total_tokens > self.budget,
+            **({"harness": self.harness} if self.harness else {}),
             "sections": [
                 {"name": s.name, "tier": s.tier, "tokens": s.tokens}
                 for s in self.sections
@@ -203,6 +206,7 @@ def assemble(
     skip: frozenset[str] | set[str] = frozenset(),
     budget: int | None = None,
     stable_only: bool = False,
+    harness_artifacts: list | None = None,
 ) -> Assembled:
     """Build the sections, apply `skip`, then enforce the budget.
 
@@ -245,6 +249,11 @@ def assemble(
     stext = None if stable_only else _skills_text(skills)
     if stext:
         secs.append(Section("skills", stext, 1))
+    from services import harness as _harness
+
+    htext = _harness.section_text(harness_artifacts or [])
+    if htext:
+        secs.append(Section("harness", htext, 1))
     if not stable_only:
         secs.append(
             Section(
@@ -281,6 +290,15 @@ def assemble(
         for s in [s for s in kept if s.name == name and not s.required]:
             kept.remove(s)
             dropped.append(s)
+    used = (
+        _harness.versions(harness_artifacts or [])
+        if any(s.name == "harness" for s in kept)
+        else []
+    )
     return Assembled(
-        sections=kept, dropped=dropped, budget=budget, intent_skipped=intent_skipped
+        sections=kept,
+        dropped=dropped,
+        budget=budget,
+        intent_skipped=intent_skipped,
+        harness=used,
     )

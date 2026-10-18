@@ -66,6 +66,7 @@ def pg():
         "worktrainingshare",
         # stored run diagnosis (ADR-0023)
         "rundiagnosis",
+        "harnessartifact",
     }
     base = [t for n, t in SQLModel.metadata.tables.items() if n not in added_since]
     SQLModel.metadata.create_all(database.engine, tables=base)
@@ -105,6 +106,7 @@ def test_migrations_reached_head(pg):
         "workrating",
         "worktrainingshare",
         "rundiagnosis",
+        "harnessartifact",
     } <= names
 
 

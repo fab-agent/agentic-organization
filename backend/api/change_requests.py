@@ -26,6 +26,7 @@ from models import (
     User,
 )
 from schemas import ChangeRequestApprove, ChangeRequestCreate, ChangeRequestReject
+from services import harness
 from services.github_commit import commit_change_request
 
 router = APIRouter(prefix="/change-requests", tags=["change-requests"])
@@ -64,8 +65,15 @@ def _claim(session, cr: ChangeRequest, expected: str, new: str) -> None:
     session.refresh(cr)
 
 
-def _validate_proposed(session, company_id: str, proposed: dict) -> None:
+def _validate_proposed(
+    session, company_id: str, proposed: dict, change_type: str | None = None
+) -> None:
     """Relations named in a proposal must belong to the request's own company."""
+    if change_type == "harness":
+        # Typed artifact: allowlisted kinds, hash bound, evidence by reference.
+        p = harness.parse_proposal(proposed)
+        harness.check_target(session, company_id, p)
+        return
     dept_id = proposed.get("department_id")
     if dept_id is not None:
         dept = session.get(Department, dept_id)
@@ -229,7 +237,7 @@ def create_change_request(
         if not personnel or personnel.company_id != company_id:
             raise HTTPException(status_code=404, detail="Personnel not found")
 
-        _validate_proposed(session, company_id, body.proposed)
+        _validate_proposed(session, company_id, body.proposed, body.change_type)
         cr = ChangeRequest(
             company_id=company_id,
             personnel_id=body.personnel_id,
@@ -405,23 +413,35 @@ def admin_approve(
 
         # Mark admin approval
         _claim(session, cr, "dept_head_approved", "admin_approved")
-        _validate_proposed(session, cr.company_id, json.loads(cr.proposed_json))
+        _validate_proposed(
+            session, cr.company_id, json.loads(cr.proposed_json), cr.change_type
+        )
         cr.status = "admin_approved"
         cr.admin_id = current_user.id
         cr.admin_approved_at = datetime.utcnow()
         cr.admin_note = body.note
         cr.updated_at = datetime.utcnow()
 
-        # Look up git config — company-specific first, fall back to global (company_id=None)
+        # The company's own Git connection only: a tenantless (legacy) one is never
+        # used for another company's change.
         git_cfg = session.exec(
             select(GitConfig).where(GitConfig.company_id == cr.company_id)
         ).first()
-        if not git_cfg:
-            git_cfg = session.exec(
-                select(GitConfig).where(GitConfig.company_id.is_(None))
-            ).first()
 
-        if git_cfg:
+        if cr.change_type == "harness":
+            # Durable storage is the versioned artifact table, not Git; a stale base
+            # or a bad target fails closed and leaves the request approved, not applied.
+            try:
+                art = harness.apply(
+                    session, cr.company_id, json.loads(cr.proposed_json), cr.id
+                )
+                cr.status = "committed"
+                cr.admin_note = (
+                    f"{body.note or ''}\n[harness v{art.version} active]".strip()
+                )
+            except harness.HarnessError as e:
+                cr.admin_note = f"{body.note or ''}\n[NOT APPLIED: {e}]".strip()
+        elif git_cfg:
             try:
                 sha, url = commit_change_request(
                     session,

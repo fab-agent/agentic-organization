@@ -15,6 +15,7 @@ Ajanlara verilen yetenekler ve izinler şirketin riskini etkiler. Bu yüzden bir
 | **Ajan yapılandırması** (`agent_config`) | Ad, ünvan, departman, model, durum, sorumlu, ajana özel yetenekler |
 | **Yetenek** (`skill`) | Şirket yeteneğinin içeriği veya ayarı |
 | **Politika** (`policy`) | Bir politikanın metni |
+| **Öğrenilmiş yönerge** (`harness`) | Ajanın isteminde kullanılan, onaylı yönerge metni (istem metni, hatırlanacak not, araç kılavuzu, yetenek talimatı). Politika, yetki, kod ve erişim kuralları bu türle değiştirilemez; sürümlüdür, geri alınabilir, bir sohbet başladığı sürümle bitirir |
 
 Talep şu yollarla açılır: **Ajanlar** sayfasındaki **Değişiklik Talebi** düğmesi (başlık, tür ve önerilen değerler girilir); **Yetenekler** ve **Politikalar** sayfalarında bir kaydı düzenleyip **Onaya Gönder**'e basmak.
 
