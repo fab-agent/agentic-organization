@@ -329,20 +329,40 @@ _FRAME = (
 MAX_SECTION_CHARS = 6000
 
 
-def section_text(artifacts: list[HarnessArtifact]) -> str | None:
-    """Plain, labelled text for the prompt; grouped by kind in a fixed order. An empty
-    (tombstone) artifact contributes nothing; the whole section is capped."""
+def render(
+    artifacts: list[HarnessArtifact],
+) -> tuple[str | None, list[HarnessArtifact]]:
+    """(prompt text, the artifacts that are actually in it).
+
+    Grouped by kind in a fixed order. An empty (tombstone) artifact contributes
+    nothing; the section is capped by whole items, so what is reported as used is
+    exactly what the model saw."""
     live = [a for a in artifacts if a.content.strip()]
     if not live:
-        return None
+        return None, []
     out: list[str] = [_FRAME]
+    included: list[HarnessArtifact] = []
+    size = len(_FRAME)
     for kind in KINDS:
-        items = [a.content.strip() for a in live if a.kind == kind]
-        if items:
-            out.append(f"\n{_HEADINGS[kind]}:")
-            out += [f"  - {t}" for t in items]
-    text = "\n".join(out)
-    return text[:MAX_SECTION_CHARS]
+        heading_added = False
+        for a in (x for x in live if x.kind == kind):
+            line = f"  - {a.content.strip()}"
+            extra = len(line) + 1 + (0 if heading_added else len(_HEADINGS[kind]) + 3)
+            if size + extra > MAX_SECTION_CHARS:
+                continue  # this one does not fit; later, shorter ones still may
+            if not heading_added:
+                out.append(f"\n{_HEADINGS[kind]}:")
+                heading_added = True
+            out.append(line)
+            included.append(a)
+            size += extra
+    if not included:
+        return None, []
+    return "\n".join(out), included
+
+
+def section_text(artifacts: list[HarnessArtifact]) -> str | None:
+    return render(artifacts)[0]
 
 
 def versions(artifacts: list[HarnessArtifact]) -> list[dict]:

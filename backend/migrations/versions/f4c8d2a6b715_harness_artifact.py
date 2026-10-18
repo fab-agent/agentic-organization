@@ -59,6 +59,18 @@ def upgrade() -> None:
         op.create_index(
             "ix_harnessartifact_company_id", "harnessartifact", ["company_id"]
         )
+    existing = {
+        i["name"] for i in sa.inspect(op.get_bind()).get_indexes("harnessartifact")
+    }
+    if "uq_harness_one_active" not in existing:
+        op.create_index(
+            "uq_harness_one_active",
+            "harnessartifact",
+            ["company_id", "level", "target_id", "kind", "key"],
+            unique=True,
+            sqlite_where=sa.text("status = 'active'"),
+            postgresql_where=sa.text("status = 'active'"),
+        )
     cols = {c["name"] for c in insp.get_columns("agentsession")}
     if "harness_json" not in cols:
         with op.batch_alter_table("agentsession", schema=None) as batch_op:

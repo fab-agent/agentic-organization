@@ -251,7 +251,7 @@ def assemble(
         secs.append(Section("skills", stext, 1))
     from services import harness as _harness
 
-    htext = _harness.section_text(harness_artifacts or [])
+    htext, h_included = _harness.render(harness_artifacts or [])
     if htext:
         secs.append(Section("harness", htext, 1))
     if not stable_only:
@@ -291,9 +291,7 @@ def assemble(
             kept.remove(s)
             dropped.append(s)
     used = (
-        _harness.versions(harness_artifacts or [])
-        if any(s.name == "harness" for s in kept)
-        else []
+        _harness.versions(h_included) if any(s.name == "harness" for s in kept) else []
     )
     return Assembled(
         sections=kept,

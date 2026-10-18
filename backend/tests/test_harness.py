@@ -502,3 +502,76 @@ def test_assistant_context_shows_the_learned_items_about_the_person(
     _approve(auth_client, world, cr.json()["id"])
     ctx = auth_client.get("/assistant/context", headers=_hdr(me)).json()
     assert [l["text"] for l in ctx["learned"]] == ["Greet in Turkish."]
+
+
+def test_the_database_allows_only_one_active_version_per_key(
+    auth_client, world, db_session
+):
+    """Codex #6: a writer that allocated the next version after another committed must
+    lose, whatever version number it picked."""
+    cr = _submit(auth_client, world, _proposal(world, "v1"))
+    _approve(auth_client, world, cr.json()["id"])
+    first = db_session.query(HarnessArtifact).one()
+    late = HarnessArtifact(
+        company_id=first.company_id,
+        level=first.level,
+        target_id=first.target_id,
+        kind=first.kind,
+        key=first.key,
+        version=first.version + 1,
+        content="late",
+        content_hash=h.content_hash("late"),
+        status="active",
+    )
+    with pytest.raises(h.HarnessError):
+        h._install(
+            db_session, late, None
+        )  # superseding=None: the stale-base interleaving
+    assert [a.status for a in db_session.query(HarnessArtifact).all()] == ["active"]
+    from sqlalchemy import inspect as sa_inspect
+
+    import database
+
+    assert "uq_harness_one_active" in {
+        i["name"] for i in sa_inspect(database.engine).get_indexes("harnessartifact")
+    }
+
+
+def test_the_report_lists_only_artifacts_that_fit_the_cap(
+    auth_client, world, db_session
+):
+    from models import Personnel
+    from services.context_assembly import assemble
+
+    big = "x" * 3900
+    for i, text in enumerate((big, big, "tail note")):
+        db_session.add(
+            HarnessArtifact(
+                company_id=world["co"],
+                level="person",
+                target_id=world["agent"],
+                kind="prompt_text",
+                key=f"k{i}",
+                content=text,
+                content_hash=h.content_hash(text),
+            )
+        )
+    db_session.commit()
+    person = db_session.get(Personnel, world["agent"])
+    arts = h.active_for(db_session, person, [])
+    text, included = h.render(arts)
+    assert len(text) <= h.MAX_SECTION_CHARS
+    assert [a.key for a in included] == [
+        "k0",
+        "k2",
+    ]  # k1 did not fit, the short one did
+    rep = assemble(
+        person,
+        None,
+        [],
+        None,
+        company_id=person.company_id,
+        harness_artifacts=arts,
+        budget=100000,
+    ).report()
+    assert [v["key"] for v in rep["harness"]] == ["k0", "k2"]

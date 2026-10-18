@@ -846,6 +846,19 @@ class HarnessArtifact(SQLModel, table=True):
             "version",
             name="uq_harness_version",
         ),
+        # One active version per logical key, enforced by the database: two
+        # concurrent activations cannot both win, whatever versions they allocated.
+        Index(
+            "uq_harness_one_active",
+            "company_id",
+            "level",
+            "target_id",
+            "kind",
+            "key",
+            unique=True,
+            sqlite_where=text("status = 'active'"),
+            postgresql_where=text("status = 'active'"),
+        ),
     )
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
