@@ -2,7 +2,7 @@
 
 import io
 
-from tests.conftest import make_personnel
+from tests.conftest import make_agent_config, make_personnel
 
 
 def _make_session(auth_client, db_session, slug: str) -> str:
@@ -10,6 +10,7 @@ def _make_session(auth_client, db_session, slug: str) -> str:
     agent = make_personnel(
         db_session, co.id, name=f"Bot-{slug}", slug=slug, type="agent"
     )
+    make_agent_config(db_session, agent.id)
     db_session.commit()
     sess = auth_client.post("/sessions", json={"personnel_id": agent.id})
     assert sess.status_code == 201

@@ -5,9 +5,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import select
 
-from api.auth import get_current_user, require_manager
+from api.auth import get_current_user
 from database import get_session
-from models import ChangeRequest, Personnel, Policy, PolicyConfig, User
+from models import (
+    AgentConfig,
+    ChangeRequest,
+    Department,
+    Personnel,
+    Policy,
+    PolicyConfig,
+    User,
+)
+from services import authz
 from services.policy_engine import VALID_EFFECTS, VALID_MODES, resolve_mode
 
 router = APIRouter(tags=["policies"])
@@ -49,6 +58,46 @@ def _policy_dict(p: Policy) -> dict:
     }
 
 
+def _check_targets(
+    session, company_id: str, department_id: str | None, agent_config_id: str | None
+) -> None:
+    """A policy's department / agent must belong to the policy's company."""
+    if department_id:
+        d = session.get(Department, department_id)
+        if not d or d.company_id != company_id:
+            raise HTTPException(status_code=422, detail="Bölüm bu şirkete ait değil")
+    if agent_config_id:
+        cfg = session.get(AgentConfig, agent_config_id)
+        person = session.get(Personnel, cfg.personnel_id) if cfg else None
+        if not person or person.company_id != company_id:
+            raise HTTPException(status_code=422, detail="Ajan bu şirkete ait değil")
+
+
+def _require_policy_write(
+    session, user: User, company_id: str, scope: str, department_id: str | None
+) -> None:
+    """Direct policy writes: company-wide founder/executive, or the managers of the
+    department for a department policy. Everyone else proposes a change request."""
+    authz.require_member(session, user.id, company_id)
+    if authz.has_role(session, user.id, company_id, authz.FINAL, company_wide=True):
+        return
+    if (
+        scope == "department"
+        and department_id
+        and authz.has_role(
+            session,
+            user.id,
+            company_id,
+            authz.MANAGERS,
+            department_id=department_id,
+        )
+    ):
+        return
+    raise HTTPException(
+        status_code=403, detail="Politikalar değişiklik talebiyle değişir"
+    )
+
+
 # ── Policy Engine enforcement config (ADR-0005) ─────────────────────────────
 
 
@@ -65,10 +114,11 @@ def list_policy_config(
     company_id: str,
     department_id: str | None = None,
     agent_config_id: str | None = None,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     """Raw PolicyConfig rows for the company + the resolved effective setting."""
     with get_session() as session:
+        authz.require_member(session, user.id, company_id)
         rows = session.exec(
             select(PolicyConfig).where(PolicyConfig.company_id == company_id)
         ).all()
@@ -89,7 +139,7 @@ def list_policy_config(
 
 
 @router.put("/policies/config")
-def set_policy_config(body: PolicyConfigSet, _: User = Depends(require_manager)):
+def set_policy_config(body: PolicyConfigSet, user: User = Depends(get_current_user)):
     if body.scope not in ("company", "department", "agent"):
         raise HTTPException(status_code=422, detail=f"bad scope: {body.scope}")
     if body.mode is not None and body.mode not in VALID_MODES:
@@ -105,6 +155,19 @@ def set_policy_config(body: PolicyConfigSet, _: User = Depends(require_manager))
 
     scope_id = None if body.scope == "company" else body.scope_id
     with get_session() as session:
+        # Enforcement mode is final-approver authority, company-wide.
+        authz.require_role(
+            session,
+            user.id,
+            body.company_id,
+            authz.FINAL,
+            company_wide=True,
+            detail="Politika modunu yalnızca yönetici/kurucu değiştirir",
+        )
+        if body.scope == "department":
+            _check_targets(session, body.company_id, scope_id, None)
+        elif body.scope == "agent":
+            _check_targets(session, body.company_id, None, scope_id)
         q = select(PolicyConfig).where(
             PolicyConfig.company_id == body.company_id,
             PolicyConfig.scope == body.scope,
@@ -145,12 +208,15 @@ def list_policies(
     department_id: str | None = None,
     agent_config_id: str | None = None,
     scope: str | None = None,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     with get_session() as session:
         q = select(Policy)
         if company_id:
+            authz.require_member(session, user.id, company_id)
             q = q.where(Policy.company_id == company_id)
+        else:
+            q = q.where(Policy.company_id.in_(authz.company_ids(session, user.id)))
         if department_id:
             q = q.where(Policy.department_id == department_id)
         if agent_config_id:
@@ -162,8 +228,17 @@ def list_policies(
 
 
 @router.post("/policies", status_code=201)
-def create_policy(body: PolicyCreate, _: User = Depends(require_manager)):
+def create_policy(body: PolicyCreate, user: User = Depends(get_current_user)):
     with get_session() as session:
+        _require_policy_write(
+            session, user, body.company_id, body.scope, body.department_id or None
+        )
+        _check_targets(
+            session,
+            body.company_id,
+            body.department_id or None,
+            body.agent_config_id or None,
+        )
         policy = Policy(
             company_id=body.company_id,
             name=body.name,
@@ -180,10 +255,10 @@ def create_policy(body: PolicyCreate, _: User = Depends(require_manager)):
 
 
 @router.get("/policies/{policy_id}")
-def get_policy(policy_id: str, _: User = Depends(get_current_user)):
+def get_policy(policy_id: str, user: User = Depends(get_current_user)):
     with get_session() as session:
         p = session.get(Policy, policy_id)
-        if not p:
+        if not p or not authz.is_member(session, user.id, p.company_id):
             raise HTTPException(status_code=404, detail="Policy not found")
         return _policy_dict(p)
 
@@ -194,18 +269,25 @@ def update_policy(
     body: PolicyUpdate,
     propose: bool = False,
     personnel_id: str | None = None,
-    user: User = Depends(require_manager),
+    user: User = Depends(get_current_user),
 ):
     """
-    Direct update (managers+) or propose a CR.
+    Direct update (final approvers / department managers) or propose a CR.
     If propose=true, creates a ChangeRequest instead of applying.
     """
     with get_session() as session:
         p = session.get(Policy, policy_id)
-        if not p:
+        if not p or not authz.is_member(session, user.id, p.company_id):
             raise HTTPException(status_code=404, detail="Policy not found")
 
         if propose and personnel_id:
+            authz.require_role(
+                session,
+                user.id,
+                p.company_id,
+                authz.MANAGERS,
+                department_id=p.department_id,
+            )
             target = session.get(Personnel, personnel_id)
             if not target or target.company_id != p.company_id:
                 raise HTTPException(status_code=404, detail="Personnel not found")
@@ -226,6 +308,13 @@ def update_policy(
             session.refresh(cr)
             return {"change_request_id": cr.id, "status": "submitted"}
 
+        _require_policy_write(session, user, p.company_id, p.scope, p.department_id)
+        _check_targets(
+            session,
+            p.company_id,
+            body.department_id or None,
+            body.agent_config_id or None,
+        )
         updates = body.model_dump(exclude_none=True)
         # Company-scoped policies are always active — ignore is_active overrides
         if p.scope == "company":
@@ -240,10 +329,11 @@ def update_policy(
 
 
 @router.delete("/policies/{policy_id}", status_code=204)
-def delete_policy(policy_id: str, _: User = Depends(require_manager)):
+def delete_policy(policy_id: str, user: User = Depends(get_current_user)):
     with get_session() as session:
         p = session.get(Policy, policy_id)
-        if not p:
+        if not p or not authz.is_member(session, user.id, p.company_id):
             raise HTTPException(status_code=404, detail="Policy not found")
+        _require_policy_write(session, user, p.company_id, p.scope, p.department_id)
         session.delete(p)
         session.commit()

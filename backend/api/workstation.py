@@ -285,6 +285,8 @@ def _personas_for_user(session, user: User) -> list[dict]:
             .where(Personnel.type == "agent")
         ).all()
         for person, cfg in agents:
+            if cfg.status != "active":
+                continue  # draft/inactive agents are not usable personas
             allowed = m.role == "founder" or (
                 m.role == "executive"
                 and (m.scope_id is None or m.scope_id == person.department_id)

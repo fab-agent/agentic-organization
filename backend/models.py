@@ -161,6 +161,9 @@ class AgentSession(SQLModel, table=True):
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     personnel_id: str = Field(foreign_key="personnel.id")
+    # Who started the chat. None = legacy / channel-created (only the agent's
+    # managers see those); otherwise the owner and the agent's managers.
+    user_id: str | None = Field(default=None, foreign_key="user.id", index=True)
     title: str | None = None
     status: str = Field(default="active")  # "active" | "closed"
     created_at: datetime = Field(default_factory=datetime.utcnow)

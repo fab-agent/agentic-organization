@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import select
 
-from api.auth import get_current_user, require_manager
+from api.auth import get_current_user
+from api.personnel import _agent_is_live, _require_direct_agent_edit
 from database import get_session
 from models import (
     AgentConfig,
@@ -15,6 +16,7 @@ from models import (
     Personnel,
     User,
 )
+from services import authz
 
 router = APIRouter(tags=["skills"])
 
@@ -117,12 +119,42 @@ def _skill_dict(s: CompanySkill, assigned_agents: list[str] | None = None) -> di
     }
 
 
+def _require_skill_write(session, user: User, company_id: str) -> None:
+    """Company skills change through a change request; only the final approvers
+    (company-wide founder/executive) write directly."""
+    authz.require_member(session, user.id, company_id)
+    if not authz.has_role(session, user.id, company_id, authz.FINAL, company_wide=True):
+        raise HTTPException(
+            status_code=403, detail="Yetenekler değişiklik talebiyle değişir"
+        )
+
+
+def _skill_and_agent(session, user: User, skill_id: str, agent_config_id: str):
+    """Both objects must exist, belong to one company, and the caller must be in it."""
+    skill = session.get(CompanySkill, skill_id)
+    cfg = session.get(AgentConfig, agent_config_id)
+    person = session.get(Personnel, cfg.personnel_id) if cfg else None
+    if (
+        not skill
+        or not person
+        or skill.company_id != person.company_id
+        or not authz.is_member(session, user.id, skill.company_id)
+    ):
+        raise HTTPException(status_code=404, detail="Skill or agent not found")
+    return skill, person
+
+
 @router.get("/company-skills")
-def list_skills(company_id: str | None = None, _: User = Depends(get_current_user)):
+def list_skills(company_id: str | None = None, user: User = Depends(get_current_user)):
     with get_session() as session:
         q = select(CompanySkill)
         if company_id:
+            authz.require_member(session, user.id, company_id)
             q = q.where(CompanySkill.company_id == company_id)
+        else:
+            q = q.where(
+                CompanySkill.company_id.in_(authz.company_ids(session, user.id))
+            )
         skills = session.exec(q.order_by(CompanySkill.name)).all()
         result = []
         for s in skills:
@@ -134,8 +166,9 @@ def list_skills(company_id: str | None = None, _: User = Depends(get_current_use
 
 
 @router.post("/company-skills", status_code=201)
-def create_skill(body: SkillCreate, user: User = Depends(require_manager)):
+def create_skill(body: SkillCreate, user: User = Depends(get_current_user)):
     with get_session() as session:
+        _require_skill_write(session, user, body.company_id)
         skill = CompanySkill(
             company_id=body.company_id,
             name=body.name,
@@ -152,10 +185,10 @@ def create_skill(body: SkillCreate, user: User = Depends(require_manager)):
 
 
 @router.get("/company-skills/{skill_id}")
-def get_skill(skill_id: str, _: User = Depends(get_current_user)):
+def get_skill(skill_id: str, user: User = Depends(get_current_user)):
     with get_session() as session:
         skill = session.get(CompanySkill, skill_id)
-        if not skill:
+        if not skill or not authz.is_member(session, user.id, skill.company_id):
             raise HTTPException(status_code=404, detail="Skill not found")
         links = session.exec(
             select(AgentSkillLink).where(AgentSkillLink.company_skill_id == skill_id)
@@ -169,18 +202,19 @@ def update_skill(
     body: SkillUpdate,
     propose: bool = False,
     personnel_id: str | None = None,
-    user: User = Depends(require_manager),
+    user: User = Depends(get_current_user),
 ):
     """
-    Direct update (managers+) or propose a change request.
+    Direct update (final approvers) or propose a change request (managers).
     If propose=true, creates a CR instead of applying directly.
     """
     with get_session() as session:
         skill = session.get(CompanySkill, skill_id)
-        if not skill:
+        if not skill or not authz.is_member(session, user.id, skill.company_id):
             raise HTTPException(status_code=404, detail="Skill not found")
 
         if propose and personnel_id:
+            authz.require_role(session, user.id, skill.company_id, authz.MANAGERS)
             target = session.get(Personnel, personnel_id)
             if not target or target.company_id != skill.company_id:
                 raise HTTPException(status_code=404, detail="Personnel not found")
@@ -207,6 +241,7 @@ def update_skill(
             session.refresh(cr)
             return {"change_request_id": cr.id, "status": "submitted"}
 
+        _require_skill_write(session, user, skill.company_id)
         for field, val in body.model_dump(exclude_none=True).items():
             setattr(skill, field, val)
         skill.updated_at = datetime.utcnow()
@@ -220,11 +255,12 @@ def update_skill(
 
 
 @router.delete("/company-skills/{skill_id}", status_code=204)
-def delete_skill(skill_id: str, _: User = Depends(require_manager)):
+def delete_skill(skill_id: str, user: User = Depends(get_current_user)):
     with get_session() as session:
         skill = session.get(CompanySkill, skill_id)
-        if not skill:
+        if not skill or not authz.is_member(session, user.id, skill.company_id):
             raise HTTPException(status_code=404, detail="Skill not found")
+        _require_skill_write(session, user, skill.company_id)
         links = session.exec(
             select(AgentSkillLink).where(AgentSkillLink.company_skill_id == skill_id)
         ).all()
@@ -236,13 +272,13 @@ def delete_skill(skill_id: str, _: User = Depends(require_manager)):
 
 @router.post("/company-skills/{skill_id}/assign/{agent_config_id}", status_code=201)
 def assign_skill(
-    skill_id: str, agent_config_id: str, _: User = Depends(require_manager)
+    skill_id: str, agent_config_id: str, user: User = Depends(get_current_user)
 ):
     with get_session() as session:
-        if not session.get(CompanySkill, skill_id):
-            raise HTTPException(status_code=404, detail="Skill not found")
-        if not session.get(AgentConfig, agent_config_id):
-            raise HTTPException(status_code=404, detail="Agent not found")
+        skill, person = _skill_and_agent(session, user, skill_id, agent_config_id)
+        _require_direct_agent_edit(
+            session, user.id, person, live=_agent_is_live(session, person.id)
+        )
         existing = session.exec(
             select(AgentSkillLink)
             .where(AgentSkillLink.company_skill_id == skill_id)
@@ -260,9 +296,13 @@ def assign_skill(
 
 @router.delete("/company-skills/{skill_id}/assign/{agent_config_id}", status_code=204)
 def unassign_skill(
-    skill_id: str, agent_config_id: str, _: User = Depends(require_manager)
+    skill_id: str, agent_config_id: str, user: User = Depends(get_current_user)
 ):
     with get_session() as session:
+        skill, person = _skill_and_agent(session, user, skill_id, agent_config_id)
+        _require_direct_agent_edit(
+            session, user.id, person, live=_agent_is_live(session, person.id)
+        )
         link = session.exec(
             select(AgentSkillLink)
             .where(AgentSkillLink.company_skill_id == skill_id)

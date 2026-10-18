@@ -6,6 +6,7 @@ _reload_flow_schedules is wrapped in try/except in flows.py so no mock needed.
 from unittest.mock import patch
 
 from tests.conftest import (
+    make_agent_config,
     make_company,
     make_personnel,
     make_user,
@@ -28,6 +29,7 @@ def _make_flow(client, company_id, personnel_id, **overrides):
 def _flow_setup(auth_client, db_session):
     co = auth_client._test_company
     p = make_personnel(db_session, co.id, name="FlowBot", slug="flowbot")
+    make_agent_config(db_session, p.id)
     db_session.commit()
     return co.id, p.id
 

@@ -13,10 +13,12 @@ import json
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlmodel import update
 
 from api.auth import get_current_user
 from database import get_session
 from models import Company, User
+from services import authz
 from services.onboarding_agent import (
     _get_best_key,
     build_onboarding_system,
@@ -29,6 +31,24 @@ from services.onboarding_agent import (
 )
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
+
+
+def _require_setup(user: User, company_id: str | None) -> None:
+    """Company setup (and the LLM spend it triggers) is founder/executive work.
+
+    With a company: company-wide founder/executive of *that* company (404 for
+    outsiders). Without one: founder/executive of some company.
+    """
+    with get_session() as session:
+        if company_id:
+            authz.require_role(
+                session, user.id, company_id, authz.FINAL, company_wide=True
+            )
+        elif not any(
+            m.role in authz.FINAL and m.scope_id is None
+            for m in authz.memberships_all(session, user.id)
+        ):
+            raise HTTPException(403, "Kurulum için kurucu/yönetici yetkisi gerekir")
 
 
 # ── Request models ─────────────────────────────────────────────────────────────
@@ -64,7 +84,8 @@ class CreateRequest(BaseModel):
 
 
 @router.get("/status/{company_id}")
-def onboarding_status(company_id: str, _: User = Depends(get_current_user)):
+def onboarding_status(company_id: str, user: User = Depends(get_current_user)):
+    _require_setup(user, company_id)
     with get_session() as session:
         company = session.get(Company, company_id)
         if not company:
@@ -78,7 +99,10 @@ def onboarding_status(company_id: str, _: User = Depends(get_current_user)):
 
 
 @router.post("/search")
-async def onboarding_search(body: SearchRequest, _: User = Depends(get_current_user)):
+async def onboarding_search(
+    body: SearchRequest, user: User = Depends(get_current_user)
+):
+    _require_setup(user, body.company_id)
     """Run DDG web search and return context string. Saves progress to DB."""
     context = search_company(body.company_name)
     key_info = _get_best_key()
@@ -98,7 +122,8 @@ async def onboarding_search(body: SearchRequest, _: User = Depends(get_current_u
 
 
 @router.post("/chat")
-async def onboarding_chat(body: ChatRequest, _: User = Depends(get_current_user)):
+async def onboarding_chat(body: ChatRequest, user: User = Depends(get_current_user)):
+    _require_setup(user, body.company_id)
     """Stream onboarding assistant response via SSE."""
     key_info = _get_best_key()
     if not key_info:
@@ -149,8 +174,9 @@ async def onboarding_chat(body: ChatRequest, _: User = Depends(get_current_user)
 
 @router.post("/generate")
 async def onboarding_generate(
-    body: GenerateRequest, _: User = Depends(get_current_user)
+    body: GenerateRequest, user: User = Depends(get_current_user)
 ):
+    _require_setup(user, body.company_id)
     """Generate the org structure JSON from the conversation."""
     key_info = _get_best_key()
     if not key_info:
@@ -180,13 +206,21 @@ async def onboarding_generate(
 
 
 @router.post("/create")
-def onboarding_create(body: CreateRequest, _: User = Depends(get_current_user)):
+def onboarding_create(body: CreateRequest, user: User = Depends(get_current_user)):
     """Bulk-create all entities from the confirmed structure."""
+    _require_setup(user, body.company_id)
     with get_session() as session:
         company = session.get(Company, body.company_id)
         if not company:
             raise HTTPException(404, "Şirket bulunamadı")
-        if company.ai_onboarded:
+        # Claim the one-time setup atomically: two concurrent calls cannot both win.
+        res = session.exec(
+            update(Company)
+            .where(Company.id == body.company_id, Company.ai_onboarded == False)  # noqa: E712
+            .values(ai_onboarded=True)
+        )
+        session.commit()
+        if res.rowcount != 1:
             raise HTTPException(409, "Bu şirket zaten AI onboarding ile kuruldu.")
 
     key_info = _get_best_key()
@@ -197,4 +231,12 @@ def onboarding_create(body: CreateRequest, _: User = Depends(get_current_user)):
         )
         return {"success": True, "summary": summary}
     except Exception as e:
+        # Release the claim so a failed setup can be retried.
+        with get_session() as session:
+            session.exec(
+                update(Company)
+                .where(Company.id == body.company_id)
+                .values(ai_onboarded=False)
+            )
+            session.commit()
         raise HTTPException(500, f"Oluşturma hatası: {e}")

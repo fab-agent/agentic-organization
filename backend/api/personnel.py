@@ -30,6 +30,7 @@ from schemas import (
     SkillCreate,
     SkillUpdate,
 )
+from services import authz
 from services.auth import generate_temp_password, hash_password
 from services.email import send_invite
 
@@ -88,6 +89,7 @@ def _personnel_to_dict(p: Personnel, session) -> dict:
             select(AgentSkillLink, CompanySkill)
             .join(CompanySkill, AgentSkillLink.company_skill_id == CompanySkill.id)
             .where(AgentSkillLink.agent_config_id == cfg.id)
+            .where(CompanySkill.company_id == p.company_id)
         ).all()
         company_skills = [
             {
@@ -104,6 +106,7 @@ def _personnel_to_dict(p: Personnel, session) -> dict:
             .join(Policy, AgentPolicyLink.policy_id == Policy.id)
             .where(AgentPolicyLink.agent_config_id == cfg.id)
             .where(Policy.is_active == True)
+            .where(Policy.company_id == p.company_id)
         ).all()
         agent_policy_ids = [p.id for _, p in agent_policy_rows]
         result["agent_config"] = {
@@ -134,20 +137,33 @@ _GRANTORS = {
 }
 
 
-def _require_may_grant(session, user_id: str, company_id: str | None, role: str):
-    """Only a sufficiently senior member of the company may assign `role`."""
+def _require_may_grant(
+    session,
+    user_id: str,
+    company_id: str | None,
+    role: str,
+    *,
+    scope_id: str | None = None,
+    person: Personnel | None = None,
+):
+    """Only a sufficiently senior member may assign `role` (with `scope_id`).
+
+    Company-wide roles (scope None for founder/executive/dept_head) need a
+    company-wide grantor. A grant scoped to one department may also come from a
+    grantor scoped to that department; agent_owner/user grants for a person of a
+    department may come from that department's head.
+    """
     if not company_id:
         raise HTTPException(status_code=404, detail="Şirket bulunamadı")
-    mine = {
-        m.role
-        for m in session.exec(
-            select(CompanyMember).where(
-                CompanyMember.user_id == user_id,
-                CompanyMember.company_id == company_id,
-            )
-        ).all()
-    }
-    if not mine & _GRANTORS.get(role, {"founder"}):
+    if not authz.scope_valid(session, company_id, role, scope_id):
+        raise HTTPException(status_code=422, detail="Rol için kapsam geçersiz")
+    allowed_roles = _GRANTORS.get(role, {"founder"})
+    dept = scope_id if role in ("executive", "dept_head") else None
+    if role in ("agent_owner", "user") and person is not None:
+        dept = person.department_id
+    if not authz.has_role(
+        session, user_id, company_id, allowed_roles, department_id=dept
+    ):
         raise HTTPException(status_code=403, detail="Bu rolü atama yetkiniz yok")
 
 
@@ -158,8 +174,10 @@ def _get_person_and_check_membership(
     person = session.get(Personnel, person_id)
     if not person:
         raise HTTPException(status_code=404, detail="Personnel not found")
-    if person.company_id:
-        check_company_membership(user_id, person.company_id, session)
+    # A person without a company is legacy/orphaned data: nobody reaches it.
+    if not person.company_id:
+        raise HTTPException(status_code=404, detail="Personnel not found")
+    check_company_membership(user_id, person.company_id, session)
     return person
 
 
@@ -355,6 +373,20 @@ def update_personnel(
             department_id=body.department_id,
             manager_id=body.manager_id,
         )
+        sensitive = any(
+            v is not None
+            for v in (
+                body.department_id,
+                body.manager_id,
+                body.type,
+                body.role,
+                body.job_description,
+            )
+        )
+        if sensitive and person.type == "agent" and _agent_is_live(session, person_id):
+            # Department/manager/role/context of a live agent change what it may do:
+            # that is a change request, not a direct edit.
+            _require_direct_agent_edit(session, current_user.id, person, live=True)
         if body.name is not None:
             person.name = body.name
         if body.slug is not None:
@@ -398,7 +430,14 @@ def invite_personnel(
 
     with get_session() as session:
         person = _get_person_and_check_membership(person_id, current_user.id, session)
-        _require_may_grant(session, current_user.id, person.company_id, role)
+        _require_may_grant(
+            session,
+            current_user.id,
+            person.company_id,
+            role,
+            scope_id=scope_id,
+            person=person,
+        )
         if not person.email:
             raise HTTPException(
                 status_code=422, detail="Bu personelin e-posta adresi yok"
@@ -418,16 +457,28 @@ def invite_personnel(
             session.add(user)
             session.flush()
 
-        temp_pw = generate_temp_password()
-        user.password_hash = hash_password(temp_pw)
-        user.must_change_password = True
-        user.invite_expires_at = datetime.utcnow() + timedelta(
-            minutes=TEMP_PASSWORD_TTL_MINUTES
+        # An account that belongs to other companies keeps its credentials: being
+        # invited here must never reset a password someone else's tenant relies on.
+        elsewhere = existing is not None and bool(
+            session.exec(
+                select(CompanyMember).where(
+                    CompanyMember.user_id == user.id,
+                    CompanyMember.company_id != company.id,
+                )
+            ).first()
         )
-        user.invite_token = None
-        user.reset_token = None
-        user.reset_expires_at = None
-        session.add(user)
+        temp_pw = None
+        if not elsewhere:
+            temp_pw = generate_temp_password()
+            user.password_hash = hash_password(temp_pw)
+            user.must_change_password = True
+            user.invite_expires_at = datetime.utcnow() + timedelta(
+                minutes=TEMP_PASSWORD_TTL_MINUTES
+            )
+            user.invite_token = None
+            user.reset_token = None
+            user.reset_expires_at = None
+            session.add(user)
 
         existing_member = session.exec(
             select(CompanyMember).where(
@@ -439,7 +490,11 @@ def invite_personnel(
             # Nobody below founder may rewrite a founder's or executive's membership.
             if existing_member.role in ("founder", "executive"):
                 _require_may_grant(
-                    session, current_user.id, company.id, existing_member.role
+                    session,
+                    current_user.id,
+                    company.id,
+                    existing_member.role,
+                    scope_id=existing_member.scope_id,
                 )
             existing_member.role = role
             existing_member.scope_id = scope_id
@@ -459,13 +514,18 @@ def invite_personnel(
         session.commit()
         user_id = user.id
 
-    send_invite(
-        to=person.email,
-        name=person.name,
-        company_name=company.name,
-        temp_password=temp_pw,
-    )
-    return {"message": "Davet emaili gönderildi", "user_id": user_id}
+    if temp_pw is not None:
+        send_invite(
+            to=person.email,
+            name=person.name,
+            company_name=company.name,
+            temp_password=temp_pw,
+        )
+        return {"message": "Davet emaili gönderildi", "user_id": user_id}
+    return {
+        "message": "Mevcut hesap şirkete eklendi (şifre değişmedi)",
+        "user_id": user_id,
+    }
 
 
 @router.delete("/personnel/{person_id}", status_code=204)
@@ -475,6 +535,9 @@ def delete_personnel(person_id: str, current_user: User = Depends(get_current_us
         _require_org_manager(
             session, current_user.id, person.company_id, person.department_id
         )
+        if _agent_is_live(session, person_id):
+            # Archive (emergency stop) first; deleting a live agent is final-approver work.
+            _require_direct_agent_edit(session, current_user.id, person, live=True)
         log_action(
             session,
             "delete",
@@ -838,26 +901,45 @@ def get_org_tree(
             q = select(Personnel).where(Personnel.company_id.in_(user_company_ids))
 
         all_personnel = session.exec(q).all()
-        all_configs = session.exec(select(AgentConfig)).all()
-        all_skills = session.exec(select(Skill)).all()
-        all_depts = session.exec(select(Department)).all()
+        cids = {p.company_id for p in all_personnel if p.company_id} | (
+            {company_id} if company_id else set()
+        )
+        pids = [p.id for p in all_personnel]
+        all_configs = (
+            session.exec(
+                select(AgentConfig).where(AgentConfig.personnel_id.in_(pids))
+            ).all()
+            if pids
+            else []
+        )
+        cfg_ids = [c.id for c in all_configs]
+        all_skills = (
+            session.exec(select(Skill).where(Skill.agent_id.in_(cfg_ids))).all()
+            if cfg_ids
+            else []
+        )
+        all_depts = session.exec(
+            select(Department).where(Department.company_id.in_(cids))
+        ).all()
         # Load CompanySkill links for the agent detail panel
         linked_rows = session.exec(
-            select(AgentSkillLink, CompanySkill).join(
-                CompanySkill, AgentSkillLink.company_skill_id == CompanySkill.id
-            )
+            select(AgentSkillLink, CompanySkill)
+            .join(CompanySkill, AgentSkillLink.company_skill_id == CompanySkill.id)
+            .where(CompanySkill.company_id.in_(cids))
         ).all()
         # Load department policy links
         dept_policy_rows = session.exec(
             select(DepartmentPolicyLink, Policy)
             .join(Policy, DepartmentPolicyLink.policy_id == Policy.id)
             .where(Policy.is_active == True)
+            .where(Policy.company_id.in_(cids))
         ).all()
         # Load agent-specific policy links
         agent_policy_rows = session.exec(
             select(AgentPolicyLink, Policy)
             .join(Policy, AgentPolicyLink.policy_id == Policy.id)
             .where(Policy.is_active == True)
+            .where(Policy.company_id.in_(cids))
         ).all()
 
         dept_map = {d.id: d for d in all_depts}

@@ -8,6 +8,7 @@ from api.auth import check_company_membership, get_current_user
 from database import get_session
 from models import CompanyMember, Department, DepartmentPolicyLink, Policy, User
 from schemas import DepartmentCreate, DepartmentUpdate, PolicyLinkSet
+from services import authz
 
 router = APIRouter(prefix="/departments", tags=["departments"])
 
@@ -39,6 +40,8 @@ def _load_dept_policies_map(session, dept_ids: list[str]) -> dict[str, list]:
     rows = session.exec(
         select(DepartmentPolicyLink, Policy)
         .join(Policy, DepartmentPolicyLink.policy_id == Policy.id)
+        .join(Department, Department.id == DepartmentPolicyLink.department_id)
+        .where(Policy.company_id == Department.company_id)  # ignore foreign links
         .where(DepartmentPolicyLink.department_id.in_(dept_ids))
         .where(Policy.is_active == True)
     ).all()
@@ -46,6 +49,34 @@ def _load_dept_policies_map(session, dept_ids: list[str]) -> dict[str, list]:
     for link, policy in rows:
         result.setdefault(link.department_id, []).append(policy)
     return result
+
+
+def _own_department(session, user: User, dept_id: str) -> Department:
+    """The department, 404 unless it belongs to a company the caller is in."""
+    dept = session.get(Department, dept_id)
+    if not dept or not authz.is_member(session, user.id, dept.company_id):
+        raise HTTPException(status_code=404, detail="Department not found")
+    return dept
+
+
+def _check_parent(session, company_id: str, dept_id: str | None, parent_id: str | None):
+    """Parent must exist in the same company and must not create a cycle."""
+    if not parent_id:
+        return
+    if dept_id and parent_id == dept_id:
+        raise HTTPException(
+            status_code=400, detail="Department cannot be its own parent"
+        )
+    parent = session.get(Department, parent_id)
+    if not parent or parent.company_id != company_id:
+        raise HTTPException(status_code=404, detail="Parent department not found")
+    seen = {dept_id}
+    node = parent
+    while node is not None:
+        if node.id in seen:
+            raise HTTPException(status_code=400, detail="Department cycle")
+        seen.add(node.id)
+        node = session.get(Department, node.parent_id) if node.parent_id else None
 
 
 @router.get("")
@@ -82,16 +113,15 @@ def create_department(
     current_user: User = Depends(get_current_user),
 ):
     with get_session() as session:
-        if company_id:
-            check_company_membership(current_user.id, company_id, session)
+        if not company_id:
+            raise HTTPException(status_code=422, detail="company_id gerekli")
+        authz.require_role(
+            session, current_user.id, company_id, authz.MANAGERS, company_wide=True
+        )
         parent_name = None
         if body.parent_id:
-            parent = session.get(Department, body.parent_id)
-            if not parent:
-                raise HTTPException(
-                    status_code=404, detail="Parent department not found"
-                )
-            parent_name = parent.name
+            _check_parent(session, company_id, None, body.parent_id)
+            parent_name = session.get(Department, body.parent_id).name
         dept = Department(
             company_id=company_id,
             parent_id=body.parent_id,
@@ -118,11 +148,7 @@ def create_department(
 @router.get("/{dept_id}")
 def get_department(dept_id: str, current_user: User = Depends(get_current_user)):
     with get_session() as session:
-        dept = session.get(Department, dept_id)
-        if not dept:
-            raise HTTPException(status_code=404, detail="Department not found")
-        if dept.company_id:
-            check_company_membership(current_user.id, dept.company_id, session)
+        dept = _own_department(session, current_user, dept_id)
         parent_name = None
         if dept.parent_id:
             parent = session.get(Department, dept.parent_id)
@@ -136,11 +162,14 @@ def update_department(
     dept_id: str, body: DepartmentUpdate, current_user: User = Depends(get_current_user)
 ):
     with get_session() as session:
-        dept = session.get(Department, dept_id)
-        if not dept:
-            raise HTTPException(status_code=404, detail="Department not found")
-        if dept.company_id:
-            check_company_membership(current_user.id, dept.company_id, session)
+        dept = _own_department(session, current_user, dept_id)
+        authz.require_role(
+            session,
+            current_user.id,
+            dept.company_id,
+            authz.MANAGERS,
+            department_id=dept.id,
+        )
         if body.name is not None:
             dept.name = body.name
         if body.slug is not None:
@@ -152,10 +181,15 @@ def update_department(
         if body.status is not None:
             dept.status = body.status
         if "parent_id" in body.model_fields_set:
-            if body.parent_id and body.parent_id == dept_id:
-                raise HTTPException(
-                    status_code=400, detail="Department cannot be its own parent"
-                )
+            # Moving a department in the tree is company-wide structure work.
+            authz.require_role(
+                session,
+                current_user.id,
+                dept.company_id,
+                authz.MANAGERS,
+                company_wide=True,
+            )
+            _check_parent(session, dept.company_id, dept_id, body.parent_id)
             dept.parent_id = body.parent_id
         session.add(dept)
         log_action(
@@ -182,11 +216,27 @@ def set_department_policies(
 ):
     """Replace the full set of linked policies for a department."""
     with get_session() as session:
-        dept = session.get(Department, dept_id)
-        if not dept:
-            raise HTTPException(status_code=404, detail="Department not found")
-        if dept.company_id:
-            check_company_membership(current_user.id, dept.company_id, session)
+        dept = _own_department(session, current_user, dept_id)
+        if not authz.has_role(
+            session,
+            current_user.id,
+            dept.company_id,
+            authz.FINAL,
+            company_wide=True,
+        ):
+            authz.require_role(
+                session,
+                current_user.id,
+                dept.company_id,
+                authz.MANAGERS,
+                department_id=dept.id,
+            )
+        for pid in body.policy_ids:
+            pol = session.get(Policy, pid)
+            if pol is None or pol.company_id != dept.company_id:
+                raise HTTPException(
+                    status_code=422, detail="Politika bu şirkete ait değil"
+                )
         # Remove existing links
         existing = session.exec(
             select(DepartmentPolicyLink).where(
@@ -232,13 +282,19 @@ def set_department_policies(
 @router.delete("/{dept_id}", status_code=204)
 def delete_department(dept_id: str, current_user: User = Depends(get_current_user)):
     with get_session() as session:
-        dept = session.get(Department, dept_id)
-        if not dept:
-            raise HTTPException(status_code=404, detail="Department not found")
-        if dept.company_id:
-            check_company_membership(current_user.id, dept.company_id, session)
+        dept = _own_department(session, current_user, dept_id)
+        authz.require_role(
+            session,
+            current_user.id,
+            dept.company_id,
+            authz.MANAGERS,
+            company_wide=True,
+        )
         children = session.exec(
-            select(Department).where(Department.parent_id == dept_id)
+            select(Department).where(
+                Department.parent_id == dept_id,
+                Department.company_id == dept.company_id,
+            )
         ).all()
         for child in children:
             child.parent_id = None

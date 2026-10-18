@@ -30,12 +30,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
-from api.auth import require_manager
+from api.auth import get_current_user
 from api.deps import get_persona_gateway
 from core.security import decrypt
 from database import get_session
 from models import AgentConfig, Personnel, ProviderKey, User
-from services import audit_chain, gateway_limits
+from services import audit_chain, authz, gateway_limits
 from services.gateway_auth import PersonaPrincipal, create_persona_token, run_info
 from services.model_routing import ModelRoutingError, resolve_model
 from services.policy_engine import PolicyDecisionRequest, audit_decision, decide
@@ -406,7 +406,7 @@ def policy_decide(
 
 
 @router.get("/gateway/usage")
-def gateway_usage(personnel_id: str, _: User = Depends(require_manager)):
+def gateway_usage(personnel_id: str, user: User = Depends(get_current_user)):
     """Today + this-month token/request counters for one persona (ADR-0004)."""
     from datetime import datetime
 
@@ -415,6 +415,7 @@ def gateway_usage(personnel_id: str, _: User = Depends(require_manager)):
     day = datetime.utcnow().strftime("%Y-%m-%d")
     month = datetime.utcnow().strftime("%Y-%m")
     with get_session() as session:
+        _managed_agent(session, user, personnel_id)
         rows = {
             r.period: r
             for r in session.exec(
@@ -443,20 +444,30 @@ def gateway_usage(personnel_id: str, _: User = Depends(require_manager)):
     }
 
 
+def _managed_agent(session, user: User, personnel_id: str) -> Personnel:
+    """The agent, 404 unless the caller belongs to its company and may manage it."""
+    person = session.get(Personnel, personnel_id)
+    if (
+        not person
+        or not authz.is_member(session, user.id, person.company_id)
+        or not authz.can_manage_agent(session, user.id, person)
+    ):
+        raise HTTPException(status_code=404, detail="Personel bulunamadı")
+    return person
+
+
 # ── Persona token minting (Faz 0 — manager only) ─────────────────────────────
 
 
 @router.post("/gateway/persona-token", status_code=201)
-def mint_persona_token(personnel_id: str, _: User = Depends(require_manager)):
+def mint_persona_token(personnel_id: str, user: User = Depends(get_current_user)):
     """
     Faz 0 helper: mint a short-lived gateway token for an agent persona so a
     developer can point opencode at the gateway.
     TODO(ADR-0007): replace with `3pa login` against an IdP + refresh + revocation.
     """
     with get_session() as session:
-        person = session.get(Personnel, personnel_id)
-        if not person:
-            raise HTTPException(status_code=404, detail="Personel bulunamadı")
+        person = _managed_agent(session, user, personnel_id)
         cfg = session.exec(
             select(AgentConfig).where(AgentConfig.personnel_id == personnel_id)
         ).first()
@@ -464,6 +475,8 @@ def mint_persona_token(personnel_id: str, _: User = Depends(require_manager)):
             raise HTTPException(
                 status_code=400, detail="Bu personelin ajan yapılandırması yok"
             )
+        if cfg.status != "active":
+            raise HTTPException(status_code=409, detail="Ajan etkin değil")
     token = create_persona_token(
         persona_id=person.id,
         company_id=person.company_id,

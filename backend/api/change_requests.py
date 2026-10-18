@@ -112,16 +112,20 @@ def _require_stage2(session, user: User, cr: ChangeRequest) -> None:
 
 
 def _can_see_cr(session, user: User, cr: ChangeRequest) -> bool:
-    """Who may read a request: its author, the approvers in scope, the agent's owner."""
+    """Who may read a request: its author, the approvers in scope, the agent's owner.
+
+    Role and scope are evaluated on the same membership row.
+    """
     if cr.created_by_user_id == user.id or cr.dept_head_id == user.id:
         return True
-    mine = _memberships(session, user.id, cr.company_id)
-    if any(m.role in STAGE1_ROLES and m.scope_id is None for m in mine):
-        return True
     person = session.get(Personnel, cr.personnel_id)
-    scopes = {m.scope_id for m in mine if m.scope_id}
-    if person and (person.department_id in scopes or person.id in scopes):
-        return any(m.role in STAGE1_ROLES | {"agent_owner"} for m in mine if m.scope_id)
+    for m in _memberships(session, user.id, cr.company_id):
+        if m.role in STAGE1_ROLES and (
+            m.scope_id is None or (person and m.scope_id == person.department_id)
+        ):
+            return True
+        if m.role == "agent_owner" and person and m.scope_id == person.id:
+            return True
     return False
 
 

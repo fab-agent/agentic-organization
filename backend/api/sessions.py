@@ -12,6 +12,7 @@ from api.auth import get_current_user
 from database import get_session
 from models import AgentMemory, AgentSession, Personnel, SessionMessage, User
 from schemas import Attachment, MessageCreate, SessionCreate
+from services import authz
 from services.agent_runtime import run_session
 from services.memory_service import generate_session_summary
 
@@ -54,19 +55,55 @@ def _message_to_dict(m: SessionMessage) -> dict:
 # ── Session CRUD ──────────────────────────────────────────────────────────────
 
 
+def _agent_for(db, user: User, personnel_id: str) -> Personnel:
+    """The agent, 404 unless it belongs to one of the caller's companies."""
+    person = db.get(Personnel, personnel_id)
+    if not person or not authz.is_member(db, user.id, person.company_id):
+        raise HTTPException(status_code=404, detail="Personnel not found")
+    return person
+
+
+def _can_see(
+    db, user: User, sess: AgentSession, person: Personnel | None = None
+) -> bool:
+    """The session's owner, or anyone who manages the agent."""
+    if sess.user_id == user.id:
+        return True
+    person = person or db.get(Personnel, sess.personnel_id)
+    return bool(
+        person
+        and authz.is_member(db, user.id, person.company_id)
+        and authz.can_manage_agent(db, user.id, person)
+    )
+
+
+def _own_session(db, user: User, session_id: str) -> AgentSession:
+    sess = db.get(AgentSession, session_id)
+    if not sess or not _can_see(db, user, sess):
+        raise HTTPException(status_code=404, detail="Session not found")
+    return sess
+
+
 @router.get("/sessions")
 def list_sessions(
     personnel_id: str | None = None,
     status: str | None = None,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     with get_session() as session:
         q = select(AgentSession).order_by(AgentSession.updated_at.desc())
         if personnel_id:
+            _agent_for(session, user, personnel_id)
             q = q.where(AgentSession.personnel_id == personnel_id)
         if status:
             q = q.where(AgentSession.status == status)
-        rows = session.exec(q).all()
+        people: dict[str, Personnel | None] = {}
+        rows = []
+        for s in session.exec(q).all():
+            if s.personnel_id not in people:
+                people[s.personnel_id] = session.get(Personnel, s.personnel_id)
+            if _can_see(session, user, s, people[s.personnel_id]):
+                rows.append(s)
 
         result = []
         for s in rows:
@@ -82,13 +119,14 @@ def list_sessions(
 
 
 @router.post("/sessions", status_code=201)
-def create_session(body: SessionCreate, _: User = Depends(get_current_user)):
+def create_session(body: SessionCreate, user: User = Depends(get_current_user)):
     with get_session() as session:
-        person = session.get(Personnel, body.personnel_id)
-        if not person:
-            raise HTTPException(status_code=404, detail="Personnel not found")
+        _agent_for(session, user, body.personnel_id)
+        if not authz.agent_is_active(session, body.personnel_id):
+            raise HTTPException(status_code=409, detail="Ajan etkin değil")
         sess = AgentSession(
             personnel_id=body.personnel_id,
+            user_id=user.id,
             title=body.title,
         )
         session.add(sess)
@@ -101,12 +139,27 @@ def create_session(body: SessionCreate, _: User = Depends(get_current_user)):
 
 
 @router.get("/sessions/memories")
-def list_memories(personnel_id: str | None = None, _: User = Depends(get_current_user)):
+def list_memories(
+    personnel_id: str | None = None, user: User = Depends(get_current_user)
+):
     with get_session() as session:
         q = select(AgentMemory).order_by(AgentMemory.created_at.desc())
         if personnel_id:
+            _agent_for(session, user, personnel_id)
             q = q.where(AgentMemory.personnel_id == personnel_id)
-        rows = session.exec(q).all()
+        # Memories summarise many people's chats: only the agent's managers read them.
+        allowed: dict[str, bool] = {}
+        rows = []
+        for m in session.exec(q).all():
+            if m.personnel_id not in allowed:
+                person = session.get(Personnel, m.personnel_id)
+                allowed[m.personnel_id] = bool(
+                    person
+                    and authz.is_member(session, user.id, person.company_id)
+                    and authz.can_manage_agent(session, user.id, person)
+                )
+            if allowed[m.personnel_id]:
+                rows.append(m)
         return [
             {
                 "id": m.id,
@@ -120,11 +173,9 @@ def list_memories(personnel_id: str | None = None, _: User = Depends(get_current
 
 
 @router.get("/sessions/{session_id}")
-def get_session_detail(session_id: str, _: User = Depends(get_current_user)):
+def get_session_detail(session_id: str, user: User = Depends(get_current_user)):
     with get_session() as session:
-        sess = session.get(AgentSession, session_id)
-        if not sess:
-            raise HTTPException(status_code=404, detail="Session not found")
+        sess = _own_session(session, user, session_id)
         messages = session.exec(
             select(SessionMessage)
             .where(SessionMessage.session_id == session_id)
@@ -137,12 +188,10 @@ def get_session_detail(session_id: str, _: User = Depends(get_current_user)):
 async def close_session(
     session_id: str,
     background_tasks: BackgroundTasks,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     with get_session() as session:
-        sess = session.get(AgentSession, session_id)
-        if not sess:
-            raise HTTPException(status_code=404, detail="Session not found")
+        sess = _own_session(session, user, session_id)
         sess.status = "closed"
         sess.updated_at = datetime.utcnow()
         session.add(sess)
@@ -154,12 +203,10 @@ async def close_session(
 
 
 @router.get("/sessions/{session_id}/status")
-def get_session_status(session_id: str, _: User = Depends(get_current_user)):
+def get_session_status(session_id: str, user: User = Depends(get_current_user)):
     """Returns current session status and all messages. Used for polling when reconnecting."""
     with get_session() as session:
-        sess = session.get(AgentSession, session_id)
-        if not sess:
-            raise HTTPException(status_code=404, detail="Session not found")
+        sess = _own_session(session, user, session_id)
         messages = session.exec(
             select(SessionMessage)
             .where(SessionMessage.session_id == session_id)
@@ -177,13 +224,13 @@ def get_session_status(session_id: str, _: User = Depends(get_current_user)):
 
 @router.post("/sessions/{session_id}/files")
 async def upload_file(
-    session_id: str, file: UploadFile = File(...), _: User = Depends(get_current_user)
+    session_id: str,
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
 ):
     """Upload a file (PDF or image) to be included in the next message."""
     with get_session() as db:
-        sess = db.get(AgentSession, session_id)
-        if not sess:
-            raise HTTPException(status_code=404, detail="Session not found")
+        sess = _own_session(db, user, session_id)
         if sess.status == "closed":
             raise HTTPException(status_code=409, detail="Session is closed")
 
@@ -301,7 +348,7 @@ async def _run_background(
 
 @router.post("/sessions/{session_id}/messages")
 async def send_message(
-    session_id: str, body: MessageCreate, _: User = Depends(get_current_user)
+    session_id: str, body: MessageCreate, user: User = Depends(get_current_user)
 ):
     """
     Send a message and stream the response via SSE.
@@ -309,11 +356,11 @@ async def send_message(
     Call GET /sessions/{id}/status to poll for completion after reconnecting.
     """
     with get_session() as db:
-        sess = db.get(AgentSession, session_id)
-        if not sess:
-            raise HTTPException(status_code=404, detail="Session not found")
+        sess = _own_session(db, user, session_id)
         if sess.status == "closed":
             raise HTTPException(status_code=409, detail="Session is closed")
+        if not authz.agent_is_active(db, sess.personnel_id):
+            raise HTTPException(status_code=409, detail="Ajan etkin değil")
         if sess.status == "running":
             raise HTTPException(
                 status_code=409,
