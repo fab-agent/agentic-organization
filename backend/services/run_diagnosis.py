@@ -284,8 +284,17 @@ def diagnose(events: Iterable[dict], run_id: str | None = None) -> Diagnosis:
                 )
             )
 
+    # Tool findings come from the workstation (a client claim). They never outrank
+    # a server-observed failure: if the server saw any scored fault, client-reported
+    # tool errors stay listed but do not count towards the suspect layer.
+    client_kinds = {"tool_error", "repeated_failure"}
+    server_seen = any(
+        f.kind not in client_kinds and _WEIGHT[f.severity] > 0 for f in out.findings
+    )
     scores = {layer: 0 for layer in LAYERS}
     for f in out.findings:
+        if server_seen and f.kind in client_kinds:
+            continue
         scores[f.layer] += _WEIGHT[f.severity]
     out.scores = scores
     top = max(scores.values(), default=0)

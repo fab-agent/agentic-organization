@@ -14,7 +14,7 @@ validated and turned into something a person or manager sees**. Getting this wro
 is the main way work review becomes unfair: a vague question, a question about the
 person instead of the work, or a rubric nobody outside management has read.
 
-This ADR fixes the design. Nothing here is built yet (see *Follow-ups*); the numbers
+This ADR fixes the design. Parts are built since 2026-09-29 (see *Implementation status*); the rest is listed in *Follow-ups*; the numbers
 marked *proposal* are starting values to calibrate, not measured results.
 
 ## Decision

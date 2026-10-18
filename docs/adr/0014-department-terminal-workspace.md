@@ -53,6 +53,8 @@ herdr reference and is revisited here.
 
 ## Decision
 
+> **Note (2026-10-18, acceptance review):** decisions 2 and 4 and the assumption in decision 3 that every department uses the terminal client are superseded by ADR-0022 (herdr for power users, a minimal web view for departments). The server-side workspace decision (1) survives, bounded by the implementation status in ADR-0018.
+
 **B + D.**
 
 1. **Execution: server-side workspaces for departments.** Each person gets a
@@ -128,6 +130,8 @@ herdr reference and is revisited here.
   5. Web shrink: switch to `adapter-static` served by FastAPI; remove screens as TUI equivalents ship.
 
 ## Spike outcome (follow-up 1): write our own pane engine, do not vendor herdr
+
+> **Note (2026-10-18, acceptance review):** superseded by ADR-0022: the terminal client for departments is frozen and power users use stock herdr plus our plugin. Kept as history.
 
 **Decision:** keep the own engine in `packages/tui` (`src/pty.rs`). herdr stays a
 UX / architecture reference only — we do not copy or vendor its code.

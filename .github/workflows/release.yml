@@ -7,22 +7,26 @@ name: Release
 #
 # Backend / frontend images stay on the compose build-local flow for now.
 #
-#   git tag v0.2.0 && git push origin v0.2.0
-# or run manually with dry_run to build without publishing.
+#   git tag v1.4.0 && git push origin v1.4.0
+# A manual run builds and tests everything and never publishes unless dry_run is
+# set to false AND the selected ref is a version tag.
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Build everything but do not push / publish"
+        description: "Build and test everything but do not push / publish"
         type: boolean
         default: true
 
 permissions:
-  contents: write
-  packages: write
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
@@ -34,20 +38,40 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
       publish: ${{ steps.v.outputs.publish }}
+      latest: ${{ steps.v.outputs.latest }}
     steps:
       - id: v
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=0.0.0-dev.$(date +%s)" >> "$GITHUB_OUTPUT"
-            echo "publish=${{ inputs.dry_run == false }}" >> "$GITHUB_OUTPUT"
+          set -eu
+          publish=false
+          latest=false
+          version="0.0.0-dev.$(date +%s)"
+          if [ "$REF_TYPE" = "tag" ]; then
+            if ! printf '%s' "$REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+              echo "Tag '$REF_NAME' is not a SemVer version tag" >&2
+              exit 1
+            fi
+            version="${REF_NAME#v}"
+            if [ "$EVENT" = "push" ] || [ "$DRY_RUN" = "false" ]; then
+              publish=true
+              case "$version" in *-*) ;; *) latest=true ;; esac
+            fi
           fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
 
   images:
     needs: version
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     strategy:
       matrix:
         include:
@@ -58,32 +82,36 @@ jobs:
             context: sandbox/egress
             file: sandbox/egress/Dockerfile
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Log in to GHCR
         if: needs.version.outputs.publish == 'true'
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build + push ${{ matrix.name }}
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
           push: ${{ needs.version.outputs.publish == 'true' }}
           tags: |
             ${{ env.IMAGE_NS }}/agentic-org-${{ matrix.name }}:${{ needs.version.outputs.version }}
-            ${{ env.IMAGE_NS }}/agentic-org-${{ matrix.name }}:latest
+            ${{ needs.version.outputs.latest == 'true' && format('{0}/agentic-org-{1}:latest', env.IMAGE_NS, matrix.name) || '' }}
           provenance: false
 
   cli-bundle:
     needs: version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -95,46 +123,79 @@ jobs:
           npm test
           npm run bundle
           sha256sum dist/3pa.mjs | tee dist/3pa.mjs.sha256
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: 3pa-cli
           path: packages/cli/dist/3pa.mjs*
 
-  npm-publish:
+  plugin-check:
     needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: packages/agent-plugin/package-lock.json
+      - working-directory: packages/agent-plugin
+        run: |
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npm test
+
+  npm-publish:
+    needs: [version, images, cli-bundle, plugin-check]
     if: needs.version.outputs.publish == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     strategy:
       matrix:
         pkg: [agent-plugin, cli]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           registry-url: "https://npm.pkg.github.com"
+      - name: Install (no registry credentials)
+        working-directory: packages/${{ matrix.pkg }}
+        run: npm ci --no-audit --no-fund
+        env:
+          NODE_AUTH_TOKEN: ""
       - name: Set version + publish ${{ matrix.pkg }}
         working-directory: packages/${{ matrix.pkg }}
-        run: |
-          npm version "${{ needs.version.outputs.version }}" \
-            --no-git-tag-version --allow-same-version
-          npm publish
         env:
+          VERSION: ${{ needs.version.outputs.version }}
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_ARGS: ${{ needs.version.outputs.latest == 'true' && '--tag latest' || '--tag next' }}
+        run: |
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          # shellcheck disable=SC2086
+          npm publish $TAG_ARGS
 
   release:
-    needs: [version, images, cli-bundle]
-    if: github.ref_type == 'tag'
+    needs: [version, npm-publish, cli-bundle]
+    if: needs.version.outputs.publish == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: 3pa-cli
           path: dist
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: dist/3pa.mjs*
           generate_release_notes: true
+          prerelease: ${{ needs.version.outputs.latest != 'true' }}
           body: |
             ## Container images
             - `${{ env.IMAGE_NS }}/agentic-org-sandbox:${{ needs.version.outputs.version }}`

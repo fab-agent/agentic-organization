@@ -135,6 +135,8 @@ screenshots; small groups are not shown as aggregates (a minimum group size
 avoids identifying one person); per-company opt-in, purpose and retention set
 before enabling (KVKK / GDPR); off by default.
 
+> **Note (2026-10-18, acceptance review):** the framing of the terminal workspace as the product for everyone is superseded by ADR-0022.
+
 ### 7. The super tool
 
 The product is the terminal workspace with that one agent and the company's
@@ -142,6 +144,8 @@ toolset behind it: documents, spreadsheets, presentations, ERP and other company
 systems through MCP via the gateway, all under policy and audit. Its value to
 the organisation is that the same tool serves every department *and* every run
 is logged, tagged and rated for fit.
+
+> **Note (2026-10-18, acceptance review):** superseded by ADR-0022 §8: the local Assistant folder is not synchronised with the platform, and session summaries are not uploaded automatically. The *Decisions taken* below that reconfirm synced folders, and follow-up 5, are superseded with it.
 
 ### 8. The person's local workspace folder
 
@@ -234,6 +238,8 @@ Desktop) that `fab` keeps in step with the server-side workspace (ADR-0018):
 5. `fab`: local workspace folder sync (manifest-based) and session-summary files.
 6. Subagent limits: `maxSteps` in managed config, run sub-quotas at the gateway,
    depth / concurrency check in the plugin.
+
+> **Note (2026-10-18, acceptance review):** the status sections below are dated snapshots. Since then context assembly (ADR-0020), rating and rubric (ADR-0021), the work-review API and the `fab` views were built; statements here like "does not exist" or "not implemented" describe the date of the snapshot.
 
 ## Implementation status (2026-09-29) — follow-up 1, backend part
 

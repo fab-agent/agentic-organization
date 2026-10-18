@@ -16,7 +16,9 @@ be tampered with" claim:
 - If the collector is unreachable, the agent must **stop** (it must not silently
   run without logging while offline).
 
-## Decision (proposed)
+## Decision
+
+> **Note (2026-10-18, acceptance review):** the *fail-closed* wording is an accepted intent, not an implemented guarantee. `AuditChain.record` and the policy audit path swallow append failures, and the workstation reporter returns a failed outcome instead of making the tool call transactional with durable storage; the CLI stops on gateway heartbeat failure in enforce mode, which cannot prove that every event in between was stored. The hash chain, per-tenant keys, Postgres advisory lock and external anchor are built. **Follow-up:** durable append acknowledgement / backpressure so that an audit-store failure refuses the action.
 
 - **`backend/services/audit_chain.py`:** every record contains `prev_hash`;
   `hash = H(prev_hash || canonical_json(record))`. The chain head is periodically

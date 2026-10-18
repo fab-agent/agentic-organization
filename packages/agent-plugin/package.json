@@ -7,13 +7,21 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "files": ["src"],
+  "files": [
+    "src",
+    "LICENSE"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types \"test/*.test.ts\""
   },
-  "keywords": ["opencode", "opencode-plugin", "audit", "policy"],
-  "license": "SEE LICENSE IN ../../LICENSE",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "audit",
+    "policy"
+  ],
+  "license": "SEE LICENSE IN LICENSE",
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
@@ -25,6 +33,13 @@
     "@opencode-ai/plugin": "*"
   },
   "peerDependenciesMeta": {
-    "@opencode-ai/plugin": { "optional": true }
+    "@opencode-ai/plugin": {
+      "optional": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fab-agent/agentic-organization.git",
+    "directory": "packages/agent-plugin"
   }
 }

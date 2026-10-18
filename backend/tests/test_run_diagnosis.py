@@ -117,12 +117,25 @@ def test_repeated_tool_failure_outweighs_a_single_one():
 def test_tied_layers_give_no_single_suspect():
     d = diagnose(
         [
-            ev("gateway_call", 1, "m", upstream_status=404),  # model, medium = 2
-            ev("tool_event", 2, "x", error="e"),  # tool, medium = 2
+            ev("gateway_call", 1, "m", upstream_status=404),  # model = 2
+            ev("policy_decision", 2, "t", effect="deny", enforced=True),  # policy
         ]
     )
-    assert d.scores["model"] == d.scores["tool"] == 2
+    assert d.scores["model"] == d.scores["policy"]
     assert d.suspect_layer is None
+
+
+def test_client_tool_errors_never_outrank_a_server_failure():
+    d = diagnose(
+        [
+            ev("gateway_call", 1, "m", upstream_status=503),  # model = 3
+            ev("tool_event", 2, "sql", error="e", origin="client"),
+            ev("tool_event", 3, "sql", error="e", origin="client"),
+        ]
+    )
+    assert d.suspect_layer == "model"
+    assert d.scores["tool"] == 0
+    assert ("tool", "repeated_failure") in kinds(d)  # still listed
 
 
 def test_intent_skipped_sections_are_not_a_prompt_fault():

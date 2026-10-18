@@ -24,7 +24,7 @@ the only component with container-runtime access. The backend never mounts
 controller over the internal network through a `WorkspaceRuntime` interface
 (`create`, `start`, `stop`, `remove`, `attach`, `status`, `list_files`),
 authenticated with a shared secret (`WORKSPACE_CONTROLLER_URL`,
-`WORKSPACE_CONTROLLER_SECRET`). It ships as one more compose service today.
+`WORKSPACE_CONTROLLER_SECRET`). It is planned as one more compose service; **no controller service or production runtime client exists yet** (`FakeRuntime` only; without configuration the API returns 503).
 
 Hardening of the controller itself, since it is the new privileged component:
 reach Docker through a **socket proxy that allows only the verbs it needs**
@@ -35,6 +35,8 @@ path or image name; keep it free of user-facing endpoints.
 The interface is multi-host-ready: moving to one controller per worker host
 with mTLS (the former option B) later replaces the authentication and adds a
 placement table, with no change to the API in section 3.
+
+> **Note (2026-10-18, acceptance review):** a stopped container does not keep a running tmux process; "suspend" keeps the volume and "resume" starts a fresh session, while a plain disconnect leaves the container running. The manifest/sync rationale is narrowed by ADR-0022 (no automatic platform sync; ADR-0019 §8 is superseded) — the file APIs stay, the automatic sync does not.
 
 ### 2. Workspace model
 

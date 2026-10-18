@@ -36,7 +36,9 @@ expectations will rest on it.
    `OPENCODE_PERMISSION` (opencode issues #22292, #6358). It provides deterrence +
    observability, not cryptographic enforcement.
 
-## Decision (proposed)
+## Decision
+
+> **Note (2026-10-18, acceptance review):** the hard audit wording below (an agent stops if collection fails) is an *intent*, not a delivered guarantee: audit appends are best-effort today (see ADR-0006 note). Server-side execution is no longer wholly future: ADR-0014/0018 describe a partly built path (REST and model slice with a fake runtime only).
 
 - The "policies cannot be overridden" claim is scoped to the **gateway + audit**
   layers; this is stated clearly in customer documentation.

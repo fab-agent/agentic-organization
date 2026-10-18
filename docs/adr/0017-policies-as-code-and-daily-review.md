@@ -74,6 +74,8 @@ tool rule, and closing the loop with a daily review of each person's work.
   it then goes to their manager. Reviews are about the work, not keystrokes: no
   activity tracking, no screenshots.
 
+> **Note (2026-10-18, acceptance review):** Git as the source of truth, policy reload on approval, the policy commit id in audit entries, the Docling import and behaviour checks are **planned, not built** (follow-ups 1–5). What exists: the tool-rule policy engine, change requests (agent config applied to the DB; per-agent YAML committed to GitHub) and the audit chain. The consequences below describe the target.
+
 ## Consequences
 
 - **Positive:** Existing policies become guardrails with human review, full

@@ -38,6 +38,8 @@ for the admin stage from the request. It only knows `agent_config`, `skill` and
 applied. "Learning proposes, a human approves" therefore depends on fixing the
 approval path first (decision 1).
 
+> **Note (2026-10-18, acceptance review):** the review findings quoted in the context (change requests did not check membership, free-form harness strings) were true when written and were fixed on 2026-10-17: change requests now check company, role and scope and the `change_type` set is closed. The learning loop, probe environment, local helper and the department web view are still gated follow-ups, not shipped.
+
 ## Options considered
 
 **Client:** A — keep our own Rust `fab` binary (ADR-0014). B — stock herdr plus

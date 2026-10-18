@@ -3,14 +3,19 @@
   "version": "0.1.0",
   "description": "3rdParty Agent Platform — 3pa workstation CLI",
   "type": "module",
-  "engines": { "node": ">=18" },
-  "bin": { "3pa": "./bin/3pa.js" },
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "3pa": "./dist/3pa.mjs"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"test/*.test.ts\"",
-    "bundle": "node scripts/bundle.mjs"
+    "bundle": "node scripts/bundle.mjs",
+    "prepack": "npm run bundle"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
@@ -26,6 +31,20 @@
     "tsx": "^4",
     "typescript": "^5"
   },
-  "keywords": ["ai", "agents", "self-hosted", "cli"],
-  "license": "MIT"
+  "keywords": [
+    "ai",
+    "agents",
+    "self-hosted",
+    "cli"
+  ],
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fab-agent/agentic-organization.git",
+    "directory": "packages/cli"
+  },
+  "files": [
+    "dist/3pa.mjs",
+    "LICENSE"
+  ]
 }

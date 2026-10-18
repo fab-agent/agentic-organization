@@ -51,15 +51,15 @@ suspected cause (replay).
      ingested from a workstation are stamped `origin: client` by the server;
      client claims of server-observed facts (gateway, policy, context events) are
      ignored and counted, and client-reported tool errors are kept but never rank
-     above server-observed failures;
+     above server-observed failures (implemented: once the server saw any scored fault,
+     client tool errors are listed but do not count towards the suspect layer);
    - a correct block is not a defect: dry-run decisions are notes that do not
      score, enforced denials score as a hint, fail-closed decisions are a separate
      configuration fault; sections the intent skipped on purpose are not a prompt
      fault; zero provider usage is a weak hint only;
    - the caller selects the events (one company, one verified persona, one run).
-     Policy decisions carry no run id yet, so joining them to a run is a follow-up
-     that must not trust a client session reference alone; until then ambiguity is
-     shown, not guessed;
+     Policy decisions now carry the server-verified run (`payload.run`), and
+     runs are joined on chain + actor + run id, never on a client session reference;
    - malformed or duplicate events are counted and skipped, never fatal; input is
      capped.
 2. **Judges (success measure).** A run or task gets an outcome from, in order:
@@ -107,13 +107,12 @@ over time) is a later step and is built on these tables; an external viewer
 
 - **Positive:** the learning loop gets a targeted "which layer" input; problems are
   visible without a new data pipeline; judges are measurable.
-- **Negative / cost:** stage 1 only sees what is audited. Policy decisions carry no
-  run id today, so they are matched by session reference; a gap or an unaudited
+- **Negative / cost:** stage 1 only sees what is audited. A gap or an unaudited
   layer (for example a guardrail that does not emit events) shows as no signal, not
   as no fault.
 - **Accepted residual risk:** a wrong suspect layer; mitigated by labelling stage 1
   output as a hypothesis and requiring replay before any change is attributed.
 - **Follow-ups:** (0) gateway transport failures (timeout, parse error, cut stream) and `finish_reason`/`has_output` flags are not audited yet and need typed bounded events; (1) stage 1 service + tests (done); (2) persisted findings
   and a read API with object-level checks (done: `RunDiagnosis`, `/eval/personas/{id}/runs`,
-  access follows the workstation persona rule, policy decisions now carry the verified run); (3) judge interface and the first
+  access uses the eval API's own stricter rule; the shared `_personas_for_user` still treats any executive as company-wide, which affects persona-token minting and is not fixed, policy decisions now carry the verified run); (3) judge interface and the first
   TypeSafe criteria with calibration; (4) viewer page; (5) replay with ADR-0022 §5.
