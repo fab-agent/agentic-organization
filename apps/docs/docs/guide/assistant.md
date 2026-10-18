@@ -12,6 +12,7 @@ Muhasebe, finans, İK gibi birimler için tasarlanmış küçük bir ekrandır. 
 
 - **Konuşma ve dosya:** kendi asistanınıza yazın; PDF, metin veya görsel ekleyin. Yanıtlar Markdown olarak gösterilir.
 - **Durum satırı:** asistan çalışırken "Çalışıyor: araç adı" gibi kısa durumlar görürsünüz. Ham akıl yürütme, araç argümanları ve araç sonuçları bu görünüme gönderilmez.
+- **Kaynaklar:** yanıt geçmiş çalışmalardan bilgi kullandıysa, yanıtın altında "Kaynaklar" açılır: tür, tarih ve kısa (kişisel veriden arındırılmış) bir özet. Tam metin ve iç kimlikler gösterilmez.
 - **Bağlamım:** adınız, biriminiz, yöneticiniz ve çalışma arkadaşlarınız (yalnızca ad ve görev), asistanınıza bağlı araçlar, size uygulanan politikalar, şirketin misyonu ve vizyonu, birim hedefleri.
 
 ## Ne yapamazsınız?
@@ -21,4 +22,4 @@ Muhasebe, finans, İK gibi birimler için tasarlanmış küçük bir ekrandır. 
 - Başka birinin asistanıyla yapılmış sohbetleri, bellek özetlerini veya delegasyon sonuçlarını görmek.
 - Geliştirici (terminal) kimlik bilgisi almak veya sunucu geneli ayarlara (sağlayıcı anahtarları, veritabanı bağlantıları, yedek) dokunmak.
 
-Eksik olanlar: çıktı listesi ve indirme, yanıtın dayandığı kaynakları gösteren panel, "İş incelemem" ekranı ve yerel **Asistan** klasörü yardımcısı henüz yoktur; bkz. [Bilinen sınırlar](/developer-notes/known-limits).
+Eksik olanlar: çıktı listesi ve indirme, "İş incelemem" ekranı ve yerel **Asistan** klasörü yardımcısı henüz yoktur; bkz. [Bilinen sınırlar](/developer-notes/known-limits).

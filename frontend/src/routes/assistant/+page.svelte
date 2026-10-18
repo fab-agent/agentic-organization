@@ -7,7 +7,8 @@
 	import Button from '$lib/components/ui/button.svelte';
 	import { Loader, Paperclip, Send, X } from '@lucide/svelte';
 
-	type Turn = { role: 'user' | 'assistant'; content: string };
+	type Source = { kind: string; date: string; snippet: string };
+	type Turn = { role: 'user' | 'assistant'; content: string; sources?: Source[] };
 
 	let ctx: AssistantContext | null = $state(null);
 	let error: string | null = $state(null);
@@ -123,6 +124,7 @@
 		status = 'Düşünüyor…';
 		await toBottom();
 		let answer = '';
+		let cited: Source[] = [];
 		try {
 			for await (const ev of streamMessage(sid, text, ctl.signal, sent)) {
 				if (mine !== epoch) break; // the company changed under us
@@ -131,6 +133,8 @@
 					streamingText = answer;
 				} else if (ev.type === 'status') {
 					status = ev.step === 'tool' ? `Çalışıyor: ${ev.name}` : `Tamamlandı: ${ev.name}${ev.ok === false ? ' (hata)' : ''}`;
+				} else if (ev.type === 'sources') {
+					cited = ev.items;
 				} else if (ev.type === 'error') error = ev.message;
 				else if (ev.type === 'done' || ev.type === 'stream_end') break;
 				await toBottom();
@@ -140,7 +144,7 @@
 		} finally {
 			// Only the generation that started this send may touch the shared state.
 			if (mine === epoch) {
-				if (answer) turns = [...turns, { role: 'assistant', content: answer }];
+				if (answer) turns = [...turns, { role: 'assistant', content: answer, sources: cited }];
 				streamingText = '';
 				streaming = false;
 				status = '';
@@ -173,7 +177,17 @@
 		<div bind:this={scroller} class="flex-1 overflow-y-auto p-4 space-y-4" aria-live="polite">
 			{#each turns as t}
 				<div class={t.role === 'user' ? 'ml-auto max-w-[85%] rounded-xl bg-primary/10 px-3 py-2' : 'max-w-[90%]'}>
-					{#if t.role === 'assistant'}<MessageContent content={t.content} />{:else}<p class="whitespace-pre-wrap text-sm">{t.content}</p>{/if}
+					{#if t.role === 'assistant'}
+						<MessageContent content={t.content} />
+						{#if t.sources?.length}
+							<details class="mt-1 rounded-lg border p-2 text-xs">
+								<summary class="cursor-pointer font-medium">Kaynaklar ({t.sources.length})</summary>
+								<ol class="mt-1 list-decimal pl-4 space-y-1">
+									{#each t.sources as s}<li><span class="text-muted-foreground">{s.kind} · {s.date}</span> — {s.snippet}</li>{/each}
+								</ol>
+							</details>
+						{/if}
+					{:else}<p class="whitespace-pre-wrap text-sm">{t.content}</p>{/if}
 				</div>
 			{/each}
 			{#if streaming}

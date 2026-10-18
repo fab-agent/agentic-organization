@@ -63,6 +63,20 @@ def project_event(event: dict) -> dict | None:
         return {"type": "text", "content": str(event.get("content", ""))}
     if t == "stream_end":
         return {"type": "stream_end"}
+    if t == "sources":
+        items = event.get("items")
+        return {
+            "type": "sources",
+            "items": [
+                {
+                    "kind": str(i.get("kind", ""))[:40],
+                    "date": str(i.get("date", ""))[:10],
+                    "snippet": str(i.get("snippet", ""))[:160],
+                }
+                for i in (items if isinstance(items, list) else [])[:8]
+                if isinstance(i, dict)
+            ],
+        }
     if t == "done":
         return {"type": "done", "message_id": event.get("message_id")}
     if t == "error":

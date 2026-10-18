@@ -448,3 +448,35 @@ def test_context_survives_bad_metadata_and_prefers_an_active_agent(
     assert (
         r.json()["agent"]["name"] == "Second" and r.json()["company"]["mission"] is None
     )
+
+
+def test_sources_are_shown_as_short_redacted_references_only():
+    from api.sessions import project_event
+    from services.agent_runtime import source_refs
+
+    refs = source_refs(
+        [
+            {
+                "source_type": "session_summary",
+                "source_id": "internal-id-1",
+                "chunk_text": "Invoice 42 was paid. Contact ceo@example.com "
+                + "x" * 400,
+                "created_at": "2026-10-01T10:00:00",
+                "score": 0.91,
+            }
+        ]
+    )
+    assert refs == [
+        {"kind": "session summary", "date": "2026-10-01", "snippet": refs[0]["snippet"]}
+    ]
+    assert (
+        "ceo@example.com" not in refs[0]["snippet"] and len(refs[0]["snippet"]) <= 160
+    )
+    ev = project_event(
+        {
+            "type": "sources",
+            "items": refs + [{"kind": "k", "score": 1, "source_id": "s"}] * 20,
+        }
+    )
+    assert ev["type"] == "sources" and len(ev["items"]) == 8
+    assert all(set(i) == {"kind", "date", "snippet"} for i in ev["items"])

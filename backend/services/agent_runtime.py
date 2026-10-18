@@ -60,6 +60,24 @@ def _build_message_with_attachments(
 # ── System prompt builder ─────────────────────────────────────────────────────
 
 
+def source_refs(knowledge: list[dict]) -> list[dict]:
+    """What the person may see about the knowledge behind an answer: kind, date and a
+    short redacted snippet. Never the full chunk, scores or internal ids."""
+    from services.redact import redact
+
+    out = []
+    for hit in knowledge or []:
+        text = redact(str(hit.get("chunk_text", ""))[:300]).text.replace("\n", " ")
+        out.append(
+            {
+                "kind": str(hit.get("source_type", "")).replace("_", " ")[:40],
+                "date": str(hit.get("created_at", ""))[:10],
+                "snippet": text[:160],
+            }
+        )
+    return out
+
+
 def _load_harness(
     person: Personnel, dept: Department | None, session_ref: str | None = None
 ) -> list:
@@ -124,8 +142,12 @@ def build_system_prompt_assembled(
     company_id: str | None = None,
     skip: frozenset[str] | set[str] = frozenset(),
     session_ref: str | None = None,
+    sources_out: list | None = None,
 ) -> Assembled:
-    """The prompt as named, token-counted sections (see services.context_assembly)."""
+    """The prompt as named, token-counted sections (see services.context_assembly).
+
+    `sources_out`, when given, receives the user-facing references of the knowledge
+    that went into the prompt (see `source_refs`)."""
     memories: list[str] = []
     knowledge: list[dict] = []
     # Never block session start due to a memory / RAG failure.
@@ -140,6 +162,8 @@ def build_system_prompt_assembled(
             knowledge = rag_search(
                 rag_query, company_id=company_id, personnel_id=person.id, k=4
             )
+            if sources_out is not None:
+                sources_out.extend(source_refs(knowledge))
         except Exception:
             pass
     return assemble(
@@ -236,6 +260,7 @@ def build_system_prompt(
     *,
     intent_message: str | None = None,
     session_ref: str | None = None,
+    sources_out: list | None = None,
 ) -> str:
     """`intent_message` is the user's first message of a session: when given, and the
     classifier is enabled, Jev may narrow the prompt (and skip retrieval). Callers
@@ -262,6 +287,7 @@ def build_system_prompt(
         company_id,
         skip=skip,
         session_ref=session_ref,
+        sources_out=sources_out,
     )
     # Sizes only, never text: shows where the tokens go for every real prompt.
     _log.info(
@@ -1242,6 +1268,7 @@ async def run_session(
         # Off the event loop: building the prompt can call the intent classifier
         # (a network round trip, up to its timeout) and the retrieval, and this is an
         # async generator serving every other request in the worker.
+        sources: list[dict] = []
         system_prompt = await asyncio.to_thread(
             lambda: build_system_prompt(
                 person,
@@ -1254,6 +1281,7 @@ async def run_session(
                 # attachments, so file contents never go to the classifier.
                 intent_message=user_message if not history_rows else None,
                 session_ref=session_id,
+                sources_out=sources,
             )
         )
         tool_defs = build_tool_definitions(list(skills))
@@ -1295,6 +1323,9 @@ async def run_session(
         provider = resolved.provider
         model_name = resolved.model
         api_key = resolved.api_key
+        if sources:
+            # What the answer may draw on, shown beside it (kind, date, short snippet).
+            yield {"type": "sources", "items": sources}
 
         gemini_history = _gemini_history(list(history_rows))
 
