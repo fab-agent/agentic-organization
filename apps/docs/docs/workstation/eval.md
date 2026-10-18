@@ -34,13 +34,14 @@ Güven kuralları:
 |---|---|
 | `GET /eval/personas/{id}/runs` | Kayıtlı teşhisleri listeler |
 | `GET /eval/personas/{id}/runs/{run}` | Tek teşhisi döner |
+| `GET /eval/personas/{id}/summary` | Başarı payı (aralıklı) ve şüpheli katman sayıları |
 | `POST /eval/personas/{id}/runs/{run}/diagnose` | Teşhisi hesaplar veya (son 10 sn içindeyse) kayıtlıyı döner |
 
 Erişim: kurucu; şirket genelindeki yönetici ve bölüm yöneticisi; yalnızca kendi bölümü için kapsamlı yönetici; sorumlu kişi; ajan sahibi. Yetkisiz, bilinmeyen veya bozuk `run_id` aynı `404`'ü döner ve hiçbir şey yazılmaz. Kişi silinince teşhisleri de silinir.
 
 ## Henüz yok
 
-- **Yargıçlar** (TypeSafe `Noul`/`Choice` ile başarı ölçümü, kalibrasyonlu): planlandı.
+- **Yargıçlar:** ilk dilim çalışır. Teşhisten türeyen kesin yargıçlar (`answered`, `no_tool_error`, `no_policy_block`) ve `GET /eval/personas/{id}/summary` (güven aralıklı başarı payı; belirsiz kararlar ayrı sayılır; şüpheli katmanlar varsayımdır, hata oranı değildir). TypeSafe `Noul` ile metin yargıcı kodda var ama saklanan oturum metnine bağlı değil ve kalibrasyondan geçmeden hiçbir ölçüt sayılmaz.
 - **Görüntüleme sayfası:** yok; yalnızca API.
 - **Tekrar oynatma (replay):** şüpheyi doğrulamak için tek katmanı değiştirip yeniden çalıştırma; probe ortamı gerekir, yok.
 - Guardrail ve veri katmanları olay üretmediği için "sinyal yok" görünür.

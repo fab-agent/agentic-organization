@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from models import AuditEvent, RunDiagnosis
-from services.run_diagnosis import MAX_EVENTS, diagnose
+from services.run_diagnosis import MAX_EVENTS, Diagnosis, Finding, diagnose
 
 DIAGNOSER_VERSION = 1
 # Run ids are minted by the server (uuid-like); anything else is not a run.
@@ -130,3 +130,29 @@ def to_dict(row: RunDiagnosis) -> dict:
         "updated_at": row.updated_at.isoformat(),
         "note": "Signals from the audit trail, not proof; confirm by replay.",
     }
+
+
+def diagnosis_from_row(row: RunDiagnosis) -> Diagnosis:
+    """Rebuild the stage-1 result from a stored row (findings are plain data)."""
+    findings = []
+    for f in json.loads(row.findings_json):
+        ev = f.get("evidence")
+        findings.append(
+            Finding(
+                f.get("layer", ""),
+                f.get("kind", ""),
+                f.get("severity", "info"),
+                f.get("detail", ""),
+                tuple(ev) if isinstance(ev, list) and len(ev) == 2 else None,
+            )
+        )
+    return Diagnosis(
+        run_id=row.run_id,
+        findings=findings,
+        scores=json.loads(row.scores_json),
+        suspect_layer=row.suspect_layer,
+        events_seen=row.events_seen,
+        ignored_client_claims=row.ignored_client_claims,
+        invalid_events=row.invalid_events,
+        truncated=row.truncated,
+    )

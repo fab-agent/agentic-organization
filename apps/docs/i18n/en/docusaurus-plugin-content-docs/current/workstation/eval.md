@@ -34,13 +34,14 @@ Trust rules:
 |---|---|
 | `GET /eval/personas/{id}/runs` | Lists stored diagnoses |
 | `GET /eval/personas/{id}/runs/{run}` | Returns one diagnosis |
+| `GET /eval/personas/{id}/summary` | Success share (with interval) and suspect-layer counts |
 | `POST /eval/personas/{id}/runs/{run}/diagnose` | Computes the diagnosis, or returns the stored one if it is under 10 s old |
 
 Access: founder; company-wide executive and department head; a department-scoped executive for that department only; the responsible person; the agent owner. Unauthorised, unknown or malformed `run_id` all return the same `404` and nothing is written. Diagnoses are erased with the person.
 
 ## Not there yet
 
-- **Judges** (success measured with TypeSafe `Noul`/`Choice`, calibrated): planned.
+- **Judges:** the first slice works. Deterministic judges derived from the diagnosis (`answered`, `no_tool_error`, `no_policy_block`) and `GET /eval/personas/{id}/summary` (success share with a confidence interval; abstentions counted apart; suspect layers are hypotheses, not fault rates). A TypeSafe `Noul` text judge exists in code but is not wired to stored session text, and no criterion counts before calibration.
 - **Viewer page:** none; API only.
 - **Replay:** re-running with only one layer changed to confirm a suspicion; needs the probe environment, which does not exist.
 - Guardrail and data layers emit no events, so they show as "no signal".

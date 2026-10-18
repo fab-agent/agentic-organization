@@ -17,7 +17,8 @@ from sqlmodel import select
 from api.auth import get_current_user
 from database import get_session
 from models import AgentConfig, CompanyMember, Personnel, RunDiagnosis, User
-from services.run_reader import RUN_ID, diagnose_and_store, to_dict
+from services.judges import judge_run, success_interval
+from services.run_reader import RUN_ID, diagnose_and_store, diagnosis_from_row, to_dict
 
 router = APIRouter(prefix="/eval", tags=["eval"])
 
@@ -83,6 +84,45 @@ def list_runs(persona_id: str, user: User = Depends(get_current_user)):
             .limit(_MAX_LIST)
         ).all()
         return [to_dict(r) for r in rows]
+
+
+@router.get("/personas/{persona_id}/summary")
+def persona_summary(persona_id: str, user: User = Depends(get_current_user)):
+    """Success and suspect-layer counts over the stored diagnoses of one persona.
+
+    Success comes from deterministic judges over the stage-1 diagnosis; abstentions
+    are counted apart, never as passes. The suspect layers are hypotheses (stage 1),
+    not fault rates: those need replay confirmation (ADR-0023).
+    """
+    with get_session() as session:
+        company_id = _persona_company(session, user, persona_id)
+        rows = session.exec(
+            select(RunDiagnosis)
+            .where(
+                RunDiagnosis.company_id == company_id,
+                RunDiagnosis.persona_id == persona_id,
+            )
+            .order_by(RunDiagnosis.updated_at.desc())
+            .limit(_MAX_LIST)
+        ).all()
+    criteria: dict[str, dict[str, int]] = {}
+    suspects: dict[str, int] = {}
+    for r in rows:
+        d = diagnosis_from_row(r)
+        for v in judge_run(d):
+            c = criteria.setdefault(v.criterion_id, {"yes": 0, "no": 0, "unclear": 0})
+            c[v.value] += 1
+        if r.suspect_layer:
+            suspects[r.suspect_layer] = suspects.get(r.suspect_layer, 0) + 1
+    return {
+        "runs": len(rows),
+        "criteria": {
+            cid: {**c, "success": success_interval(c["yes"], c["yes"] + c["no"])}
+            for cid, c in criteria.items()
+        },
+        "suspect_counts": suspects,
+        "note": "Suspect layers are stage-1 hypotheses, not fault rates.",
+    }
 
 
 @router.get("/personas/{persona_id}/runs/{run_id}")
