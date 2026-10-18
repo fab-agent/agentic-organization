@@ -1,41 +1,11 @@
-# Website
+# Docs site
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
-
-## Installation
+Docusaurus (TR default, EN under `/en`). Part of the `agentic-organization` monorepo; deployed from `apps/docs` on every change to this folder.
 
 ```bash
-yarn
+npm ci
+npm run start     # dev server
+npm run typecheck && npm run build
 ```
 
-## Local Development
-
-```bash
-yarn start
-```
-
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
-
-## Build
-
-```bash
-yarn build
-```
-
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
-
-## Deployment
-
-Using SSH:
-
-```bash
-USE_SSH=true yarn deploy
-```
-
-Not using SSH:
-
-```bash
-GIT_USER=<Your GitHub username> yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+Rules: docs claims must match the code (see `docs/developer-notes/known-limits.md`); in i18n content use relative links.
