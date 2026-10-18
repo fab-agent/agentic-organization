@@ -118,13 +118,61 @@ def _int(v: Any) -> int | None:
     return v if isinstance(v, int) and not isinstance(v, bool) else None
 
 
+_FAILURE_SEVERITY = {
+    "timeout": "high",
+    "transport": "high",
+    "parse": "medium",
+    "cut": "medium",
+}
+
+
 def _gateway(e: dict, p: dict, out: Diagnosis) -> None:
     status = _int(p.get("upstream_status"))
     model = _ident(p.get("model") or e.get("target"))
+    failure = p.get("failure")
+    finish = p.get("finish_reason")
+    if failure == "client_closed":
+        # The caller hung up; not a model fault. Shown, never scored.
+        out.findings.append(
+            Finding("model", "client_closed", "info", f"{model}: caller closed", _ev(e))
+        )
+        return
+    if failure in _FAILURE_SEVERITY:
+        out.findings.append(
+            Finding(
+                "model",
+                "transport_failure",
+                _FAILURE_SEVERITY[failure],
+                f"{model}: {failure}",
+                _ev(e),
+            )
+        )
+        return
     if status is not None and status >= 400:
         sev = "high" if status >= 500 or status in (401, 403, 429) else "medium"
         out.findings.append(
             Finding("model", "upstream_error", sev, f"{model}: HTTP {status}", _ev(e))
+        )
+    elif finish == "content_filter":
+        out.findings.append(
+            Finding(
+                "model",
+                "content_filtered",
+                "medium",
+                f"{model}: content filter",
+                _ev(e),
+            )
+        )
+    elif p.get("has_output") is False and finish != "tool_calls":
+        out.findings.append(
+            Finding("model", "empty_output", "medium", f"{model}: no output", _ev(e))
+        )
+    elif finish == "length":
+        # Output hit the token limit: a limit/config signal, weak as a model fault.
+        out.findings.append(
+            Finding(
+                "model", "truncated_output", "low", f"{model}: hit length limit", _ev(e)
+            )
         )
     elif _int(p.get("tokens_out")) == 0:
         # Provider usage counters can be wrong or missing; zero is a hint only.

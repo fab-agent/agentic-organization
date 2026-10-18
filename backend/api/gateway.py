@@ -18,8 +18,10 @@ opencode side (managed config, ADR-0011):
     }
 """
 
+import asyncio
 import hashlib
 import json
+import re
 import time
 
 import httpx
@@ -73,6 +75,46 @@ def _resolve_upstream(model: str, provider: str | None = None) -> tuple[str, str
 # ── Audit ─────────────────────────────────────────────────────────────────────
 
 
+_FINISH_RE = re.compile(r"[a-z_]{1,32}")
+
+
+def _finish_info(obj: object) -> tuple[str | None, bool]:
+    """(finish_reason, has_output) from one chat completion / stream chunk.
+
+    Only a short lowercase token is kept as finish_reason (provider text is never
+    stored); has_output is True when the choice carries content or tool calls.
+    """
+    if not isinstance(obj, dict):
+        return None, False
+    choices = obj.get("choices")
+    choice = choices[0] if isinstance(choices, list) and choices else None
+    if not isinstance(choice, dict):
+        return None, False
+    fr = choice.get("finish_reason")
+    fr = fr if isinstance(fr, str) and _FINISH_RE.fullmatch(fr) else None
+    part = choice.get("message") or choice.get("delta") or {}
+    has = bool(
+        isinstance(part, dict) and (part.get("content") or part.get("tool_calls"))
+    )
+    return fr, has
+
+
+def _sse_info(line: bytes) -> tuple[str | None, bool, bool]:
+    """(finish_reason, has_output, is_done) for one SSE line."""
+    s_ = line.strip()
+    if not s_.startswith(b"data:"):
+        return None, False, False
+    payload = s_[5:].strip()
+    if payload == b"[DONE]":
+        return None, False, True
+    try:
+        obj = json.loads(payload)
+    except (ValueError, TypeError):
+        return None, False, False
+    fr, has = _finish_info(obj)
+    return fr, has, False
+
+
 def _audit_gateway_call(
     principal: PersonaPrincipal,
     model: str,
@@ -83,6 +125,9 @@ def _audit_gateway_call(
     tokens_out: int | None,
     latency_ms: int,
     streamed: bool,
+    failure: str | None = None,
+    finish_reason: str | None = None,
+    has_output: bool | None = None,
 ) -> None:
     """Record the call into the tamper-evident audit chain (ADR-0006)."""
     messages = body.get("messages") or []
@@ -93,7 +138,7 @@ def _audit_gateway_call(
         company_id=principal.company_id,
         action="gateway_call",
         target=model,
-        reason=f"upstream {status}",
+        reason=f"upstream {status}" if not failure else f"failure {failure}",
         payload={
             "model": model,
             "streamed": streamed,
@@ -101,6 +146,10 @@ def _audit_gateway_call(
             "tokens_in": tokens_in,
             "tokens_out": tokens_out,
             "latency_ms": latency_ms,
+            # timeout | transport | parse | cut | client_closed (ADR-0023 follow-up 0)
+            "failure": failure,
+            "finish_reason": finish_reason,
+            "has_output": has_output,
             "prompt_sha256": hashlib.sha256(prompt_text.encode()).hexdigest(),
             "prompt_preview": prompt_text[:_STORE_PROMPT_PREVIEW_CHARS],
             **({"run": run_info(principal)} if principal.run_id else {}),
@@ -174,21 +223,44 @@ async def chat_completions(
     t0 = time.monotonic()
 
     if not stream:
-        async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(url, json=body, headers=headers)
+        failure: str | None = None
+        resp = None
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                resp = await client.post(url, json=body, headers=headers)
+        except httpx.TimeoutException:
+            failure = "timeout"
+        except httpx.HTTPError:
+            failure = "transport"
+        data: dict = {}
+        if resp is not None:
+            try:
+                data = resp.json() if resp.content else {}
+                if not isinstance(data, dict):
+                    raise ValueError("not an object")
+            except ValueError:
+                failure, data = "parse", {}
         latency_ms = round((time.monotonic() - t0) * 1000)
-        data = resp.json() if resp.content else {}
         usage = data.get("usage") or {}
+        finish_reason, has_output = _finish_info(data)
         _audit_gateway_call(
             principal,
             model,
             body,
-            status=resp.status_code,
+            status=resp.status_code if resp is not None else 0,
             tokens_in=usage.get("prompt_tokens"),
             tokens_out=usage.get("completion_tokens"),
             latency_ms=latency_ms,
             streamed=False,
+            failure=failure,
+            finish_reason=finish_reason,
+            has_output=has_output if resp is not None and not failure else None,
         )
+        if failure:
+            raise HTTPException(
+                status_code=504 if failure == "timeout" else 502,
+                detail=f"Upstream failure: {failure}",
+            )
         gateway_limits.record_usage(
             principal.persona_id,
             principal.company_id,
@@ -212,40 +284,64 @@ async def chat_completions(
     async def _proxy_stream():
         usage: dict = {}
         line_buf = b""
-        upstream_status = 200
-        async with httpx.AsyncClient(timeout=stream_timeout) as client:
-            async with client.stream(
-                "POST", url, json=upstream_body, headers=headers
-            ) as upstream:
-                upstream_status = upstream.status_code
-                async for chunk in upstream.aiter_raw():
-                    yield chunk
-                    line_buf += chunk
-                    while b"\n" in line_buf:
-                        line, line_buf = line_buf.split(b"\n", 1)
-                        found = _sse_usage(line)
-                        if found:
-                            usage = found
-        found = _sse_usage(line_buf)
-        if found:
-            usage = found
+        upstream_status = 0
+        failure: str | None = None
+        finish_reason: str | None = None
+        has_output = False
+        done = False
 
-        latency_ms = round((time.monotonic() - t0) * 1000)
-        tokens_in = usage.get("prompt_tokens")
-        tokens_out = usage.get("completion_tokens")
-        _audit_gateway_call(
-            principal,
-            model,
-            body,
-            status=upstream_status,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-            latency_ms=latency_ms,
-            streamed=True,
-        )
-        gateway_limits.record_usage(
-            principal.persona_id, principal.company_id, tokens_in, tokens_out
-        )
+        def _scan(line: bytes) -> None:
+            nonlocal usage, finish_reason, has_output, done
+            found = _sse_usage(line)
+            if found:
+                usage = found
+            fr, has, is_done = _sse_info(line)
+            finish_reason = fr or finish_reason
+            has_output = has_output or has
+            done = done or is_done
+
+        try:
+            async with httpx.AsyncClient(timeout=stream_timeout) as client:
+                async with client.stream(
+                    "POST", url, json=upstream_body, headers=headers
+                ) as upstream:
+                    upstream_status = upstream.status_code
+                    async for chunk in upstream.aiter_raw():
+                        yield chunk
+                        line_buf += chunk
+                        while b"\n" in line_buf:
+                            line, line_buf = line_buf.split(b"\n", 1)
+                            _scan(line)
+            _scan(line_buf)
+            if upstream_status < 400 and not done and finish_reason is None:
+                failure = "cut"
+        except httpx.TimeoutException:
+            failure = "timeout"
+        except httpx.HTTPError:
+            failure = "transport"
+        except (asyncio.CancelledError, GeneratorExit):
+            failure = "client_closed"
+            raise
+        finally:
+            latency_ms = round((time.monotonic() - t0) * 1000)
+            tokens_in = usage.get("prompt_tokens")
+            tokens_out = usage.get("completion_tokens")
+            _audit_gateway_call(
+                principal,
+                model,
+                body,
+                status=upstream_status,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+                latency_ms=latency_ms,
+                streamed=True,
+                failure=failure,
+                finish_reason=finish_reason,
+                has_output=has_output,
+            )
+            gateway_limits.record_usage(
+                principal.persona_id, principal.company_id, tokens_in, tokens_out
+            )
 
     return StreamingResponse(_proxy_stream(), media_type="text/event-stream")
 

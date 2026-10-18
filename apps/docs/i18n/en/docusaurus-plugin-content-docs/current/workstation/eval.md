@@ -43,5 +43,6 @@ Access: founder; company-wide executive and department head; a department-scoped
 - **Judges** (success measured with TypeSafe `Noul`/`Choice`, calibrated): planned.
 - **Viewer page:** none; API only.
 - **Replay:** re-running with only one layer changed to confirm a suspicion; needs the probe environment, which does not exist.
-- Gateway timeouts, parse errors and cut streams are not audited; guardrail and data layers emit no events, so they show as "no signal".
+- Guardrail and data layers emit no events, so they show as "no signal".
+- Gateway failures (timeout, connection, unparseable reply, cut stream) and empty output / `length` finishes are recorded on the `gateway_call` event and become `model` findings; a client hang-up is shown but not scored.
 - Client events written before the `origin` stamp cannot be told from server events.

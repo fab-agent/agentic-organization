@@ -112,7 +112,7 @@ over time) is a later step and is built on these tables; an external viewer
   as no fault.
 - **Accepted residual risk:** a wrong suspect layer; mitigated by labelling stage 1
   output as a hypothesis and requiring replay before any change is attributed.
-- **Follow-ups:** (0) gateway transport failures (timeout, parse error, cut stream) and `finish_reason`/`has_output` flags are not audited yet and need typed bounded events; (1) stage 1 service + tests (done); (2) persisted findings
+- **Follow-ups:** (0) gateway transport failures (timeout, transport, parse error, cut stream, client hang-up) and bounded `finish_reason`/`has_output` are audited on every `gateway_call` (done 2026-10-18; a client hang-up is shown but never scored); (1) stage 1 service + tests (done); (2) persisted findings
   and a read API with object-level checks (done: `RunDiagnosis`, `/eval/personas/{id}/runs`,
   access uses the eval API's own stricter rule; the shared `_personas_for_user` still treats any executive as company-wide, which affects persona-token minting and is not fixed, policy decisions now carry the verified run); (3) judge interface and the first
   TypeSafe criteria with calibration; (4) viewer page; (5) replay with ADR-0022 §5.

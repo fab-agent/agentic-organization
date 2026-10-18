@@ -43,5 +43,6 @@ Erişim: kurucu; şirket genelindeki yönetici ve bölüm yöneticisi; yalnızca
 - **Yargıçlar** (TypeSafe `Noul`/`Choice` ile başarı ölçümü, kalibrasyonlu): planlandı.
 - **Görüntüleme sayfası:** yok; yalnızca API.
 - **Tekrar oynatma (replay):** şüpheyi doğrulamak için tek katmanı değiştirip yeniden çalıştırma; probe ortamı gerekir, yok.
-- Gateway zaman aşımı/parse/kesilen akış hataları denetime yazılmıyor; guardrail ve veri katmanları olay üretmediği için "sinyal yok" görünür.
+- Guardrail ve veri katmanları olay üretmediği için "sinyal yok" görünür.
+- Gateway hataları (zaman aşımı, bağlantı, çözümlenemeyen yanıt, kesilen akış) ve boş çıktı/`length` bitişi `gateway_call` olayında kayıtlıdır ve `model` katmanına bulgu olur; istemcinin bağlantıyı kapatması gösterilir ama puanlanmaz.
 - `origin` damgasından önceki istemci olayları sunucu olaylarından ayırt edilemez.
