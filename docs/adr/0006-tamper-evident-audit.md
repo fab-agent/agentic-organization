@@ -1,6 +1,6 @@
 # ADR-0006: Tamper-evident audit (hash-chained, one-way stream)
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-09-01
 - **Related:** ADR-0003, ADR-0004, ADR-0005; block/buzz `crates/buzz-audit/`
 

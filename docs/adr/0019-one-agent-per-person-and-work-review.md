@@ -1,6 +1,6 @@
 # ADR-0019: One agent per person, subagents internal; the organisation layer is area, rules and review
 
-- **Status:** proposed
+- **Status:** accepted; §5 and §8 narrowed by ADR-0022
 - **Date:** 2026-09-29 (revised the same day; replaces the first draft "task-scoped agent personas")
 - **Deciders:** Fabrika / fab.engineering
 - **Related:** ADR-0005, ADR-0006, ADR-0007, ADR-0010, ADR-0013, ADR-0014, ADR-0016, ADR-0017, ADR-0018

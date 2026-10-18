@@ -1,6 +1,6 @@
 # ADR-0017: Company policies as versioned guardrails, and daily work review
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-09-28
 - **Deciders:** Fabrika / fab.engineering
 - **Related:** ADR-0005, ADR-0006, ADR-0013, ADR-0014, ADR-0015, ADR-0016

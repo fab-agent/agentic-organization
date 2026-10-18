@@ -1,6 +1,6 @@
 # ADR-0021: The fit rubric — how company goals, values and policies become typed questions
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-09-29
 - **Deciders:** Fabrika / fab.engineering
 - **Related:** ADR-0013, ADR-0015, ADR-0017, ADR-0019 (§6, open question 2), ADR-0020

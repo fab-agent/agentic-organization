@@ -1,6 +1,6 @@
 # ADR-0016: Installation kit — org chart, identity, models, company systems
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-09-28
 - **Deciders:** Fabrika / fab.engineering
 - **Related:** ADR-0004, ADR-0007, ADR-0014, ADR-0015

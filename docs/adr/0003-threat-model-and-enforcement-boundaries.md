@@ -1,6 +1,6 @@
 # ADR-0003: Threat model and enforcement boundaries
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-09-01
 - **Related:** ADR-0001, ADR-0002, ADR-0004, ADR-0006, ADR-0010
 

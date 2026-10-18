@@ -1,6 +1,6 @@
 # ADR-0022: Herdr for power users, a minimal web view for departments, and an approved learning loop
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-10-17
 - **Deciders:** Fabrika / fab.engineering
 - **Related:** ADR-0001, ADR-0002, ADR-0005, ADR-0006, ADR-0010, ADR-0014 (decisions 2 and 4 superseded here), ADR-0016, ADR-0017, ADR-0018, ADR-0019 (§5 narrowed, §8 changed here), ADR-0021

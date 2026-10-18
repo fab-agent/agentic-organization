@@ -1,6 +1,6 @@
 # ADR-0018: Workspace lifecycle API and attach protocol
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-09-29
 - **Deciders:** Fabrika / fab.engineering
 - **Related:** ADR-0002, ADR-0004, ADR-0005, ADR-0006, ADR-0007, ADR-0010, ADR-0014 (follow-ups 2 and 4)

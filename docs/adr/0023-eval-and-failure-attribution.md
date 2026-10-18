@@ -1,6 +1,6 @@
 # ADR-0023: Evaluation and failure attribution on the audit trail
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-10-17
 - **Deciders:** Fabrika / fab.engineering
 - **Related:** ADR-0005, ADR-0006, ADR-0013, ADR-0020, ADR-0021, ADR-0022

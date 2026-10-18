@@ -1,6 +1,6 @@
 # ADR-0020: Prompt assembly with a token budget, and intent breakdown with Jev
 
-- **Status:** proposed
+- **Status:** accepted
 - **Date:** 2026-09-29
 - **Deciders:** Fabrika / fab.engineering
 - **Related:** ADR-0004, ADR-0005, ADR-0010, ADR-0015, ADR-0017, ADR-0019

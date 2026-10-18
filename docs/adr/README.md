@@ -19,10 +19,10 @@ Format: a [MADR](https://adr.github.io/madr/) derivative — see [`0000-template
 |-----|-------|--------|
 | [0001](0001-adopt-opencode-as-workstation-client.md) | Adopt opencode as the developer workstation client | accepted |
 | [0002](0002-execution-model-laptop-plus-sandbox.md) | Execution model: laptop + mandatory local sandbox | accepted |
-| [0003](0003-threat-model-and-enforcement-boundaries.md) | Threat model and enforcement boundaries | proposed |
+| [0003](0003-threat-model-and-enforcement-boundaries.md) | Threat model and enforcement boundaries | accepted |
 | [0004](0004-central-llm-gateway.md) | Central LLM Gateway (OpenAI-compatible proxy, BYO upstream) | accepted |
 | [0005](0005-executable-policy-engine.md) | Executable Policy Engine (fail-closed broker) | accepted |
-| [0006](0006-tamper-evident-audit.md) | Tamper-evident audit (hash-chained, one-way stream) | proposed |
+| [0006](0006-tamper-evident-audit.md) | Tamper-evident audit (hash-chained, one-way stream) | accepted |
 | [0007](0007-agent-identity-and-credentials.md) | Agent identity and short-lived credentials | accepted |
 | [0008](0008-tui-strategy.md) | TUI strategy (opencode's TUI for now, Bubble Tea later) | accepted; TUI technology superseded by ADR-0014 |
 | [0009](0009-workstation-wrapper-cli.md) | Workstation wrapper CLI (`3pa`) responsibilities and distribution | accepted |
@@ -30,16 +30,16 @@ Format: a [MADR](https://adr.github.io/madr/) derivative — see [`0000-template
 | [0011](0011-managed-config-and-precedence.md) | Managed config and config precedence | accepted |
 | [0012](0012-repo-structure-and-release.md) | Repo structure and release process | accepted |
 | [0013](0013-llm-audit-severity-scoring.md) | LLM audit severity scoring | accepted |
-| [0014](0014-department-terminal-workspace.md) | Terminal workspace for every department (server-side workspaces, Rust + Ratatui TUI) | proposed |
-| [0015](0015-document-ingestion-and-ranking.md) | Company document ingestion (Docling) and relevance ranking (TypeSafe Jev) | proposed |
-| [0016](0016-installation-kit.md) | Installation kit — org chart, identity, models, company systems | proposed |
-| [0017](0017-policies-as-code-and-daily-review.md) | Company policies as versioned guardrails, and daily work review | proposed |
-| [0018](0018-workspace-lifecycle-api.md) | Workspace lifecycle API and attach protocol | proposed |
-| [0019](0019-one-agent-per-person-and-work-review.md) | One agent per person, subagents internal; area, rules and work review | proposed |
-| [0020](0020-prompt-assembly-and-intent-breakdown.md) | Prompt assembly with a token budget, and intent breakdown with Jev | proposed |
-| [0021](0021-fit-rubric.md) | The fit rubric — goals, values and policies as typed questions | proposed |
-| [0022](0022-herdr-power-users-simple-ui-learning-loop.md) | Herdr for power users, a minimal web view for departments, and an approved learning loop | proposed |
-| [0023](0023-eval-and-failure-attribution.md) | Evaluation and failure attribution on the audit trail | proposed |
+| [0014](0014-department-terminal-workspace.md) | Terminal workspace for every department (server-side workspaces, Rust + Ratatui TUI) | accepted; decisions 2 and 4 superseded by ADR-0022 |
+| [0015](0015-document-ingestion-and-ranking.md) | Company document ingestion (Docling) and relevance ranking (TypeSafe Jev) | accepted |
+| [0016](0016-installation-kit.md) | Installation kit — org chart, identity, models, company systems | accepted |
+| [0017](0017-policies-as-code-and-daily-review.md) | Company policies as versioned guardrails, and daily work review | accepted |
+| [0018](0018-workspace-lifecycle-api.md) | Workspace lifecycle API and attach protocol | accepted |
+| [0019](0019-one-agent-per-person-and-work-review.md) | One agent per person, subagents internal; area, rules and work review | accepted; §5 and §8 narrowed by ADR-0022 |
+| [0020](0020-prompt-assembly-and-intent-breakdown.md) | Prompt assembly with a token budget, and intent breakdown with Jev | accepted |
+| [0021](0021-fit-rubric.md) | The fit rubric — goals, values and policies as typed questions | accepted |
+| [0022](0022-herdr-power-users-simple-ui-learning-loop.md) | Herdr for power users, a minimal web view for departments, and an approved learning loop | accepted |
+| [0023](0023-eval-and-failure-attribution.md) | Evaluation and failure attribution on the audit trail | accepted |
 
 ## Adding a new ADR
 
