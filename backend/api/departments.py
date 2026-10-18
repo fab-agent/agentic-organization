@@ -6,7 +6,7 @@ from sqlmodel import select
 from api.audit import log_action
 from api.auth import check_company_membership, get_current_user
 from database import get_session
-from models import CompanyMember, Department, DepartmentPolicyLink, Policy, User
+from models import Department, DepartmentPolicyLink, Policy, User
 from schemas import DepartmentCreate, DepartmentUpdate, PolicyLinkSet
 from services import authz
 
@@ -86,12 +86,14 @@ def list_departments(
     with get_session() as session:
         if company_id:
             check_company_membership(current_user.id, company_id, session)
+            authz.deny_assistant(session, current_user.id, company_id)
             q = select(Department).where(Department.company_id == company_id)
         else:
-            memberships = session.exec(
-                select(CompanyMember).where(CompanyMember.user_id == current_user.id)
-            ).all()
-            user_company_ids = [m.company_id for m in memberships]
+            user_company_ids = [
+                c
+                for c in authz.company_ids(session, current_user.id)
+                if not authz.is_assistant_only(session, current_user.id, c)
+            ]
             q = select(Department).where(Department.company_id.in_(user_company_ids))
         depts = session.exec(q).all()
         name_map = {d.id: d.name for d in depts}
@@ -149,6 +151,7 @@ def create_department(
 def get_department(dept_id: str, current_user: User = Depends(get_current_user)):
     with get_session() as session:
         dept = _own_department(session, current_user, dept_id)
+        authz.deny_assistant(session, current_user.id, dept.company_id)
         parent_name = None
         if dept.parent_id:
             parent = session.get(Department, dept.parent_id)
@@ -326,12 +329,14 @@ def get_department_tree(
     with get_session() as session:
         if company_id:
             check_company_membership(current_user.id, company_id, session)
+            authz.deny_assistant(session, current_user.id, company_id)
             q = select(Department).where(Department.company_id == company_id)
         else:
-            memberships = session.exec(
-                select(CompanyMember).where(CompanyMember.user_id == current_user.id)
-            ).all()
-            user_company_ids = [m.company_id for m in memberships]
+            user_company_ids = [
+                c
+                for c in authz.company_ids(session, current_user.id)
+                if not authz.is_assistant_only(session, current_user.id, c)
+            ]
             q = select(Department).where(Department.company_id.in_(user_company_ids))
         depts = session.exec(q).all()
         policies_map = _load_dept_policies_map(session, [d.id for d in depts])

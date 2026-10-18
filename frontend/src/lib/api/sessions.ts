@@ -40,6 +40,7 @@ export type StreamEvent =
 	| { type: 'text'; content: string }
 	| { type: 'tool_call'; name: string; args: Record<string, unknown> }
 	| { type: 'tool_result'; name: string; result: string }
+	| { type: 'status'; step: 'tool' | 'tool_done'; name: string; ok?: boolean }
 	| { type: 'done'; message_id: string }
 	| { type: 'error'; message: string }
 	| { type: 'stream_end' };

@@ -41,6 +41,7 @@ def company_stats(
         if not company_id:
             return {}
         authz.require_member(session, user.id, company_id)
+        authz.deny_assistant(session, user.id, company_id)
 
         # All personnel in company
         people = session.exec(

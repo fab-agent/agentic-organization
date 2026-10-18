@@ -245,12 +245,14 @@ def list_personnel(
     with get_session() as session:
         if company_id:
             check_company_membership(current_user.id, company_id, session)
+            authz.deny_assistant(session, current_user.id, company_id)
             q = select(Personnel).where(Personnel.company_id == company_id)
         else:
-            memberships = session.exec(
-                select(CompanyMember).where(CompanyMember.user_id == current_user.id)
-            ).all()
-            user_company_ids = [m.company_id for m in memberships]
+            user_company_ids = [
+                c
+                for c in authz.company_ids(session, current_user.id)
+                if not authz.is_assistant_only(session, current_user.id, c)
+            ]
             q = select(Personnel).where(Personnel.company_id.in_(user_company_ids))
         if department_id:
             q = q.where(Personnel.department_id == department_id)
@@ -306,6 +308,7 @@ def create_personnel(
 def get_personnel(person_id: str, current_user: User = Depends(get_current_user)):
     with get_session() as session:
         person = _get_person_and_check_membership(person_id, current_user.id, session)
+        authz.deny_assistant(session, current_user.id, person.company_id)
         return _personnel_to_dict(person, session)
 
 
@@ -552,7 +555,8 @@ def archive_personnel(person_id: str, current_user: User = Depends(get_current_u
 @router.get("/personnel/{person_id}/agent-config")
 def get_agent_config(person_id: str, current_user: User = Depends(get_current_user)):
     with get_session() as session:
-        _get_person_and_check_membership(person_id, current_user.id, session)
+        person = _get_person_and_check_membership(person_id, current_user.id, session)
+        authz.deny_assistant(session, current_user.id, person.company_id)
         cfg = session.exec(
             select(AgentConfig).where(AgentConfig.personnel_id == person_id)
         ).first()
@@ -714,7 +718,8 @@ def _skill_of_person(session, person_id: str, skill_id: str) -> Skill:
 @router.get("/personnel/{person_id}/skills")
 def list_skills(person_id: str, current_user: User = Depends(get_current_user)):
     with get_session() as session:
-        _get_person_and_check_membership(person_id, current_user.id, session)
+        person = _get_person_and_check_membership(person_id, current_user.id, session)
+        authz.deny_assistant(session, current_user.id, person.company_id)
         cfg = session.exec(
             select(AgentConfig).where(AgentConfig.personnel_id == person_id)
         ).first()
@@ -855,12 +860,14 @@ def get_org_tree(
     with get_session() as session:
         if company_id:
             check_company_membership(current_user.id, company_id, session)
+            authz.deny_assistant(session, current_user.id, company_id)
             q = select(Personnel).where(Personnel.company_id == company_id)
         else:
-            memberships = session.exec(
-                select(CompanyMember).where(CompanyMember.user_id == current_user.id)
-            ).all()
-            user_company_ids = [m.company_id for m in memberships]
+            user_company_ids = [
+                c
+                for c in authz.company_ids(session, current_user.id)
+                if not authz.is_assistant_only(session, current_user.id, c)
+            ]
             q = select(Personnel).where(Personnel.company_id.in_(user_company_ids))
 
         all_personnel = session.exec(q).all()

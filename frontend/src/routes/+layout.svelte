@@ -213,10 +213,17 @@
 	const canManageCompany = $derived(can('dept_head'));
 
 	const ROLE_WEIGHT: Record<string, number> = {
-		founder: 5, executive: 4, dept_head: 3, agent_owner: 2, user: 1,
+		founder: 5, executive: 4, dept_head: 3, agent_owner: 2, user: 1, assistant_user: 1,
 	};
 	const userRole   = $derived(currentUser?.companies.find(c => c.company_id === active?.id)?.role ?? 'user');
 	const roleWeight = $derived(ROLE_WEIGHT[userRole] ?? 1);
+	// ADR-0022 §7: departments get a small view (chat, files, outputs, my context).
+	const isAssistant = $derived(userRole === 'assistant_user');
+	$effect(() => {
+		if (!isAssistant || !authStore.isLoggedIn) return;
+		const p = $page.url.pathname;
+		if (!['/assistant', '/profile', '/login', '/set-password'].some((r) => p.startsWith(r))) goto('/assistant');
+	});
 	function can(minRole: string): boolean { return roleWeight >= (ROLE_WEIGHT[minRole] ?? 1); }
 </script>
 
@@ -404,6 +411,15 @@
 			<!-- Nav items -->
 			<nav class="flex-1 p-3 flex flex-col gap-y-1 pt-4">
 
+				{#if isAssistant}
+					<a href="/assistant">
+						<Button variant={$page.url.pathname.startsWith('/assistant') ? 'secondary' : 'ghost'}
+							class="w-full justify-start gap-x-3 h-10 rounded-xl text-sm font-medium {sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''}">
+							<Cpu class="w-4 h-4 flex-shrink-0" />
+							{#if !sidebarCollapsed}<span class="truncate">Asistan</span>{/if}
+						</Button>
+					</a>
+				{:else}
 				<a href="/">
 					<Button variant={$page.url.pathname === '/' ? 'secondary' : 'ghost'}
 						class="w-full justify-start gap-x-3 h-10 rounded-xl text-sm font-medium {sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''}">
@@ -486,6 +502,8 @@
 						{/if}
 					</Button>
 				</a>
+
+				{/if}
 
 				<!-- Spacer -->
 				<div class="flex-1"></div>

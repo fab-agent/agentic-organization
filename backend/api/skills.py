@@ -150,10 +150,17 @@ def list_skills(company_id: str | None = None, user: User = Depends(get_current_
         q = select(CompanySkill)
         if company_id:
             authz.require_member(session, user.id, company_id)
+            authz.deny_assistant(session, user.id, company_id)
             q = q.where(CompanySkill.company_id == company_id)
         else:
             q = q.where(
-                CompanySkill.company_id.in_(authz.company_ids(session, user.id))
+                CompanySkill.company_id.in_(
+                    [
+                        c
+                        for c in authz.company_ids(session, user.id)
+                        if not authz.is_assistant_only(session, user.id, c)
+                    ]
+                )
             )
         skills = session.exec(q.order_by(CompanySkill.name)).all()
         result = []
@@ -190,6 +197,7 @@ def get_skill(skill_id: str, user: User = Depends(get_current_user)):
         skill = session.get(CompanySkill, skill_id)
         if not skill or not authz.is_member(session, user.id, skill.company_id):
             raise HTTPException(status_code=404, detail="Skill not found")
+        authz.deny_assistant(session, user.id, skill.company_id)
         links = session.exec(
             select(AgentSkillLink).where(AgentSkillLink.company_skill_id == skill_id)
         ).all()

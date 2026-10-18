@@ -159,7 +159,7 @@ def scope_valid(session, company_id: str, role: str, scope_id: str | None) -> bo
 
     if scope_id is None:
         return role != "agent_owner"
-    if role in ("founder", "user"):
+    if role in ("founder", "user", "assistant_user"):
         return False
     if role == "agent_owner":
         p = session.get(Personnel, scope_id)
@@ -168,7 +168,14 @@ def scope_valid(session, company_id: str, role: str, scope_id: str | None) -> bo
     return bool(d and d.company_id == company_id)
 
 
-ASSIGNABLE_ROLES = {"founder", "executive", "dept_head", "agent_owner", "user"}
+ASSIGNABLE_ROLES = {
+    "founder",
+    "executive",
+    "dept_head",
+    "agent_owner",
+    "user",
+    "assistant_user",
+}
 # Which membership roles may hand out which roles (company-wide memberships only,
 # except that a dept_head may hand out the non-managing roles).
 _GRANTORS = {
@@ -177,6 +184,7 @@ _GRANTORS = {
     "dept_head": {"founder", "executive"},
     "agent_owner": {"founder", "executive", "dept_head"},
     "user": {"founder", "executive", "dept_head"},
+    "assistant_user": {"founder", "executive", "dept_head"},
 }
 
 
@@ -202,7 +210,7 @@ def require_may_grant(
         raise HTTPException(status_code=422, detail="Rol için kapsam geçersiz")
     allowed_roles = _GRANTORS.get(role, {"founder"})
     dept = scope_id if role in ("executive", "dept_head") else None
-    if role in ("agent_owner", "user") and person is not None:
+    if role in ("agent_owner", "user", "assistant_user") and person is not None:
         dept = person.department_id
     if not has_role(session, user_id, company_id, allowed_roles, department_id=dept):
         raise HTTPException(status_code=403, detail="Bu rolü atama yetkiniz yok")
@@ -265,3 +273,18 @@ def controls_account(session, caller_id: str, target_id: str, roles=FINAL) -> bo
     return all(
         has_role(session, caller_id, c, roles, company_wide=True) for c in theirs
     )
+
+
+def is_assistant_only(session, user_id: str, company_id: str | None) -> bool:
+    """The user is in the company only as `assistant_user` (ADR-0022 §7): the
+    department web view, with no company-wide lists and no editing."""
+    mine = memberships(session, user_id, company_id)
+    return bool(mine) and all(m.role == "assistant_user" for m in mine)
+
+
+def deny_assistant(session, user_id: str, company_id: str | None) -> None:
+    """Company-wide lists and configuration are not part of the assistant view."""
+    if is_assistant_only(session, user_id, company_id):
+        raise HTTPException(
+            status_code=403, detail="Bu görünümde şirket geneli listeler yok"
+        )

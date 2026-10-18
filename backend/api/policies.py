@@ -119,6 +119,7 @@ def list_policy_config(
     """Raw PolicyConfig rows for the company + the resolved effective setting."""
     with get_session() as session:
         authz.require_member(session, user.id, company_id)
+        authz.deny_assistant(session, user.id, company_id)
         rows = session.exec(
             select(PolicyConfig).where(PolicyConfig.company_id == company_id)
         ).all()
@@ -214,9 +215,18 @@ def list_policies(
         q = select(Policy)
         if company_id:
             authz.require_member(session, user.id, company_id)
+            authz.deny_assistant(session, user.id, company_id)
             q = q.where(Policy.company_id == company_id)
         else:
-            q = q.where(Policy.company_id.in_(authz.company_ids(session, user.id)))
+            q = q.where(
+                Policy.company_id.in_(
+                    [
+                        c
+                        for c in authz.company_ids(session, user.id)
+                        if not authz.is_assistant_only(session, user.id, c)
+                    ]
+                )
+            )
         if department_id:
             q = q.where(Policy.department_id == department_id)
         if agent_config_id:
@@ -260,6 +270,7 @@ def get_policy(policy_id: str, user: User = Depends(get_current_user)):
         p = session.get(Policy, policy_id)
         if not p or not authz.is_member(session, user.id, p.company_id):
             raise HTTPException(status_code=404, detail="Policy not found")
+        authz.deny_assistant(session, user.id, p.company_id)
         return _policy_dict(p)
 
 

@@ -135,6 +135,8 @@ verification.
 
 ### 7. Departments: a minimal route group in the SvelteKit app
 
+> **Status (2026-10-18):** first slice built: role `assistant_user` (grantable by founder/executive/department head, no scope), `GET /assistant/context` (allowlisted projection), `/assistant` page (chat with the person's own agent, file attach, status events, "my context"), the status-event projection on the session stream and stored messages, no company-wide lists for the role, and a nav that shows only Assistant. **Not built yet:** outputs list/download, the NotebookLM-style sources panel, person-rights screens inside this view, signed-URL re-checks, the local Assistant folder helper.
+
 Role `assistant_user`; a few components, no new framework. Feature matrix:
 
 | Feature | assistant_user |

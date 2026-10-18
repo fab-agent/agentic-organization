@@ -3,7 +3,7 @@ import { api, changePassword as apiChangePassword } from '$lib/api/client';
 export type UserCompany = {
 	company_id: string;
 	company_name: string;
-	role: 'founder' | 'executive' | 'dept_head' | 'agent_owner' | 'user';
+	role: 'founder' | 'executive' | 'dept_head' | 'agent_owner' | 'user' | 'assistant_user';
 	scope_id: string | null;
 	personnel_id: string | null;
 };
@@ -23,6 +23,7 @@ const ROLE_WEIGHT: Record<string, number> = {
 	dept_head: 3,
 	agent_owner: 2,
 	user: 1,
+	assistant_user: 1,
 };
 
 let _user = $state<AuthUser | null>(null);

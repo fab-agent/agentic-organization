@@ -29,7 +29,7 @@ Giriş yapmış bir kullanıcı kendi şifresini **Profil** sayfasından değiş
 
 ## Roller
 
-Rol, **şirket başına** verilir (bir kişi farklı şirketlerde farklı rolde olabilir). Beş rol vardır:
+Rol, **şirket başına** verilir (bir kişi farklı şirketlerde farklı rolde olabilir). Altı rol vardır:
 
 | Rol | Kısaca | Kenar çubuğunda gördükleri |
 |---|---|---|
@@ -38,6 +38,7 @@ Rol, **şirket başına** verilir (bir kişi farklı şirketlerde farklı rolde 
 | **Bölüm yöneticisi** `dept_head` | Yapıyı yönetir; değişiklik taleplerinin ilk onayını verir | Panel, Yapı, Organizasyon, Değişiklikler, Akışlar, İşler, Delegasyon |
 | **Ajan sorumlusu** `agent_owner` | Sorumlu olduğu ajanlar ve akışlarla çalışır | Panel, Akışlar, İşler, Delegasyon |
 | **Kullanıcı** `user` | Günlük çalışma: sohbet, görev talebi, delegasyon | Panel, İşler, Delegasyon (+ girişte Gelen Kutusu) |
+| **Asistan kullanıcısı** `assistant_user` | Muhasebe, finans, İK gibi birimler: yalnızca kendi asistanıyla sohbet, dosya gönderme ve "benim bağlamım" | Yalnızca **Asistan** sayfası. Şirket geneli listeler (personel, bölümler, politikalar, yetenekler, panel) yoktur ve akışta ham akıl yürütme, araç argümanı ya da sonucu görünmez, yalnızca durum olayları |
 
 Karşılaştırma:
 

@@ -2,6 +2,7 @@ import asyncio
 import base64
 import io
 import json
+import re
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
@@ -24,7 +25,9 @@ _session_queues: dict[str, "asyncio.Queue[dict | None]"] = {}
 
 
 def _session_to_dict(
-    s: AgentSession, messages: list[SessionMessage] | None = None
+    s: AgentSession,
+    messages: list[SessionMessage] | None = None,
+    status_only: bool = False,
 ) -> dict:
     d = {
         "id": s.id,
@@ -35,21 +38,77 @@ def _session_to_dict(
         "updated_at": s.updated_at.isoformat(),
     }
     if messages is not None:
-        d["messages"] = [_message_to_dict(m) for m in messages]
+        d["messages"] = [_message_to_dict(m, status_only) for m in messages]
     return d
 
 
-def _message_to_dict(m: SessionMessage) -> dict:
+_STATUS_NAME = re.compile(r"[A-Za-z][A-Za-z0-9._:/-]{0,47}")
+
+
+def _status_name(value) -> str:
+    return value if isinstance(value, str) and _STATUS_NAME.fullmatch(value) else "tool"
+
+
+def _result_ok(result) -> bool:
+    return (
+        not str(result or "").lstrip().lower().startswith(("[error", "error", "hata"))
+    )
+
+
+def project_event(event: dict) -> dict | None:
+    """The department view's stream: user-facing status events, never raw reasoning,
+    tool arguments or tool results (ADR-0022 §7). Unknown event types are dropped."""
+    t = event.get("type")
+    if t in ("text", "stream_end"):
+        return event
+    if t == "done":
+        return {"type": "done", "message_id": event.get("message_id")}
+    if t == "error":
+        return {"type": "error", "message": "Bir hata oluştu"}
+    if t == "tool_call":
+        return {
+            "type": "status",
+            "step": "tool",
+            "name": _status_name(event.get("name")),
+        }
+    if t == "tool_result":
+        return {
+            "type": "status",
+            "step": "tool_done",
+            "name": _status_name(event.get("name")),
+            "ok": _result_ok(event.get("result")),
+        }
+    return None
+
+
+def _message_to_dict(m: SessionMessage, status_only: bool = False) -> dict:
+    calls = json.loads(m.tool_calls_json) if m.tool_calls_json else []
+    results = json.loads(m.tool_results_json) if m.tool_results_json else []
+    if status_only:
+        calls = [
+            {"name": _status_name(c.get("name"))} for c in calls if isinstance(c, dict)
+        ]
+        results = [
+            {"name": _status_name(r.get("name")), "ok": _result_ok(r.get("result"))}
+            for r in results
+            if isinstance(r, dict)
+        ]
     return {
         "id": m.id,
         "session_id": m.session_id,
         "role": m.role,
         "content": m.content,
-        "tool_calls": json.loads(m.tool_calls_json) if m.tool_calls_json else [],
-        "tool_results": json.loads(m.tool_results_json) if m.tool_results_json else [],
+        "tool_calls": calls,
+        "tool_results": results,
         "tokens_used": m.tokens_used,
         "created_at": m.created_at.isoformat(),
     }
+
+
+def _status_only(db, user: User, sess: AgentSession) -> bool:
+    """The department view always gets status events, whatever it asks for."""
+    person = db.get(Personnel, sess.personnel_id)
+    return bool(person and authz.is_assistant_only(db, user.id, person.company_id))
 
 
 # ── Session CRUD ──────────────────────────────────────────────────────────────
@@ -114,7 +173,11 @@ def list_sessions(
                 .order_by(SessionMessage.created_at.desc())
             ).first()
             d = _session_to_dict(s)
-            d["last_message"] = _message_to_dict(last_msg) if last_msg else None
+            d["last_message"] = (
+                _message_to_dict(last_msg, _status_only(session, user, s))
+                if last_msg
+                else None
+            )
             result.append(d)
         return result
 
@@ -122,7 +185,12 @@ def list_sessions(
 @router.post("/sessions", status_code=201)
 def create_session(body: SessionCreate, user: User = Depends(get_current_user)):
     with get_session() as session:
-        _agent_for(session, user, body.personnel_id)
+        person = _agent_for(session, user, body.personnel_id)
+        if authz.is_assistant_only(
+            session, user.id, person.company_id
+        ) and not authz.can_manage_agent(session, user.id, person):
+            # the department view chats with the person's own agent only
+            raise HTTPException(status_code=404, detail="Personnel not found")
         if not authz.agent_is_active(session, body.personnel_id):
             raise HTTPException(status_code=409, detail="Ajan etkin değil")
         sess = AgentSession(
@@ -182,7 +250,7 @@ def get_session_detail(session_id: str, user: User = Depends(get_current_user)):
             .where(SessionMessage.session_id == session_id)
             .order_by(SessionMessage.created_at)
         ).all()
-        return _session_to_dict(sess, list(messages))
+        return _session_to_dict(sess, list(messages), _status_only(session, user, sess))
 
 
 @router.delete("/sessions/{session_id}", status_code=204)
@@ -213,10 +281,11 @@ def get_session_status(session_id: str, user: User = Depends(get_current_user)):
             .where(SessionMessage.session_id == session_id)
             .order_by(SessionMessage.created_at)
         ).all()
+        status_only = _status_only(session, user, sess)
     return {
         "status": sess.status,
         "is_running": sess.status == "running",
-        "messages": [_message_to_dict(m) for m in messages],
+        "messages": [_message_to_dict(m, status_only) for m in messages],
     }
 
 
@@ -367,6 +436,7 @@ async def send_message(
                 status_code=409,
                 detail="Session already running — check /status to poll",
             )
+        status_only = _status_only(db, user, sess)
 
     queue: asyncio.Queue[dict | None] = asyncio.Queue(maxsize=512)
     _session_queues[session_id] = queue
@@ -386,6 +456,10 @@ async def send_message(
                 if event is None:
                     yield f"data: {json.dumps({'type': 'stream_end'})}\n\n"
                     return
+                if status_only:
+                    event = project_event(event)
+                    if event is None:
+                        continue
                 yield f"data: {json.dumps(event)}\n\n"
         finally:
             # Client disconnected — remove queue; background task continues

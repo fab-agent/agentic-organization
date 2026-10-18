@@ -22,7 +22,7 @@ from services import authz
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-_ROLES = {"founder", "executive", "dept_head", "agent_owner", "user"}
+_ROLES = authz.ASSIGNABLE_ROLES
 
 
 def _my_companies(session, user: User) -> set[str]:

@@ -28,6 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import select
 
 from api.a2a import router as a2a_router
+from api.assistant import router as assistant_router
 from api.audit import router as audit_router
 from api.auth import router as auth_router
 from api.backup import router as backup_router
@@ -121,6 +122,7 @@ app.include_router(gateway_router)
 app.include_router(workstation_router)
 app.include_router(workspaces_router)
 app.include_router(work_review_router)
+app.include_router(assistant_router)
 app.include_router(mcp_router)
 app.include_router(well_known_router)
 app.include_router(git_router)

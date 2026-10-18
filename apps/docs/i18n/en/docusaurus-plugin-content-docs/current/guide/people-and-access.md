@@ -29,7 +29,7 @@ A signed-in user can change their own password on the **Profile** page (at least
 
 ## Roles
 
-A role is given **per company** (a person can have different roles in different companies). There are five roles:
+A role is given **per company** (a person can have different roles in different companies). There are six roles:
 
 | Role | In short | Seen in the sidebar |
 |---|---|---|
@@ -38,6 +38,7 @@ A role is given **per company** (a person can have different roles in different 
 | **Department head** `dept_head` | Manages the structure; gives the first approval on change requests | Dashboard, Structure, Organization, Changes, Flows, Jobs, Delegation |
 | **Agent owner** `agent_owner` | Works with the agents and flows they are responsible for | Dashboard, Flows, Jobs, Delegation |
 | **User** `user` | Daily work: chat, task requests, delegation | Dashboard, Jobs, Delegation (+ Inbox at sign-in) |
+| **Assistant user** `assistant_user` | Departments such as accounting, finance, HR: chat with their own assistant, send files, and "my context" only | The **Assistant** page only. No company-wide lists (people, departments, policies, skills, dashboard); the stream shows status events, never raw reasoning, tool arguments or results |
 
 Comparison:
 
