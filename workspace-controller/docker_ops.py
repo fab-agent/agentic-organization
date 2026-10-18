@@ -14,8 +14,8 @@ import re
 import subprocess
 import tarfile
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 ENV_ALLOW = {"FABAGENT_BASE_URL", "FABAGENT_TOKEN", "OPENCODE_MODEL"}

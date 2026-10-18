@@ -9,8 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from app import build_app  # noqa: E402
-from docker_ops import Config, Docker, DockerError, safe_rel  # noqa: E402
+from app import build_app
+from docker_ops import BadInput, Config, Docker, DockerError, safe_rel
 
 WID = "11111111-2222-3333-4444-555555555555"
 SECRET = "s" * 40
@@ -140,7 +140,7 @@ def test_environment_is_an_allowlist(ctl):
 
 
 def test_lifecycle_status_and_restore_needs_the_volume(ctl):
-    c, fake = ctl
+    c, _ = ctl
     c.post(f"/v1/workspaces/{WID}", json={"env": {}}, headers=H)
     assert c.get(f"/v1/workspaces/{WID}/status", headers=H).json() == {
         "status": "running"
@@ -180,7 +180,7 @@ def test_lifecycle_status_and_restore_needs_the_volume(ctl):
     ],
 )
 def test_paths_are_plain_segments_under_in_or_out(p):
-    with pytest.raises(Exception):
+    with pytest.raises(BadInput):
         safe_rel(p)
 
 
