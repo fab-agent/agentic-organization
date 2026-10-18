@@ -1,0 +1,18 @@
+kuntaykunt:
+  name: Kuntay Kunt
+  title: Kurucu & Makine Mühendisi (MBA)
+  url: https://kuntay.fab.limited
+  image_url: https://i.pravatar.cc/128?img=47
+  page: true
+  socials:
+    linkedin: kuntaykunt
+    github: kuntaykunt
+
+fab-agent:
+  name: Fab Agent Ekibi
+  title: Agentic Sistemler & Otomasyon
+  url: https://fab.limited
+  image_url: https://i.pravatar.cc/128?img=32
+  page: true
+  socials:
+    github: fab-agent

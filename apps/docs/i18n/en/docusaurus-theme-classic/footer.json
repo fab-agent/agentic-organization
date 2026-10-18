@@ -1,0 +1,34 @@
+{
+  "link.title.Ürün": {
+    "message": "Product",
+    "description": "The title of the footer links column with title=Ürün in the footer"
+  },
+  "link.title.Şirket": {
+    "message": "Company",
+    "description": "The title of the footer links column with title=Şirket in the footer"
+  },
+  "link.item.label.agent.fab.engineering": {
+    "message": "agent.fab.engineering",
+    "description": "The label of footer link with label=agent.fab.engineering linking to https://agent.fab.engineering"
+  },
+  "link.item.label.GitHub": {
+    "message": "GitHub",
+    "description": "The label of footer link with label=GitHub linking to https://github.com/fab-agent/agentic-organization"
+  },
+  "link.item.label.fab.limited": {
+    "message": "fab.limited",
+    "description": "The label of footer link with label=fab.limited linking to https://fab.limited"
+  },
+  "link.item.label.fab.engineering": {
+    "message": "fab.engineering",
+    "description": "The label of footer link with label=fab.engineering linking to https://fab.engineering"
+  },
+  "link.item.label.LinkedIn": {
+    "message": "LinkedIn",
+    "description": "The label of footer link with label=LinkedIn linking to https://www.linkedin.com/in/kuntaykunt/"
+  },
+  "copyright": {
+    "message": "© 2026 Fabrika Yazılım Ticaret Limited Şirketi · Kuntay Kunt",
+    "description": "The footer copyright"
+  }
+}

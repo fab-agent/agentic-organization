@@ -1,0 +1,24 @@
+agentic:
+  label: Agentic Sistemler
+  permalink: /agentic
+  description: Agent tabanlı sistemler, orkestrasyon ve otomasyon
+
+policy:
+  label: Policy & Guardrail
+  permalink: /policy
+  description: Güvenlik, davranış kuralları ve guardrail mekanizmaları
+
+mcp:
+  label: MCP Araçları
+  permalink: /mcp
+  description: Model Context Protocol entegrasyonları ve araç geliştirme
+
+architecture:
+  label: Mimari
+  permalink: /architecture
+  description: Sistem mimarisi, kararlar ve teknik yaklaşımlar
+
+product:
+  label: Ürün
+  permalink: /product
+  description: Ürün geliştirme, ekranlar ve kullanıcı deneyimi
