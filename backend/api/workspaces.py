@@ -84,6 +84,20 @@ def _runtime_failed(ws: Workspace, session, e: Exception, *, mark: bool) -> None
     raise HTTPException(status_code=502, detail=f"Workspace runtime error: {e}")
 
 
+def _wait_out_revocation_second(session, agent_id: str) -> None:
+    """Token `iat` has whole-second resolution: a token minted in the same second as a
+    revocation marker would look older than it. Wait for the next second (at most 1 s)."""
+    import time
+
+    from models import PersonaTokenState
+
+    state = session.get(PersonaTokenState, agent_id)
+    if state is not None and int(datetime.utcnow().timestamp()) <= int(
+        state.not_before.replace(tzinfo=None).timestamp()
+    ):
+        time.sleep(1.05)
+
+
 def _runtime_env(
     session, person: Personnel, company_id: str, *, strict: bool = False
 ) -> dict:
@@ -97,6 +111,7 @@ def _runtime_env(
 
     agent = ensure_workspace_agent(session, person)
     session.flush()  # committed with the workspace on success, dropped on failure
+    _wait_out_revocation_second(session, agent.id)
     env = {
         "FABAGENT_TOKEN": create_persona_token(
             agent.id,
@@ -142,6 +157,16 @@ def create_workspace(
     runtime: WorkspaceRuntime = Depends(get_runtime),
 ):
     """Create the caller's workspace. Idempotent: returns the live one if any."""
+    import os
+
+    if (
+        isinstance(runtime, ControllerRuntime)
+        and not os.getenv("WORKSPACE_PUBLIC_BASE_URL", "").strip()
+    ):
+        # before any row, agent or token exists
+        raise HTTPException(
+            status_code=503, detail="WORKSPACE_PUBLIC_BASE_URL is not configured"
+        )
     with get_session() as session:
         person, cid = person_for_user(session, user, company_id)
         ws = live_workspace(session, person.id)

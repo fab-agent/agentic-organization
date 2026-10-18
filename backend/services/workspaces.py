@@ -159,7 +159,7 @@ def revoke_credentials(session, ws: Workspace) -> None:
 
     agent = find_workspace_agent(session, ws.personnel_id)
     if agent is not None:
-        revoke_all(agent.id, ws.company_id, "workspace stopped or removed")
+        revoke_all(agent.id, ws.company_id, "workspace stopped or removed", session)
 
 
 def suspend_idle(

@@ -63,21 +63,34 @@ def revoke_jti(jti: str, persona_id: str, company_id: str | None, reason: str) -
             session.commit()
 
 
-def revoke_all(persona_id: str, company_id: str | None, reason: str) -> datetime:
-    """Set the persona's not_before marker to now — kills every existing token."""
+def revoke_all(
+    persona_id: str, company_id: str | None, reason: str, session=None
+) -> datetime:
+    """Set the persona's not_before marker to now — kills every existing token.
+
+    With a caller `session` the marker joins that transaction (no second connection, no
+    commit here); otherwise it commits on its own."""
     now = datetime.utcnow()
-    with get_session() as session:
-        state = session.get(PersonaTokenState, persona_id)
+
+    def apply(s) -> None:
+        state = s.get(PersonaTokenState, persona_id)
         if state is None:
-            state = PersonaTokenState(
-                persona_id=persona_id, company_id=company_id, not_before=now
+            s.add(
+                PersonaTokenState(
+                    persona_id=persona_id, company_id=company_id, not_before=now
+                )
             )
-            session.add(state)
         else:
             state.not_before = now
             state.updated_at = now
             state.company_id = company_id or state.company_id
-        session.commit()
+
+    if session is not None:
+        apply(session)
+        return now
+    with get_session() as own:
+        apply(own)
+        own.commit()
     # No "un-revoke" needed: a fresh `3pa login` mints a token whose iat is after
     # the marker, so it passes without the marker being cleared.
     return now

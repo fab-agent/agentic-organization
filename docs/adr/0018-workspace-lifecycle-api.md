@@ -38,7 +38,7 @@ placement table, with no change to the API in section 3.
 
 > **Note (2026-10-18, acceptance review):** a stopped container does not keep a running tmux process; "suspend" keeps the volume and "resume" starts a fresh session, while a plain disconnect leaves the container running. The manifest/sync rationale is narrowed by ADR-0022 (no automatic platform sync; ADR-0019 §8 is superseded) — the file APIs stay, the automatic sync does not.
 
-> **Status (2026-10-18):** the controller (`workspace-controller/`: FastAPI, shared-secret auth, UUID-only ids, fixed image, env allowlist, argv-only Docker CLI, files through `docker cp` tar streams) and the backend `ControllerRuntime` exist (`WORKSPACE_RUNTIME=controller`). The workspace and egress images were built and run; create / suspend / resume (container recreated on its volumes with a fresh persona token) / remove / restore / purge and the file APIs pass against real Docker (`backend/tests/test_workspace_controller_live.py`, opt-in). Still open: WebSocket attach, the idle scheduler, the capacity model, a verb-filtering socket proxy in front of Docker, and the compose deployment.
+> **Status (2026-10-18):** the controller (`workspace-controller/`: FastAPI, shared-secret auth, UUID-only ids, fixed image, env allowlist, argv-only Docker CLI, files through a throw-away helper container with no-follow file IO) and the backend `ControllerRuntime` exist (`WORKSPACE_RUNTIME=controller`). The workspace and egress images were built and run; create / suspend / resume (container recreated on its volumes with a fresh persona token) / remove / restore / purge and the file APIs pass against real Docker (`backend/tests/test_workspace_controller_live.py`, opt-in). Idle suspension is opt-in (`WORKSPACE_IDLE_SUSPEND_MINUTES`) and file-activity based; the purge job always runs. Still open: WebSocket attach, turn-aware idle suspension, the capacity model, storage quotas, a verb-filtering socket proxy in front of Docker, and the compose deployment.
 
 ### 2. Workspace model
 
@@ -145,8 +145,7 @@ sidebar, and lists `/workspace/out` in the files strip.
    manifest / download / upload) — **done** against an in-memory `FakeRuntime`
    (`backend/api/workspaces.py`, `services/workspace_runtime.py`,
    `services/workspaces.py`, migration `b8d4f2a61c93`), plus the real runtime:
-   `workspace-controller/` and `ControllerRuntime` (2026-10-18), with `suspend_idle` /
-   `purge_expired` on a 15-minute scheduler job. Still to do: letting a running agent
+   `workspace-controller/` and `ControllerRuntime` (2026-10-18), with `purge_expired` (always) and `suspend_idle` (opt-in) on a 15-minute scheduler job. Still to do: letting a running agent
    turn or flow block idle suspension (needs run state), the capacity model, storage
    quotas, a body-aware Docker socket policy, and the compose deployment.
 3. WebSocket attach endpoint and ticket store.

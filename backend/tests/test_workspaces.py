@@ -697,3 +697,48 @@ def test_housekeeping_suspends_idle_and_purges_expired_workspaces(
     db_session.commit()
     assert svc.purge_expired(db_session, _fake, datetime.utcnow()) == 1
     assert ws["id"] not in _fake.volumes
+
+
+def test_idle_suspension_of_several_workspaces_in_one_batch(
+    client, db_session, monkeypatch
+):
+    """Revocation joins the caller's transaction: two idle rows suspend together."""
+    import time
+    from datetime import datetime, timedelta
+
+    from models import Workspace
+    from services import workspaces as svc
+    from services.auth import create_access_token
+    from services.gateway_auth import create_persona_token, decode_persona_token
+    from services.persona_revocation import is_revoked
+    from services.workspace_runtime import _fake
+    from tests.conftest import make_member, make_personnel, make_user
+
+    co, h1 = _ws_world(client, db_session, monkeypatch)
+    u2 = make_user(db_session, email="y@a.com", name="Y")
+    make_member(db_session, u2.id, co.id, role="user")
+    p2 = make_personnel(db_session, co.id, name="Y H", slug="y-h", type="human")
+    p2.user_id = u2.id
+    db_session.add(p2)
+    db_session.commit()
+    h2 = {"Authorization": f"Bearer {create_access_token(u2.id)}"}
+    ws1 = client.post("/workspaces", headers=h1).json()
+    ws2 = client.post("/workspaces", headers=h2).json()
+    tokens = {
+        w["id"]: decode_persona_token(
+            create_persona_token(w["agent_persona_id"], co.id),
+            expected_audience="gateway",
+        )
+        for w in (ws1, ws2)
+    }
+    for w in (ws1, ws2):
+        row = db_session.get(Workspace, w["id"])
+        row.last_active_at = datetime.utcnow() - timedelta(hours=5)
+        db_session.add(row)
+    db_session.commit()
+    time.sleep(1.1)
+    assert svc.suspend_idle(db_session, _fake, datetime.utcnow()) == 2
+    for w in (ws1, ws2):
+        pr = tokens[w["id"]]
+        assert is_revoked(pr.jti, w["agent_persona_id"], pr.issued_at)
+        assert db_session.get(Workspace, w["id"]).state == "suspended"

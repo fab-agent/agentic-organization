@@ -10,9 +10,9 @@ Her insan personel için **bir çalışma alanı** vardır (ADR-0018). Kişinin 
 
 `creating → running ⇄ suspended`, ayrıca `failed` ve `deleted`.
 
-- `suspended`: ev hacmi (volume) korunur, kapsayıcı durdurulur. `resume` kapsayıcıyı başlatır ve hâlâ çalışan `tmux` oturumuna yeniden bağlanır.
-- `DELETE`: kapsayıcı silinir, hacim **7 gün** saklanır, sonra temizlenir. Yönetici bu süre içinde geri alabilir.
-- Boşta kalma: bağlı istemci ve çalışan ajan turu yoksa `idle_minutes` (varsayılan 30, şirket başına) sonra askıya alınır. Çalışan tur veya zamanlanmış akış askıya almayı engeller.
+- `suspended`: ev hacmi (volume) korunur, kapsayıcı durdurulur ve eski token iptal edilir. `resume` kapsayıcıyı yeni bir token ile **yeniden oluşturur**; dosyalar ve ev dizini kalır, çalışan `tmux` oturumu kalmaz. (İstemci kopması kapsayıcıyı durdurmaz; yalnızca askıya alma durdurur.)
+- `DELETE`: kapsayıcı silinir ve token iptal edilir; hacim **7 gün** saklanır, sonra 15 dakikalık bir zamanlanmış iş temizler (kapsayıcı yoksa). Yönetici bu süre içinde geri alabilir.
+- Boşta kalma: otomatik askıya alma **varsayılan olarak kapalıdır** (`WORKSPACE_IDLE_SUSPEND_MINUTES` ile açılır). Çalışan bir ajan turunu veya akışı henüz ayırt edemediği için açık bırakılması çalışan işi durdurabilir; bu yüzden yalnızca dosya etkinliğine bakar. Tur/akış denetimi ve şirket başına süre planlıdır.
 
 ## Kim kapsayıcı başlatır
 
@@ -29,19 +29,19 @@ Yalnızca ayrı bir **`workspace-controller`** servisi kapsayıcı çalışma za
 | `GET /workspaces` | Liste — yönetici/admin, kendi şirketi |
 | `POST /workspaces/{id}/resume` · `/suspend` | Sürdür / askıya al |
 | `DELETE /workspaces/{id}` | Sil (hacim 7 gün) |
-| `POST /workspaces/{id}/attach-ticket` | Tek kullanımlık bağlanma bileti (~30 sn) |
+| `POST /workspaces/{id}/attach-ticket` | *(planlı)* Tek kullanımlık bağlanma bileti (~30 sn) |
 | `GET /workspaces/{id}/files?since=` | Dosya manifesti (yol, boyut, sha256, mtime); yalnızca değişenler |
 | `GET/PUT /workspaces/{id}/files/{path}` | Dosya indir / `/workspace/in` içine yükle |
 
 Kişi yalnızca kendi çalışma alanını yönetir; yöneticiler şirketleri içinde listeler, askıya alır ve siler. Her yaşam döngüsü çağrısı denetim kaydına yazılır.
 
-## Bağlanma (WebSocket)
+## Bağlanma (WebSocket) — **planlı, henüz yok**
 
-İstemci önce normal token'ı ile `attach-ticket` alır; URL'ye uzun ömürlü token konmaz (URL'ler proxy günlüklerine düşer). İkili çerçeveler ham PTY baytlarıdır; metin çerçeveleri JSON kontrol mesajlarıdır (`resize`, `ping`, `exit`). Bağlantı kopması ajanı öldürmez, yalnızca ayırır.
+Tasarım şöyledir; kod yoktur. İstemci önce normal token'ı ile `attach-ticket` alır; URL'ye uzun ömürlü token konmaz (URL'ler proxy günlüklerine düşer). İkili çerçeveler ham PTY baytlarıdır; metin çerçeveleri JSON kontrol mesajlarıdır (`resize`, `ping`, `exit`). Bağlantı kopması ajanı öldürmez, yalnızca ayırır.
 
-## Yerel klasör: `fab sync`
+## Yerel klasör: `fab sync` — ADR-0022 ile daraltıldı
 
-Kişinin bilgisayarındaki bir klasör (ör. Masaüstü) sunucudaki çalışma alanıyla `fab` tarafından eşitlenir:
+ADR-0022, platformla **otomatik** eşitlemeyi kaldırdı: yerel Asistan klasörü sunucuyla otomatik eşitlenmez; dosya göndermek açık seçimle, indirmek güvenli indirmeyle yapılır. Aşağıdaki `fab sync` davranışı eski tasarımdır (dondurulmuş `packages/tui`). Kişinin bilgisayarındaki bir klasör (ör. Masaüstü) sunucudaki çalışma alanıyla `fab` tarafından eşitlenir:
 
 - Ajanın ürettiği her şey (`/workspace/out`) klasöre iner.
 - Ajan her oturum sonunda `summaries/YYYY-MM-DD-<konu>.md` biçiminde bir **oturum özeti** yazar.

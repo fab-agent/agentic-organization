@@ -55,9 +55,18 @@ def open_file(rel):
     return ffd, st
 
 
-def walk(dfd, prefix, out, budget):
+def walk(dfd, prefix, out, budget, seen=None, depth=0):
+    seen = seen if seen is not None else [0]
+    if depth > 20:
+        die(4)
+    entries = []
     with os.scandir(dfd) as it:
-        entries = sorted(it, key=lambda e: e.name)
+        for e in it:
+            seen[0] += 1
+            if seen[0] > MAX_ENTRIES * 4:  # folders and empty folders count too
+                die(4)
+            entries.append(e)
+    entries.sort(key=lambda e: e.name)
     for e in entries:
         if len(out) >= MAX_ENTRIES:
             die(4)
@@ -68,7 +77,7 @@ def walk(dfd, prefix, out, budget):
             except OSError:
                 continue
             try:
-                walk(sub, prefix + e.name + "/", out, budget)
+                walk(sub, prefix + e.name + "/", out, budget, seen, depth + 1)
             finally:
                 os.close(sub)
         elif stat.S_ISREG(st.st_mode):

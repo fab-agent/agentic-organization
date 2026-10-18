@@ -139,21 +139,25 @@ def build_app(docker: Docker | None = None, secret: str | None = None) -> FastAP
         declared = request.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > MAX_FILE_BYTES:
             raise HTTPException(status_code=413, detail="too large")
-        chunks, size = [], 0
-        async for chunk in request.stream():  # bounded while it is read
-            size += len(chunk)
-            if size > MAX_FILE_BYTES:
-                raise HTTPException(status_code=413, detail="too large")
-            chunks.append(chunk)
-        data = b"".join(chunks)
-        # blocking Docker work off the event loop
         from starlette.concurrency import run_in_threadpool
 
-        await run_in_threadpool(
-            lambda: transfer(
+        # The slot is taken before the body is read, so the number of bodies held in
+        # memory is bounded by the number of slots, not by the number of callers.
+        if not await run_in_threadpool(lambda: transfers.acquire(timeout=30)):
+            raise HTTPException(status_code=503, detail="busy")
+        try:
+            chunks, size = [], 0
+            async for chunk in request.stream():  # bounded while it is read
+                size += len(chunk)
+                if size > MAX_FILE_BYTES:
+                    raise HTTPException(status_code=413, detail="too large")
+                chunks.append(chunk)
+            data = b"".join(chunks)
+            await run_in_threadpool(
                 lambda: guarded(lambda: docker.write_file(wid, path, data))
             )
-        )
+        finally:
+            transfers.release()
         return {"ok": True, "size": len(data)}
 
     return app

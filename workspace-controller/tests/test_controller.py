@@ -51,11 +51,22 @@ class Fake:
                     raise DockerError("docker command failed", "Error: No such network")
                 if fmt == "{{.Internal}}":
                     return b"true" if n["internal"] else b"false"
+                if "Labels" in fmt:
+                    flag = "true" if n["internal"] else "false"
+                    return f"{flag}|{'workspace-controller' if n.get('label') else ''}".encode()
                 if "Containers" in fmt:
                     return (" ".join(sorted(n["members"])) + " ").encode()
                 return name.encode()
+        if a[:2] == ["network", "ls"]:
+            return "\n".join(
+                n for n, v in self.networks.items() if v.get("label")
+            ).encode()
         if a[:2] == ["network", "create"]:
-            self.networks[a[-1]] = {"internal": "--internal" in a, "members": set()}
+            self.networks[a[-1]] = {
+                "internal": "--internal" in a,
+                "members": set(),
+                "label": "--label" in a,
+            }
             return b""
         if a[:2] == ["network", "connect"]:
             self.networks[a[2]]["members"].add(a[3])
@@ -243,21 +254,37 @@ def test_lifecycle_restore_never_recreates_a_purged_volume(ctl):
 
 def test_foreign_or_weakened_infrastructure_is_replaced_not_trusted(ctl):
     c, fake, _ = ctl
-    fake.networks["fab-ws-external"] = {"internal": False, "members": set()}
+    # a stranger's proxy is replaced, and the replacement joins existing workspace networks
+    c.post(f"/v1/workspaces/{WID2}", json={"env": {}}, headers=H)
     fake.containers["fab-ws-egress"] = {
         "running": True,
         "image": "somebody/else",
         "label": "",
     }
-    fake.networks[f"fab-ws-{WID}-net"] = {
+    fake.networks[f"fab-ws-{WID2}-net"]["members"].discard("fab-ws-egress")
+    r = c.post(f"/v1/workspaces/{WID}", json={"env": {}}, headers=H)
+    assert r.status_code == 200 and fake.containers["fab-ws-egress"]["image"] == EGR
+    assert "fab-ws-egress" in fake.networks[f"fab-ws-{WID2}-net"]["members"]
+    # an existing non-internal workspace network is refused
+    fake.networks[f"fab-ws-{WID}-net"]["internal"] = False
+    fake.containers.pop(f"fab-ws-{WID}")
+    assert (
+        c.post(f"/v1/workspaces/{WID}", json={"env": {}}, headers=H).status_code == 502
+    )
+
+
+def test_a_foreign_external_network_is_refused(ctl):
+    c, fake, _ = ctl
+    fake.networks["fab-ws-external"] = {
         "internal": False,
         "members": set(),
-    }  # not isolated
+        "label": False,
+    }
     r = c.post(f"/v1/workspaces/{WID}", json={"env": {}}, headers=H)
-    assert r.status_code == 502  # an existing non-internal workspace network is refused
     assert (
-        fake.containers["fab-ws-egress"]["image"] == EGR
-    )  # the stranger proxy was replaced
+        r.status_code == 502 and "fab-ws-external" not in r.text
+    )  # stable text, no detail
+    assert fake.containers == {}
 
 
 @pytest.mark.parametrize(
@@ -295,6 +322,14 @@ def test_files_go_through_a_locked_down_helper_container(ctl):
     assert args[args.index("--user") + 1] == "10001:10001"
     assert "--read-only" in args and "--cap-drop" in args
     assert any(x.endswith(":/workspace:ro") for x in args)  # reads cannot write
+    assert args[args.index("--entrypoint") + 1] == "/usr/bin/python3"
+    assert args[args.index(IMG) + 1] == "-I"  # isolated: no cwd or environment imports
+    assert args[args.index("--workdir") + 1] == "/" and "--cpus" in args
+    name = args[args.index("--name") + 1]
+    assert name.startswith("fab-ws-helper-")
+    assert any(
+        call == ["rm", "-f", name] for call, _ in fake.calls
+    )  # removed even if the CLI died
     helper.reply = (0, b"hello")
     assert (
         c.get(f"/v1/workspaces/{WID}/file?path=out/a.txt", headers=H).content

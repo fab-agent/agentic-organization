@@ -50,3 +50,49 @@ def test_full_lifecycle_against_real_docker():
     finally:
         rt.remove(wid)  # a failed cleanup must show up, not leave volumes behind
         rt.purge_volume(wid)
+
+
+def test_planted_module_is_not_imported_by_the_file_helper():
+    """A `hashlib.py` the agent leaves in its own tree must not run in the helper."""
+    import subprocess
+    import time
+
+    from services.workspace_runtime import ControllerRuntime, WorkspaceSpec
+
+    rt = ControllerRuntime(URL, SECRET)
+    wid = str(uuid.uuid4())
+    env = {"FABAGENT_BASE_URL": "http://127.0.0.1:9", "FABAGENT_TOKEN": "live-test"}
+    try:
+        rt.create(WorkspaceSpec(wid, "c", "p", env=env))
+        time.sleep(5)
+        names = subprocess.run(
+            ["docker", "ps", "-q", "--filter", f"name={wid}"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+        assert names, "workspace container not found"
+        plant = "import pathlib;pathlib.Path('/workspace/out/PWNED').write_text('x')\n"
+        for target in (
+            "/workspace/hashlib.py",
+            "/workspace/out/hashlib.py",
+            "/hashlib.py",
+        ):
+            subprocess.run(
+                ["docker", "exec", names[0], "sh", "-c", f"cat > {target}"],
+                input=plant,
+                text=True,
+            )
+        rt.write_file(wid, "in/a.txt", b"x")
+        rt.list_files(wid, "in")
+        rt.read_file(wid, "in/a.txt")
+        assert not [f for f in rt.list_files(wid, "out") if f.path.endswith("PWNED")]
+        left = subprocess.run(
+            ["docker", "ps", "-aq", "--filter", "name=fab-ws-helper"],
+            capture_output=True,
+            text=True,
+        ).stdout.split()
+        assert left == [], "helper containers were left behind"
+    finally:
+        rt.remove(wid)
+        rt.purge_volume(wid)

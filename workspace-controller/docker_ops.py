@@ -20,6 +20,7 @@ import os
 import re
 import subprocess
 import threading
+import uuid
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -114,7 +115,7 @@ def default_helper(args, stdin=None, max_out=MAX_FILE_BYTES) -> tuple[int, bytes
             ["docker", *args],  # noqa: S607
             stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,  # never left to fill and block the child
         )
     except (OSError, ValueError) as e:
         raise DockerError("docker unavailable", type(e).__name__) from e
@@ -199,8 +200,13 @@ class Docker:
     def ensure_infra(self, base_url: str) -> None:
         """The external network and the filtering egress proxy; verified, not assumed."""
         with self._infra:
-            if self._inspect("network", EXTERNAL, "{{.Name}}") is None:
+            ext = self._inspect(
+                "network", EXTERNAL, '{{.Internal}}|{{index .Labels "fab.managed"}}'
+            )
+            if ext is None:
                 self.run(["network", "create", "--label", LABEL, EXTERNAL], None, None)
+            elif ext != "false|workspace-controller":
+                raise DockerError("external network is not the controller's", EXTERNAL)
             state = self._inspect(
                 "container",
                 EGRESS,
@@ -245,6 +251,25 @@ class Docker:
                 )
             elif state.split("|")[0] != "true":
                 self.run(["start", EGRESS], None, None)
+            self._reattach_proxy()
+
+    def _reattach_proxy(self) -> None:
+        """A replaced proxy is attached again to every existing workspace network."""
+        out = self.run(
+            ["network", "ls", "--filter", f"label={LABEL}", "--format", "{{.Name}}"],
+            None,
+            None,
+        ).decode()
+        for name in out.split():
+            if name.startswith("fab-ws-") and name.endswith("-net"):
+                members = (
+                    self._inspect(
+                        "network", name, "{{range .Containers}}{{.Name}} {{end}}"
+                    )
+                    or ""
+                )
+                if EGRESS not in members.split():
+                    self.run(["network", "connect", name, EGRESS], None, None)
 
     def ensure_network(self, wid: str) -> None:
         """This workspace's own internal-only network, with the proxy attached."""
@@ -410,44 +435,33 @@ class Docker:
     ) -> bytes:
         if self._inspect("volume", self.vol(wid, "files"), "{{.Name}}") is None:
             raise FileNotFoundError(rel)  # never let `-v` create a volume
+        # A unique name so the container can be removed even if the CLI is killed; the
+        # interpreter runs isolated (-I: no cwd or environment imports) from `/`, so
+        # nothing in the agent-controlled volume is ever imported.
+        hname = f"fab-ws-helper-{uuid.uuid4()}"
+        # fmt: off
         args = [
-            "run",
-            "--rm",
-            "-i",
-            "--network",
-            "none",
-            "--user",
-            f"{AGENT_UID}:{AGENT_UID}",
-            "--cap-drop",
-            "ALL",
-            "--security-opt",
-            "no-new-privileges:true",
-            "--read-only",
-            "--memory",
-            "256m",
-            "--pids-limit",
-            "64",
-            "--label",
-            LABEL,
-            "-e",
-            f"CAP={MAX_FILE_BYTES}",
-            "-e",
-            f"LIST_BUDGET={MAX_LIST_BYTES}",
-            "-v",
-            f"{self.vol(wid, 'files')}:/workspace" + ("" if rw else ":ro"),
-            "--entrypoint",
-            "python3",
-            self.cfg.image,
-            "-c",
-            SCRIPT,
-            mode,
-            rel,
+            "run", "--rm", "-i", "--name", hname, "--network", "none",
+            "--user", f"{AGENT_UID}:{AGENT_UID}",
+            "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--read-only",
+            "--memory", "256m", "--cpus", "1", "--pids-limit", "64", "--label", LABEL,
+            "--workdir", "/",
+            "-e", f"CAP={MAX_FILE_BYTES}", "-e", f"LIST_BUDGET={MAX_LIST_BYTES}",
+            "-v", f"{self.vol(wid, 'files')}:/workspace" + ("" if rw else ":ro"),
+            "--entrypoint", "/usr/bin/python3", self.cfg.image, "-I", "-c", SCRIPT, mode, rel,
         ]
-        code, out = self.helper(
-            args,
-            data if data is not None else (b"" if mode == "write" else None),
-            max_out,
-        )
+        # fmt: on
+        try:
+            code, out = self.helper(
+                args,
+                data if data is not None else (b"" if mode == "write" else None),
+                max_out,
+            )
+        finally:
+            try:  # a killed client does not stop the container: remove it explicitly
+                self.run(["rm", "-f", hname], None, None)
+            except DockerError:
+                pass
         if code == 0:
             return out
         if code == 3:

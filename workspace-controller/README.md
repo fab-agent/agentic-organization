@@ -28,11 +28,11 @@ it has no user-facing endpoints.
   read-only root, the volume mounted `:ro` for reads): every path component is opened with
   `O_NOFOLLOW` relative to its parent, so a link anywhere on the path (even a replaced
   `out/` directory) is refused; only regular files; a 100 MB cap per file; at most four
-  transfers at a time; uploads are written to a temp name and renamed. Docker's error text
+  transfers at a time; uploads are written to a temp name and renamed (a rename replaces an existing file, symlink or hardlink *name*; it never writes through it). The helper runs `/usr/bin/python3 -I` from `/`, so nothing in `/workspace` can shadow its imports, and is removed after each call. Docker's error text
   is logged, never returned;
 - lifecycle calls for one workspace are serialised; restore never recreates a purged
   volume; purge needs the container gone first; the proxy and the external network are
-  verified (label, image, internal flag) and replaced if they are not what is expected.
+  verified (label, image, internal flag; the external network must be non-internal and labelled) and replaced if they are not what is expected.
 
 ## Not enforced here (deployment responsibilities)
 

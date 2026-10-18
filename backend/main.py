@@ -176,7 +176,11 @@ def _workspace_housekeeping() -> None:
         return
     with get_session() as session:
         now = datetime.utcnow()
-        ws_service.suspend_idle(session, runtime, now)
+        # Auto-suspend is opt-in: it cannot yet tell a running agent turn or flow from
+        # idleness (ADR-0018 follow-up), so it only runs when an operator sets a window.
+        idle = os.getenv("WORKSPACE_IDLE_SUSPEND_MINUTES", "").strip()
+        if idle.isdigit() and int(idle) > 0:
+            ws_service.suspend_idle(session, runtime, now, idle_minutes=int(idle))
         ws_service.purge_expired(session, runtime, now)
 
 
