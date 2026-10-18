@@ -126,6 +126,8 @@ untrusted, ACL-scoped data.
 
 ### 6. Power users: herdr plus our plugin
 
+> **Status (2026-10-18):** specified in [`docs/architecture/herdr-plugin-spec.md`](../architecture/herdr-plugin-spec.md): pinned `v0.9.5`, licence read as Apache-2.0 at that tag (the ADR-0014 spike left this open), declared permissions, platform requirements and seven acceptance tests. The plugin itself is not built.
+
 Stock herdr (a fork only if a patch is unavoidable) with our plugin on top of the
 community chat. `packages/tui` is frozen. This supersedes ADR-0014 decision 2 and
 the "no chat / no new web features" part of decision 4; server-side workspaces
