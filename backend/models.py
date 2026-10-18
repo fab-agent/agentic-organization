@@ -237,7 +237,7 @@ class ChangeRequest(SQLModel, table=True):
     # draft → submitted → dept_head_approved → admin_approved → committed → rejected
     status: str = Field(default="submitted")
     # Stage 1: dept_head approval
-    dept_head_id: str | None = Field(default=None, foreign_key="personnel.id")
+    dept_head_id: str | None = Field(default=None, foreign_key="user.id")
     dept_head_approved_at: datetime | None = None
     dept_head_rejected_at: datetime | None = None
     dept_head_note: str | None = None

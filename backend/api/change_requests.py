@@ -111,10 +111,26 @@ def _require_stage2(session, user: User, cr: ChangeRequest) -> None:
         )
 
 
+def _can_see_cr(session, user: User, cr: ChangeRequest) -> bool:
+    """Who may read a request: its author, the approvers in scope, the agent's owner."""
+    if cr.created_by_user_id == user.id or cr.dept_head_id == user.id:
+        return True
+    mine = _memberships(session, user.id, cr.company_id)
+    if any(m.role in STAGE1_ROLES and m.scope_id is None for m in mine):
+        return True
+    person = session.get(Personnel, cr.personnel_id)
+    scopes = {m.scope_id for m in mine if m.scope_id}
+    if person and (person.department_id in scopes or person.id in scopes):
+        return any(m.role in STAGE1_ROLES | {"agent_owner"} for m in mine if m.scope_id)
+    return False
+
+
 def _get_visible_cr(session, user: User, cr_id: str) -> ChangeRequest:
-    """404 for unknown *and* for other companies' requests (no enumeration)."""
+    """404 for unknown, for other companies' and for out-of-scope requests."""
     cr = session.get(ChangeRequest, cr_id)
     if not cr or not _memberships(session, user.id, cr.company_id):
+        raise HTTPException(status_code=404, detail="Change request not found")
+    if not _can_see_cr(session, user, cr):
         raise HTTPException(status_code=404, detail="Change request not found")
     return cr
 
@@ -180,7 +196,11 @@ def list_change_requests(
         if personnel_id:
             q = q.where(ChangeRequest.personnel_id == personnel_id)
         q = q.order_by(ChangeRequest.created_at.desc())
-        return [_cr_to_dict(cr) for cr in session.exec(q).all()]
+        return [
+            _cr_to_dict(cr)
+            for cr in session.exec(q).all()
+            if _can_see_cr(session, current_user, cr)
+        ]
 
 
 @router.get("/{cr_id}")

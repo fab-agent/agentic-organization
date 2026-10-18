@@ -605,7 +605,7 @@ def test_dept_head_of_another_department_cannot_approve(
         json={},
         headers={"Authorization": f"Bearer {create_access_token(hr.id)}"},
     )
-    assert r.status_code == 403
+    assert r.status_code == 404  # out of scope: not even visible
 
 
 def test_proposer_cannot_approve_own_request(auth_client, cr_setup):
@@ -786,3 +786,28 @@ def test_plain_member_cannot_grant_founder_via_invite(
         f"/personnel/{person.id}/invite", json={"role": "emperor"}, headers=h
     )
     assert r.status_code == 422
+
+
+def test_requests_are_visible_to_author_and_approvers_only(
+    auth_client, cr_setup, db_session
+):
+    co = cr_setup["company_id"]
+    cr_id = _submitted(auth_client, cr_setup)
+    bystander = make_user(db_session, email="by@test.com", name="Bystander")
+    make_member(db_session, bystander.id, co, role="user")
+    db_session.commit()
+    by = {"Authorization": f"Bearer {create_access_token(bystander.id)}"}
+
+    assert auth_client.get(f"/change-requests/{cr_id}", headers=by).status_code == 404
+    listed = auth_client.get(f"/change-requests?company_id={co}", headers=by).json()
+    assert listed == []
+    # author, department head and founder see it
+    for who in ("proposer", "dept", "admin"):
+        h = _as(auth_client, who)
+        assert (
+            auth_client.get(f"/change-requests/{cr_id}", headers=h).status_code == 200
+        )
+        assert (
+            len(auth_client.get(f"/change-requests?company_id={co}", headers=h).json())
+            == 1
+        )

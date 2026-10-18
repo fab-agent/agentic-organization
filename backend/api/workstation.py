@@ -263,7 +263,8 @@ def workstation_audit_verify(
 def _personas_for_user(session, user: User) -> list[dict]:
     """
     Agent personas this user may act as: every agent in a company where they are
-    founder/executive, plus any agent they are the responsible human for or own
+    founder or a company-wide executive (an executive scoped to a department: that
+    department's agents only), plus any agent they are the responsible human for or own
     (CompanyMember role=agent_owner, scope_id=agent personnel id).
     """
     out: dict[str, dict] = {}
@@ -284,7 +285,10 @@ def _personas_for_user(session, user: User) -> list[dict]:
             .where(Personnel.type == "agent")
         ).all()
         for person, cfg in agents:
-            allowed = m.role in ("founder", "executive")
+            allowed = m.role == "founder" or (
+                m.role == "executive"
+                and (m.scope_id is None or m.scope_id == person.department_id)
+            )
             if my_person and cfg.responsible_id == my_person.id:
                 allowed = True
             if m.role == "agent_owner" and m.scope_id == person.id:

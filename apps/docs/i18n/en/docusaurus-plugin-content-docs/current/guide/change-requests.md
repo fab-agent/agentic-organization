@@ -39,7 +39,7 @@ The page has status filters: All, Pending, Dept Approved, Committed, Rejected. W
 - Final approval: only a company-wide executive or founder. The person who opened the request and the person who gave the first approval cannot give the final one; the requester cannot give the first approval of their own request either.
 - The target (agent, skill, policy) must exist in the request's company; the proposed department and responsible person must belong to the same company.
 - If two people approve at the same moment only one wins; the other gets `409`.
-- Only members of the company can see its requests.
+- A request is visible to its author, the approvers in scope (company-wide founder/executive/department head, or the head of the agent's department) and the agent's owner.
 
 ## What happens at final approval?
 

@@ -27,6 +27,45 @@ def test_founder_sees_all_company_agents(auth_client, db_session):
     assert {"A1", "A2"} <= names
 
 
+def test_scoped_executive_gets_only_their_departments_agents(client, db_session):
+    from models import Department
+    from services.auth import create_access_token
+    from tests.conftest import make_company, make_member
+
+    co = make_company(db_session)
+    a = Department(company_id=co.id, name="A", slug="a")
+    b = Department(company_id=co.id, name="B", slug="b")
+    db_session.add_all([a, b])
+    db_session.flush()
+    in_a = _agent(db_session, co, name="InA", slug="in-a")
+    in_b = _agent(db_session, co, name="InB", slug="in-b")
+    in_a.department_id, in_b.department_id = a.id, b.id
+    db_session.add_all([in_a, in_b])
+    execs = {}
+    for label, scope in (("scoped", a.id), ("wide", None)):
+        u = make_user(db_session, email=f"{label}@x.com", name=label)
+        m = make_member(db_session, u.id, co.id, role="executive")
+        m.scope_id = scope
+        db_session.add(m)
+        execs[label] = u
+    db_session.commit()
+
+    def names(u):
+        client.headers.update({"Authorization": f"Bearer {create_access_token(u.id)}"})
+        return {
+            p["name"] for p in client.get("/workstation/personas").json()["personas"]
+        }
+
+    assert names(execs["scoped"]) == {"InA"}
+    assert names(execs["wide"]) == {"InA", "InB"}
+    # and minting a token for the other department's agent is refused
+    client.headers.update(
+        {"Authorization": f"Bearer {create_access_token(execs['scoped'].id)}"}
+    )
+    r = client.post("/workstation/persona-token", json={"personnel_id": in_b.id})
+    assert r.status_code in (403, 404)
+
+
 def test_non_manager_sees_only_owned_agents(client, db_session):
     from services.auth import create_access_token
     from tests.conftest import make_company, make_member

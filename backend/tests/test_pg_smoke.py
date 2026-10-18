@@ -166,3 +166,33 @@ def test_pgvector_search(pg, monkeypatch):
     results = rs.search("quarterly revenue", k=3)
     assert 0 < len(results) <= 3
     assert all(r["score"] <= 1.0 + 1e-6 for r in results)
+
+
+def test_change_request_dept_head_is_a_user_id(pg):
+    """dept_head_id stores the approving user; the FK must point at user.id."""
+    from sqlmodel import Session
+
+    import database
+    from models import ChangeRequest, Company, Personnel, User
+
+    with Session(database.engine) as s:
+        co = Company(name="CR Co", slug="cr-co")
+        user = User(email="cr@pg.test", name="CR", password_hash="x")
+        s.add_all([co, user])
+        s.flush()
+        person = Personnel(
+            company_id=co.id, name="A", slug="a", title="t", role="r", type="agent"
+        )
+        s.add(person)
+        s.flush()
+        s.add(
+            ChangeRequest(
+                company_id=co.id,
+                personnel_id=person.id,
+                change_type="skill",
+                title="t",
+                proposed_json="{}",
+                dept_head_id=user.id,
+            )
+        )
+        s.commit()

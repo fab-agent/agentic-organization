@@ -39,7 +39,7 @@ Sayfada durum filtreleri vardır: Tümü, Bekliyor, Bölüm Onaylandı, Commit E
 - Son onay: yalnızca şirket genelindeki yönetici veya kurucu. Talebi açan kişi ve ilk onayı veren kişi son onayı veremez; talebi açan kişi kendi talebinin ilk onayını da veremez.
 - Hedef (ajan, yetenek, politika) talebin şirketinde bulunmalı; önerilen bölüm ve sorumlu kişi de aynı şirkete ait olmalıdır.
 - İki kişi aynı anda onaylamaya çalışırsa yalnızca biri kazanır, diğeri `409` alır.
-- Talepleri yalnızca ilgili şirketin üyeleri görür.
+- Bir talebi yalnızca açan kişi, kapsamdaki onaylayıcılar (şirket genelindeki kurucu/yönetici/bölüm yöneticisi veya ilgili bölümün yöneticisi) ve ajanın sahibi görür.
 
 ## Son onayda ne olur?
 
