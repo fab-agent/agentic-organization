@@ -172,3 +172,41 @@ def test_feedback_counts_reach_the_eval_summary_only_above_the_group_floor(
         and s["thumbs_down"] == 2
         and s["thumbs_up"] == 1
     )
+
+
+def test_an_identical_signal_inserted_meanwhile_is_idempotent(
+    auth_client, world, db_session, monkeypatch
+):
+
+    # the first insert happens "behind our back" after the existence check
+    real = db_session.exec
+    state = {"done": False}
+
+    _give(auth_client, world, "thumbs_up")
+    existing = db_session.query(LearningSignal).one()
+    db_session.delete(existing)
+    db_session.commit()
+
+    orig_record = learning.record
+
+    def racy(session, user, mid, kind, note):
+        if not state["done"]:
+            state["done"] = True
+            session.add(
+                LearningSignal(
+                    company_id=world["co"],
+                    personnel_id=world["human"],
+                    persona_id=world["agent"],
+                    user_id=user.id,
+                    session_id=world["sess"],
+                    message_id=mid,
+                    kind=kind,
+                )
+            )
+            session.commit()
+        return orig_record(session, user, mid, kind, note)
+
+    monkeypatch.setattr("api.learning.learning.record", racy)
+    r = _give(auth_client, world, "thumbs_up")
+    assert r.status_code == 201
+    assert db_session.query(LearningSignal).count() == 1

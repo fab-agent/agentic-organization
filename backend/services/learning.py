@@ -13,6 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import func, select
 
 from models import AgentSession, LearningSignal, Personnel, SessionMessage, User
@@ -88,5 +89,20 @@ def record(
         kind=kind,
         note=clean if kind == "correction" else None,
     )
-    session.add(sig)
+    try:
+        with session.begin_nested():
+            session.add(sig)
+            session.flush()
+    except IntegrityError:
+        # a concurrent identical signal won; the result is the same row
+        won = session.exec(
+            select(LearningSignal).where(
+                LearningSignal.user_id == user.id,
+                LearningSignal.message_id == message_id,
+                LearningSignal.kind == kind,
+            )
+        ).first()
+        if won is None:
+            raise HTTPException(status_code=409, detail="Conflict, try again")
+        return won
     return sig
