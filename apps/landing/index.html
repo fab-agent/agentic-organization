@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>agent.fab.engineering — Agentic Work OS</title>
+  <meta name="description" content="Organizasyon şemasında yaşayan yapay zeka ajanları. Her ajan; şirket vizyonu, departman OKR'ları ve pozisyon politikalarıyla aynı bağlamda çalışır. Açık kaynak, self-hosted, model bağımsız.">
+  <meta name="keywords" content="agentic work os, kurumsal yapay zeka, agentic organization, organizational AI, AI agents, corporate memory, kurumsal hafıza, model agnostic, self-hosted AI, open source, MCP, OKR, org chart agents">
+  <meta name="author" content="Kuntay Kunt">
+  <meta name="theme-color" content="#f3f5f0">
+  <link rel="canonical" href="https://agent.fab.engineering/">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://agent.fab.engineering/">
+  <meta property="og:title" content="agent.fab.engineering — Agentic Work OS">
+  <meta property="og:description" content="Organizasyon şemasında yaşayan yapay zeka ajanları. Vizyon, misyon ve departman OKR'larıyla aynı bağlamda çalışırlar. Açık kaynak, self-hosted.">
+  <meta property="og:site_name" content="agent.fab.engineering">
+  <meta property="og:locale" content="tr_TR">
+  <meta property="og:image" content="https://agent.fab.engineering/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="agent.fab.engineering — Agentic Work OS: organizasyon şemasında yaşayan yapay zeka ajanları">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:site" content="@kuntaykunt">
+  <meta name="twitter:title" content="agent.fab.engineering — Agentic Work OS">
+  <meta name="twitter:description" content="Organizasyon şemasında yaşayan yapay zeka ajanları. Açık kaynak, self-hosted, model bağımsız.">
+  <meta name="twitter:image" content="https://agent.fab.engineering/og.jpg">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <meta name="googlebot" content="index, follow">
+  <link rel="icon" type="image/jpeg" href="/favicon.jpg">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt — machine-readable brief">
+  <link rel="alternate" hreflang="tr" href="https://agent.fab.engineering/">
+  <link rel="alternate" hreflang="en" href="https://agent.fab.engineering/?lang=en">
+  <link rel="alternate" hreflang="de" href="https://agent.fab.engineering/?lang=de">
+  <link rel="alternate" hreflang="es" href="https://agent.fab.engineering/?lang=es">
+  <link rel="alternate" hreflang="x-default" href="https://agent.fab.engineering/">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://agent.fab.engineering/#app",
+        "name": "Agentic Work OS",
+        "alternateName": "agentic-organization",
+        "description": "Organizasyon şemasında yaşayan yapay zeka ajanları. Her ajan; şirket vizyonu & misyonu, departman OKR'ları ve pozisyonun politika/kurallarıyla aynı bağlamda çalışır. İnsanlar kararı onaylar, ajanlar işi yürütür. Veritabanı, API ve MCP bağlantıları. Model bağımsız, açık kaynak (MIT), self-hosted.",
+        "applicationCategory": "BusinessApplication",
+        "applicationSubCategory": "AI agent platform",
+        "operatingSystem": "Linux, Docker",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "license": "https://opensource.org/licenses/MIT",
+        "url": "https://agent.fab.engineering/",
+        "sameAs": ["https://github.com/fab-agent/agentic-organization"],
+        "codeRepository": "https://github.com/fab-agent/agentic-organization",
+        "softwareHelp": "https://agent-docs.fab.engineering/",
+        "image": "https://agent.fab.engineering/og.jpg",
+        "featureList": [
+          "Organizasyon hiyerarşisi: şirket, departman, personel, ajan katmanları",
+          "Personel bazlı ajanlar: pozisyona özel model, skill ve politika",
+          "A2A delegasyon: ajan-ajan görev devri, iki aşamalı insan onayı",
+          "Politika & kural yönetimi: Markdown + Git, değişiklik onay akışı",
+          "Rol tabanlı erişim: 5 kademeli yetki sistemi",
+          "Kurumsal hafıza: oturumlar AI ile özetlenir, bağlam korunur",
+          "Model bağımsız: Claude, GPT-4o, Gemini, Qwen",
+          "Veritabanı, API ve MCP bağlantıları",
+          "Tek komut kurulum: bash install.sh (SSL, Nginx, Docker)",
+          "SLA & AI telemetri paneli, S3/R2 şifreli yedekleme"
+        ],
+        "author": { "@id": "https://agent.fab.engineering/#person" },
+        "publisher": { "@id": "https://agent.fab.engineering/#org" }
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://agent.fab.engineering/#website",
+        "url": "https://agent.fab.engineering/",
+        "name": "agent.fab.engineering — Agentic Work OS",
+        "inLanguage": ["tr", "en", "de", "es"],
+        "publisher": { "@id": "https://agent.fab.engineering/#org" },
+        "about": { "@id": "https://agent.fab.engineering/#app" }
+      },
+      {
+        "@type": "WebPage",
+        "@id": "https://agent.fab.engineering/#webpage",
+        "url": "https://agent.fab.engineering/",
+        "name": "agent.fab.engineering — Agentic Work OS",
+        "isPartOf": { "@id": "https://agent.fab.engineering/#website" },
+        "about": { "@id": "https://agent.fab.engineering/#app" },
+        "primaryImageOfPage": "https://agent.fab.engineering/og.jpg",
+        "inLanguage": "tr"
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://agent.fab.engineering/#org",
+        "name": "Fabrika Yazılım Tic. Ltd. Şti.",
+        "alternateName": "Fabrika Yazılım",
+        "url": "https://fab.limited/",
+        "logo": "https://agent.fab.engineering/favicon.jpg",
+        "email": "bilgi@kuntaykunt.com",
+        "founder": { "@id": "https://agent.fab.engineering/#person" },
+        "sameAs": [
+          "https://www.linkedin.com/in/kuntaykunt",
+          "https://github.com/fab-agent",
+          "https://fab.engineering/",
+          "https://infab.cloud/"
+        ]
+      },
+      {
+        "@type": "Person",
+        "@id": "https://agent.fab.engineering/#person",
+        "name": "Kuntay Kunt",
+        "jobTitle": "Founder",
+        "worksFor": { "@id": "https://agent.fab.engineering/#org" },
+        "sameAs": ["https://www.linkedin.com/in/kuntaykunt", "https://x.com/kuntaykunt", "https://github.com/kuntaykunt"]
+      },
+      {
+        "@type": "FAQPage",
+        "@id": "https://agent.fab.engineering/#faq",
+        "inLanguage": "tr",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "Agentic Work OS nedir?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Organizasyon şemanızda yaşayan yapay zeka ajanları çalıştıran, açık kaynak ve self-hosted bir kurumsal yapay zeka katmanıdır. Her pozisyonun kendi ajanı, modeli, skill'leri ve politikaları olur; ajanlar veritabanlarınıza, API'lerinize ve MCP sunucularınıza bağlanarak gerçek iş süreçlerinin içinde çalışır." }
+          },
+          {
+            "@type": "Question",
+            "name": "Bağlam yönetimi (context management) nasıl çalışır?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Bir ajanın bağlamı, onu içeren katmanlardan oluşur: en dışta şirket vizyonu & misyonu ve şirket ana hedefleri (OKR), sonra departman, sorumlu insan çalışan ve en içte ajanın kendi politika ve kuralları. Ajan ayrıca yana takım arkadaşlarına, yukarı üst yönetime bağlanır." }
+          },
+          {
+            "@type": "Question",
+            "name": "Hangi modelleri destekliyor?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Model bağımsızdır. Claude, GPT-4o, Gemini, Qwen ve diğer modeller arasında ihtiyaca göre geçiş yapabilirsiniz; tek bir sağlayıcıya kilitlenmezsiniz." }
+          },
+          {
+            "@type": "Question",
+            "name": "Nasıl kurulur?",
+            "acceptedAnswer": { "@type": "Answer", "text": "Docker kurulu her sunucuda tek komutla: curl -fsSL https://raw.githubusercontent.com/fab-agent/agentic-organization/main/install.sh | bash. Kurulum sihirbazı Let's Encrypt SSL, Nginx, Docker Compose ve şifreleme anahtarlarını otomatik yapılandırır. Tüm veriler kendi sunucunuzda kalır." }
+          },
+          {
+            "@type": "Question",
+            "name": "Lisansı nedir, ücretli mi?",
+            "acceptedAnswer": { "@type": "Answer", "text": "MIT lisansı ile açık kaynaktır ve ücretsizdir. Kaynak koda github.com/fab-agent/agentic-organization adresinden erişebilir, forklayabilir ve kendi organizasyonunuza uyarlayabilirsiniz." }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <link rel="preload" href="/fonts/archivo-var.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/instrument-serif-italic.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" as="image" href="img/hero-terminal-sm.webp" imagesrcset="img/hero-terminal-sm.webp 900w, img/hero-terminal.webp 2000w" imagesizes="(max-width:900px) 100vw, 66vw" fetchpriority="high">
+  <style>
+  @font-face{font-family:"Archivo";src:url(/fonts/archivo-var.woff2) format("woff2");font-weight:400 800;font-stretch:100% 125%;font-style:normal;font-display:swap}
+  @font-face{font-family:"Instrument Serif";src:url(/fonts/instrument-serif-italic.woff2) format("woff2");font-weight:400;font-style:italic;font-display:swap}
+  @font-face{font-family:"JetBrains Mono";src:url(/fonts/jetbrains-mono-500.woff2) format("woff2");font-weight:400 600;font-style:normal;font-display:swap}
+  /* Layout: a contact sheet. Each section is a numbered "frame" with crop marks; the nested context layers of the product drive the structure. */
+  :root{
+    --paper:#f3f5f0; --mist:#e6ebe3; --ink:#0f1c19; --ink-2:#44524d; --line:#c8d1c6; --sage:#9bb3a2; --teal:#27504a;
+    --signal:#ff4a1c; --signal-ink:#c4300b; --on-signal:#fff;
+    --f-display:"Archivo","Helvetica Neue",Arial,sans-serif;
+    --f-human:"Instrument Serif","Times New Roman",serif;
+    --f-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+    --gut:clamp(16px,4vw,48px); --max:1360px;
+    color-scheme:light;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth;scroll-padding-top:76px}
+  body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.55 var(--f-display);font-stretch:100%;-webkit-font-smoothing:antialiased}
+  img{max-width:100%;display:block}
+  a{color:inherit}
+  .wrap{max-width:var(--max);margin-inline:auto;padding-inline:var(--gut)}
+  .mono{font-family:var(--f-mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase}
+  .human{font-family:var(--f-human);font-style:italic;font-weight:400;font-stretch:100%;letter-spacing:0}
+  h1,h2,h3{font-stretch:118%;font-weight:700;line-height:.98;letter-spacing:-.02em;margin:0;text-wrap:balance}
+  :focus-visible{outline:3px solid var(--signal);outline-offset:3px}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+  /* header */
+  header.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+  header.top .wrap{display:flex;align-items:center;gap:20px;height:64px}
+  .logo{display:flex;align-items:center;gap:11px;text-decoration:none;font-stretch:118%;font-weight:700;font-size:16px;letter-spacing:-.02em;white-space:nowrap;min-width:0}
+  .logo img{border-radius:6px;flex:none}
+  .logo b{font-weight:400;color:var(--ink-2)}
+  nav.main{display:flex;gap:22px;margin-left:auto}
+  nav.main a{text-decoration:none;font-size:14px;font-weight:500;color:var(--ink-2)}
+  nav.main a:hover{color:var(--ink)}
+  .langs{display:flex;gap:2px}
+  .lang-btn{font:500 12px var(--f-mono);background:none;border:1px solid transparent;color:var(--ink-2);padding:5px 7px;cursor:pointer;border-radius:3px;text-transform:uppercase}
+  .lang-btn.active{border-color:var(--ink);color:var(--ink)}
+  .btn{display:inline-flex;align-items:center;gap:10px;font:600 15px var(--f-display);font-stretch:112%;padding:13px 20px;border:1.5px solid var(--ink);background:var(--ink);color:var(--paper);text-decoration:none;cursor:pointer;border-radius:2px;transition:transform .15s,background .15s}
+  .btn:hover{transform:translate(-2px,-2px);box-shadow:3px 3px 0 var(--signal)}
+  .btn.signal{background:var(--signal);border-color:var(--signal);color:var(--on-signal)}
+  .btn.signal:hover{box-shadow:3px 3px 0 var(--ink)}
+  .btn.ghost{background:transparent;color:var(--ink)}
+  .btn.sm{padding:9px 14px;font-size:13px}
+  @media(max-width:900px){nav.main{display:none}.langs{margin-left:auto}}
+  @media(max-width:640px){header.top .wrap{gap:10px}.logo{font-size:13px;gap:8px}.logo img{width:28px;height:28px}header.top .btn.sm{display:none}.lang-btn{padding:5px 5px}}
+
+  /* frames: crop marks */
+  .frame{position:relative}
+  .frame::before,.frame::after{content:"";position:absolute;width:18px;height:18px;border:1.5px solid var(--ink);pointer-events:none;z-index:2}
+  .frame::before{left:-9px;top:-9px;border-right:0;border-bottom:0}
+  .frame::after{right:-9px;bottom:-9px;border-left:0;border-top:0}
+  .frame img{width:100%;height:100%;object-fit:cover}
+  .cap{display:flex;justify-content:space-between;gap:12px;margin-top:12px;color:var(--ink-2)}
+
+  /* section chrome */
+  section{padding-block:clamp(64px,10vw,140px)}
+  .kicker{display:flex;align-items:center;gap:12px;color:var(--ink-2);margin-bottom:22px}
+  .kicker::before{content:"";width:28px;height:1.5px;background:var(--signal)}
+  h2{font-size:clamp(34px,5.4vw,76px)}
+  .lede{max-width:56ch;color:var(--ink-2);font-size:clamp(17px,1.5vw,20px)}
+
+  /* hero */
+  .hero{padding-block:clamp(36px,6vw,72px) clamp(56px,8vw,110px)}
+  .hero h1{font-size:clamp(34px,7.1vw,112px);font-stretch:125%;font-weight:800;line-height:1.04;letter-spacing:-.035em}
+  .hero h1 .human{font-size:1.14em;line-height:.9;color:var(--signal-ink);padding-right:.04em}
+  .hero h1 span.l1{display:block;color:var(--ink)}
+  .hero-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:clamp(20px,3vw,40px);margin-top:clamp(28px,4vw,56px);align-items:end}
+  .hero-copy{grid-column:1/5;display:flex;flex-direction:column;gap:26px}
+  .hero-copy p{margin:0;color:var(--ink-2);font-size:18px}
+  .hero-copy strong{color:var(--ink);font-weight:600}
+  .cta-row{display:flex;gap:12px;flex-wrap:wrap}
+  .hero-fig{grid-column:5/13}
+  .hero-fig .frame{aspect-ratio:16/8.4;background:var(--ink);overflow:hidden}
+  .status{position:absolute;left:14px;bottom:14px;right:14px;display:flex;justify-content:space-between;gap:12px;background:color-mix(in srgb,var(--ink) 82%,transparent);color:#e9efe8;padding:9px 12px;border-radius:2px;z-index:1}
+  .status .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--signal);margin-right:8px;animation:pulse 1.8s infinite}
+  @keyframes pulse{50%{opacity:.25}}
+  #agentStatus{transition:opacity .2s}
+  .clock{margin-top:18px;color:var(--ink-2);max-width:70ch}
+  @media(max-width:900px){.hero-copy,.hero-fig{grid-column:1/-1}.hero-fig{order:-1}}
+
+  /* layers */
+  .layers{background:var(--mist);border-block:1px solid var(--line)}
+  .layers-grid{display:grid;grid-template-columns:1fr 1fr;gap:clamp(32px,6vw,96px);align-items:center;margin-top:48px}
+  .layer-list{list-style:none;margin:0;padding:0;border-top:1.5px solid var(--ink)}
+  .layer-list li{border-bottom:1px solid var(--line)}
+  .layer-btn{width:100%;display:grid;grid-template-columns:44px 1fr;gap:14px;text-align:left;background:none;border:0;padding:20px 4px;cursor:pointer;color:inherit;font:inherit}
+  .layer-btn .n{font:500 13px var(--f-mono);color:var(--ink-2);padding-top:6px}
+  .layer-btn h3{font-size:clamp(22px,2.4vw,32px);font-stretch:112%}
+  .layer-btn p{margin:8px 0 0;color:var(--ink-2);max-height:0;overflow:hidden;opacity:0;transition:max-height .35s,opacity .25s}
+  .layer-btn[aria-pressed="true"] p{max-height:120px;opacity:1}
+  .layer-btn[aria-pressed="true"] .n{color:var(--signal-ink)}
+  .rings{position:relative;aspect-ratio:1/.92;max-width:560px;width:100%;justify-self:center}
+  .ring{position:absolute;border:1.5px solid var(--ink);transition:background .3s,border-color .3s,box-shadow .3s}
+  .ring span{position:absolute;left:12px;top:8px;font:500 11px var(--f-mono);text-transform:uppercase;letter-spacing:.06em;color:var(--ink-2)}
+  .r1{inset:0}.r2{inset:13% 8% 9% 8%}.r3{inset:27% 16% 18% 16%}.r4{inset:42% 26% 28% 26%}
+  .rings[data-active="1"] .r1,.rings[data-active="2"] .r2,.rings[data-active="3"] .r3,.rings[data-active="4"] .r4{border-color:var(--signal);background:color-mix(in srgb,var(--signal) 10%,transparent);box-shadow:5px 5px 0 var(--signal)}
+  .rings[data-active="1"] .r1 span,.rings[data-active="2"] .r2 span,.rings[data-active="3"] .r3 span,.rings[data-active="4"] .r4 span{color:var(--signal-ink)}
+  .r4 .core{position:absolute;inset:0;display:grid;place-items:center;font:600 12px var(--f-mono);text-transform:uppercase}
+  @media(max-width:860px){.layers-grid{grid-template-columns:1fr}.rings{order:-1}}
+
+  /* human in the loop */
+  .duo{display:grid;grid-template-columns:repeat(12,1fr);gap:clamp(20px,3vw,40px);margin-top:56px;align-items:start}
+  .duo .big{grid-column:1/9}
+  .duo .big .frame{aspect-ratio:16/8.8;overflow:hidden}
+  .duo .side{grid-column:9/13;display:flex;flex-direction:column;gap:28px}
+  .duo .side .frame{aspect-ratio:4/3;overflow:hidden}
+  .duo p{margin:0;color:var(--ink-2)}
+  .duo h3{font-size:clamp(20px,2vw,26px);font-stretch:112%;margin-bottom:8px}
+  @media(max-width:860px){.duo .big,.duo .side{grid-column:1/-1}}
+
+  /* features */
+  .feat-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:clamp(24px,4vw,64px);margin-top:48px}
+  .feat-fig{grid-column:1/6;position:sticky;top:96px;align-self:start}
+  .feat-fig .frame{aspect-ratio:4/5;overflow:hidden}
+  .feat-fig img{object-position:28% 50%}
+  .feat-list{grid-column:6/13;display:grid;grid-template-columns:1fr 1fr;border-top:1.5px solid var(--ink)}
+  .feat{padding:22px 22px 22px 0;border-bottom:1px solid var(--line)}
+  .feat:nth-child(odd){padding-right:24px}
+  .feat h3{font-size:19px;font-stretch:108%;line-height:1.15;letter-spacing:-.01em;margin-bottom:8px}
+  .feat p{margin:0;font-size:15px;color:var(--ink-2);line-height:1.5}
+  .feat code{font-family:var(--f-mono);font-size:.88em;background:var(--mist);padding:1px 5px}
+  @media(max-width:980px){.feat-fig{grid-column:1/-1;position:static}.feat-fig .frame{aspect-ratio:16/9}.feat-list{grid-column:1/-1}}
+  @media(max-width:600px){.feat-list{grid-template-columns:1fr}.feat{padding-right:0!important}}
+
+  /* docs band */
+  .docs-band{background:var(--ink);color:var(--paper);padding-block:clamp(48px,7vw,88px)}
+  .docs-band .kicker{color:#a9b8b0}
+  .docs-band h2{font-size:clamp(30px,4.4vw,60px)}
+  .docs-band h2 .human{color:#ff8a66}
+  .docs-inner{display:grid;grid-template-columns:1.3fr 1fr;gap:clamp(24px,5vw,80px);align-items:end}
+  .docs-side{display:flex;flex-direction:column;gap:22px;align-items:flex-start}
+  .docs-side .lede{color:#a9b8b0}
+  @media(max-width:800px){.docs-inner{grid-template-columns:1fr}}
+
+  /* install */
+  .inst-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:clamp(24px,4vw,64px);align-items:center}
+  .inst-fig{grid-column:1/8}
+  .inst-fig .frame{aspect-ratio:16/8.6;overflow:hidden}
+  .inst-copy{grid-column:8/13;display:flex;flex-direction:column;gap:24px}
+  .cmd{display:flex;gap:0;border:1.5px solid var(--ink);background:var(--ink);color:#d9efe5;min-width:0}
+  .cmd code{font:400 13px/1.5 var(--f-mono);padding:14px 16px;overflow-x:auto;white-space:nowrap;flex:1;min-width:0}
+  .cmd button{border:0;border-left:1.5px solid #34504a;background:var(--signal);color:var(--on-signal);font:600 13px var(--f-display);padding:0 18px;cursor:pointer}
+  .cmd button.done{background:var(--sage);color:var(--ink)}
+  .facts{display:flex;gap:8px;flex-wrap:wrap}
+  .facts .mono{border:1px solid var(--line);padding:6px 10px;color:var(--ink-2)}
+  @media(max-width:900px){.inst-fig,.inst-copy{grid-column:1/-1}}
+
+  /* contact */
+  .contact{padding-block:0 clamp(64px,10vw,140px)}
+  .contact-band{position:relative;min-height:clamp(380px,48vw,560px);display:flex;align-items:center;overflow:hidden;background:#78977f}
+  .contact-band img{position:absolute;top:0;right:0;height:100%;width:min(100%,1180px);object-fit:cover;object-position:100% 50%;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 30%);mask-image:linear-gradient(90deg,transparent 0,#000 30%)}
+  @media(max-width:800px){.contact-band img{width:100%;opacity:.55}}
+  .contact-band .wrap{position:relative;width:100%;padding-block:56px 120px}
+  .contact-band h2{max-width:8ch;color:var(--ink);font-size:clamp(44px,7vw,104px);font-stretch:125%;font-weight:800;letter-spacing:-.04em;line-height:.9;max-width:none}
+  .contact-band .kicker{color:var(--ink)}
+  .contact-band .lede{color:#0f1c19;max-width:38ch;margin-top:22px}
+  .formcard{position:relative;margin:-90px auto 0;max-width:980px;background:var(--paper);border:1.5px solid var(--ink);padding:clamp(20px,4vw,44px);box-shadow:10px 10px 0 var(--signal)}
+  .intents{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;border:0;padding:0;margin:0 0 26px}
+  .intents legend{padding:0;margin-bottom:12px;color:var(--ink-2)}
+  .intent{position:relative}
+  .intent input{position:absolute;opacity:0;inset:0;cursor:pointer}
+  .intent span{display:block;border:1.5px solid var(--line);padding:14px 14px;font-weight:600;font-stretch:108%;line-height:1.2;transition:all .15s;height:100%}
+  .intent input:checked+span{border-color:var(--ink);background:var(--ink);color:var(--paper)}
+  .intent input:focus-visible+span{outline:3px solid var(--signal);outline-offset:2px}
+  .intent:hover span{border-color:var(--ink)}
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:18px 20px}
+  .fields .full{grid-column:1/-1}
+  label.f{display:flex;flex-direction:column;gap:6px;font:500 12px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+  label.f input,label.f select,label.f textarea{font:400 17px var(--f-display);letter-spacing:0;text-transform:none;color:var(--ink);background:#fff;border:1.5px solid var(--line);padding:12px 12px;border-radius:2px;width:100%}
+  label.f textarea{min-height:130px;resize:vertical}
+  label.f input:focus-visible,label.f select:focus-visible,label.f textarea:focus-visible{outline:3px solid var(--signal);outline-offset:0;border-color:var(--ink)}
+  label.f input[aria-invalid="true"],label.f textarea[aria-invalid="true"]{border-color:var(--signal-ink);background:#fff6f3}
+  .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+  .consent{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--ink-2)}
+  .consent input{margin-top:4px;width:18px;height:18px;accent-color:var(--signal)}
+  .form-foot{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:6px}
+  .form-msg{font-size:15px;min-height:1.5em}
+  .form-msg.ok{color:var(--teal);font-weight:600}
+  .form-msg.err{color:var(--signal-ink);font-weight:600}
+  .btn[disabled]{opacity:.6;cursor:wait;transform:none;box-shadow:none}
+  @media(max-width:700px){.intents{grid-template-columns:1fr}.fields{grid-template-columns:1fr}}
+
+  /* footer */
+  footer{position:relative;color:#e9efe8;background:var(--ink);overflow:hidden}
+  footer .bg{position:absolute;inset:0;opacity:.75}
+  footer .bg img{width:100%;height:100%;object-fit:cover;object-position:50% 40%;filter:saturate(.8)}
+  footer .bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,28,25,.55),rgba(15,28,25,.94))}
+  footer .wrap{position:relative;padding-block:clamp(56px,9vw,120px) 28px}
+  footer h2{font-size:clamp(32px,5vw,68px);max-width:16ch;font-stretch:122%}
+  footer h2 .human{color:#ff8a66}
+  .foot-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:32px;margin-top:56px;padding-top:28px;border-top:1px solid #3b524c}
+  .foot-grid h4{margin:0 0 10px;font:500 12px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:#a9b8b0}
+  .foot-grid a,.foot-grid p{display:block;margin:0 0 6px;color:#e9efe8;text-decoration:none;font-size:15px}
+  .foot-grid a:hover{color:#ff8a66}
+  .copy{margin-top:40px;color:#a9b8b0}
+
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
+  </style>
+</head>
+<body>
+<a class="sr" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="#top" aria-label="agent.fab.engineering"><img src="logo-64.png" width="32" height="32" alt=""><span>agent<b>.fab.engineering</b></span></a>
+    <nav class="main" aria-label="Main">
+      <a href="#katmanlar" data-i18n="nav.layers">Katmanlar</a>
+      <a href="#ozellikler" data-i18n="nav.features">Özellikler</a>
+      <a href="#kurulum" data-i18n="nav.install">Kurulum</a>
+      <a href="https://agent-docs.fab.engineering/" data-i18n="bar.docs">Dokümantasyon</a>
+    </nav>
+    <div class="langs" role="group" aria-label="Language">
+      <button class="lang-btn" onclick="setLang('tr')">TR</button><button class="lang-btn" onclick="setLang('en')">EN</button><button class="lang-btn" onclick="setLang('de')">DE</button><button class="lang-btn" onclick="setLang('es')">ES</button>
+    </div>
+    <a class="btn sm signal" href="#iletisim" data-intent="demo" data-i18n="nav.cta">Demo iste</a>
+  </div>
+</header>
+
+<main id="main">
+<section class="hero" id="top">
+  <div class="wrap">
+    <h1 data-i18n-html="hero.h"><span class="l1">Ajanlar yürütür.</span> <span class="human">İnsanlar</span> karar verir.</h1>
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <p data-i18n-html="os.desc">Organizasyon şemanızda <strong>yaşayan yapay zeka ajanları</strong>.</p>
+        <div class="cta-row">
+          <a class="btn signal" href="#iletisim" data-intent="demo" data-i18n="hero.cta1">Demo iste</a>
+          <a class="btn ghost" href="https://agent-docs.fab.engineering/" data-i18n="bar.docs">Dokümantasyon</a>
+        </div>
+        <div class="mono" style="color:var(--ink-2)"><span data-i18n="os.p_model">Model bağımsız</span> · MIT · self-hosted</div>
+      </div>
+      <figure class="hero-fig" style="margin:0">
+        <div class="frame">
+          <img src="img/hero-terminal.webp" srcset="img/hero-terminal-sm.webp 900w, img/hero-terminal.webp 2000w" sizes="(max-width:900px) 100vw, 66vw" width="2000" height="1120" alt="" data-i18n-alt="hero.alt" fetchpriority="high">
+          <div class="status mono"><span><i class="dot"></i><span data-i18n="dg.agent">Geliştirme Ajanı</span> · <span id="agentStatus">bağlam okuyor…</span></span><span data-i18n="dg.agent_sub">claude-sonnet · aktif</span></div>
+        </div>
+        <figcaption class="cap mono"><span data-i18n="hero.frame">Kare 01 · Ajan</span><span>agent.fab.engineering</span></figcaption>
+      </figure>
+    </div>
+    <p class="clock mono" id="clock" aria-live="off"></p>
+  </div>
+</section>
+
+<section class="layers" id="katmanlar">
+  <div class="wrap">
+    <div class="kicker mono"><span data-i18n="lay.k">Bağlam katmanları</span></div>
+    <h2 data-i18n-html="lay.title">Her ajan, içinde yaşadığı <span class="human">katmanları</span> bilir.</h2>
+    <p class="lede" style="margin-top:22px" data-i18n="lay.desc">Ajanın promptu, onu çevreleyen katmanlardan derlenir. Dıştan içe okunur, içten dışa sorumluluk taşır.</p>
+    <div class="layers-grid">
+      <ol class="layer-list" id="layerList">
+        <li><button class="layer-btn" data-layer="1" aria-pressed="false"><span class="n">01</span><span><h3 data-i18n="dg.vision">Vizyon & Misyon</h3><p data-i18n="lay1.d">Şirketin neden var olduğu. Her ajanın ilk okuduğu şey.</p></span></button></li>
+        <li><button class="layer-btn" data-layer="2" aria-pressed="false"><span class="n">02</span><span><h3 data-i18n="dg.dept">Departman</h3><p data-i18n="lay2.d">OKR'lar, öncelikler ve departmanın ortak kuralları.</p></span></button></li>
+        <li><button class="layer-btn" data-layer="3" aria-pressed="false"><span class="n">03</span><span><h3 data-i18n="dg.human">İnsan</h3><p data-i18n="lay3.d">Sorumlu çalışan. Ajanı o yönetir, kararı o onaylar.</p></span></button></li>
+        <li><button class="layer-btn" data-layer="4" aria-pressed="true"><span class="n">04</span><span><h3 data-i18n="dg.agent">Geliştirme Ajanı</h3><p data-i18n="lay4.d">Kendi modeli, skill'leri ve politikaları olan dijital meslektaş.</p></span></button></li>
+      </ol>
+      <div class="rings" id="rings" data-active="4" role="img" data-i18n-alt="os.diagram_alt" aria-label="">
+        <div class="ring r1"><span data-i18n="dg.vision">Vizyon & Misyon</span></div>
+        <div class="ring r2"><span data-i18n="dg.dept">Departman</span></div>
+        <div class="ring r3"><span data-i18n="dg.human_sub">İnsan Çalışan</span></div>
+        <div class="ring r4"><span data-i18n="dg.agent">Ajan</span><div class="core">claude</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="insan">
+  <div class="wrap">
+    <div class="kicker mono"><span data-i18n="hum.k">İnsan döngüde</span></div>
+    <h2 data-i18n-html="hum.title">İşi ajan yürütür. Kararı <span class="human">insan</span> verir.</h2>
+    <div class="duo">
+      <figure class="big" style="margin:0">
+        <div class="frame"><img src="img/approval.webp" srcset="img/approval-sm.webp 900w, img/approval.webp 2000w" sizes="(max-width:860px) 100vw, 64vw" width="2000" height="832" loading="lazy" alt="" data-i18n-alt="hum.alt1"></div>
+        <figcaption class="cap mono"><span data-i18n="hum.cap1">Kare 02 · Onay</span><span>A2A</span></figcaption>
+      </figure>
+      <div class="side">
+        <div><h3 data-i18n="f3.t">A2A Delegasyon</h3><p data-i18n="f3.d"></p></div>
+        <figure style="margin:0">
+          <div class="frame"><img src="img/pair.webp" srcset="img/pair-sm.webp 900w, img/pair.webp 2000w" sizes="(max-width:860px) 100vw, 32vw" width="2000" height="1120" loading="lazy" alt="" data-i18n-alt="hum.alt2" style="object-position:40% 50%"></div>
+          <figcaption class="cap mono"><span data-i18n="hum.cap2">Kare 03 · Eşleşme</span></figcaption>
+        </figure>
+        <div><h3 data-i18n="f2.t">Personel Bazlı Ajanlar</h3><p data-i18n="f2.d"></p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="ozellikler" style="padding-top:0">
+  <div class="wrap">
+    <div class="kicker mono"><span data-i18n="feat.kicker">Ne yapar?</span></div>
+    <h2 data-i18n="feat.title">Özellikler</h2>
+    <p class="lede" style="margin-top:22px" data-i18n="feat.desc"></p>
+    <div class="feat-grid">
+      <figure class="feat-fig" style="margin:0">
+        <div class="frame"><img src="img/memory.webp" srcset="img/memory-sm.webp 900w, img/memory.webp 2000w" sizes="(max-width:980px) 100vw, 40vw" width="2000" height="1120" loading="lazy" alt="" data-i18n-alt="feat.alt"></div>
+        <figcaption class="cap mono"><span data-i18n="feat.cap">Kare 04 · Hafıza</span></figcaption>
+      </figure>
+      <div class="feat-list" id="featList"></div>
+    </div>
+  </div>
+</section>
+
+<section class="docs-band" id="urun">
+  <div class="wrap docs-inner">
+    <div>
+      <div class="kicker mono"><span data-i18n="prod.k">Dokümantasyon</span></div>
+      <h2 data-i18n-html="prod.title">Ürünü <span class="human">dokümantasyonda</span> gör.</h2>
+    </div>
+    <div class="docs-side">
+      <p class="lede" style="margin:0" data-i18n="prod.desc"></p>
+      <a class="btn signal" href="https://agent-docs.fab.engineering/"><span data-i18n="prod.cta">Dokümantasyonu aç</span> →</a>
+    </div>
+  </div>
+</section>
+
+<section id="kurulum">
+  <div class="wrap inst-grid">
+    <figure class="inst-fig" style="margin:0">
+      <div class="frame"><img src="img/install.webp" srcset="img/install-sm.webp 900w, img/install.webp 2000w" sizes="(max-width:900px) 100vw, 58vw" width="2000" height="832" loading="lazy" alt="" data-i18n-alt="inst.alt"></div>
+      <figcaption class="cap mono"><span data-i18n="inst.cap">Kare 05 · Kurulum</span></figcaption>
+    </figure>
+    <div class="inst-copy">
+      <div class="kicker mono" style="margin:0"><span data-i18n="open.kicker">Açık kaynak · Self-hosted</span></div>
+      <h2 style="font-size:clamp(32px,4.2vw,56px)" data-i18n-html="inst.title">Tek komutla, <span class="human">kendi</span> sunucunda.</h2>
+      <p class="lede" style="margin:0" data-i18n="inst.desc"></p>
+      <div class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/fab-agent/agentic-organization/main/install.sh | bash</code><button onclick="copyInstall(this)"><span data-i18n="open.copy">Kopyala</span></button></div>
+      <div class="facts mono"><span>Docker</span><span>SSL</span><span>Nginx</span><span data-i18n="open.stack">FastAPI + SvelteKit</span></div>
+      <p style="margin:0;color:var(--ink-2)" data-i18n="open.desc"></p>
+      <div class="cta-row"><a class="btn ghost sm" href="https://github.com/fab-agent/agentic-organization" data-i18n="open.proj">Proje</a><a class="btn ghost sm" href="https://agent-docs.fab.engineering/" data-i18n="open.docs">Dokümantasyon</a></div>
+    </div>
+  </div>
+</section>
+
+<section class="contact" id="iletisim">
+  <div class="contact-band">
+    <img src="img/visor.webp" srcset="img/visor-sm.webp 900w, img/visor.webp 2000w" sizes="100vw" width="2000" height="804" loading="lazy" alt="">
+    <div class="wrap">
+      <div class="kicker mono"><span data-i18n="ct.k">İletişim</span></div>
+      <h2 data-i18n-html="ct.title">Konuşalım<span style="color:var(--signal-ink)">.</span></h2>
+      <p class="lede" data-i18n="ct.desc"></p>
+    </div>
+  </div>
+  <div class="wrap">
+    <form class="formcard" id="cform" novalidate>
+      <fieldset class="intents" id="intents">
+        <legend class="mono" data-i18n="ct.intent">Ne istiyorsun?</legend>
+        <label class="intent"><input type="radio" name="intent" value="demo" checked><span data-i18n="ct.i.demo">Demo istiyorum</span></label>
+        <label class="intent"><input type="radio" name="intent" value="contact"><span data-i18n="ct.i.contact">İletişime geçmek istiyorum</span></label>
+        <label class="intent"><input type="radio" name="intent" value="sponsor"><span data-i18n="ct.i.sponsor">Sponsor olmak istiyorum</span></label>
+      </fieldset>
+      <div class="fields">
+        <label class="f" for="c-name"><span data-i18n="ct.name">Adın</span><input id="c-name" name="name" autocomplete="name" required maxlength="120"></label>
+        <label class="f" for="c-email"><span data-i18n="ct.email">E-posta</span><input id="c-email" name="email" type="email" autocomplete="email" required maxlength="200"></label>
+        <label class="f" for="c-org"><span data-i18n="ct.org">Şirket / kurum (isteğe bağlı)</span><input id="c-org" name="org" autocomplete="organization" maxlength="160"></label>
+        <label class="f" for="c-topic"><span id="topicLabel">Ekip büyüklüğü</span><select id="c-topic" name="topic"></select></label>
+        <label class="f full" for="c-msg"><span data-i18n="ct.msg">Mesajın</span><textarea id="c-msg" name="message" required maxlength="4000"></textarea></label>
+        <div class="hp" aria-hidden="true"><label>Website<input id="c-web" name="website" tabindex="-1" autocomplete="off"></label></div>
+        <label class="consent full" for="c-consent"><input id="c-consent" type="checkbox" required><span data-i18n="ct.consent">Bilgilerimin bu talebe yanıt vermek için saklanmasını kabul ediyorum.</span></label>
+      </div>
+      <div class="form-foot">
+        <button class="btn signal" id="sendBtn" type="submit"><span data-i18n="ct.send">Gönder</span> →</button>
+        <p class="form-msg" id="formMsg" role="status" aria-live="polite"></p>
+      </div>
+    </form>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="bg"><img src="img/papers.webp" width="2000" height="900" loading="lazy" alt=""></div>
+  <div class="wrap">
+    <h2 data-i18n-html="ft.h">İnsanlar karar verir, <span class="human">ajanlar</span> yürütür.</h2>
+    <div class="foot-grid">
+      <div><h4>Fabrika Yazılım</h4><p data-i18n="open.company">Fabrika Yazılım Tic. Ltd. Şti. · İstanbul</p><p><a href="https://www.linkedin.com/in/kuntaykunt">Kuntay Kunt</a></p><p><a href="mailto:bilgi@kuntaykunt.com">bilgi@kuntaykunt.com</a></p></div>
+      <div><h4 data-i18n="ft.links">Bağlantılar</h4><a href="https://agent-docs.fab.engineering/" data-i18n="bar.docs">Dokümantasyon</a><a href="https://github.com/fab-agent/agentic-organization">GitHub</a></div>
+      <div><h4>Fab</h4><a href="https://fab.limited/">fab.limited</a><a href="https://infab.cloud/">infab.cloud</a><a href="https://fab.engineering/">fab.engineering</a><a href="/llms.txt">llms.txt</a></div>
+    </div>
+    <p class="copy mono" data-i18n="bar.copy">© 2026 Fabrika Yazılım Tic. Ltd. Şti.</p>
+  </div>
+</footer>
+
+<script>
+const COPY = {
+  tr: {
+    'os.label': 'Agentic Work OS', 'os.kicker': 'Agentic Work OS', 'os.title': 'Agentic Work OS',
+    'os.desc': 'Organizasyon şemanızda <strong>yaşayan yapay zeka ajanları</strong>. Her ajan; şirket vizyonu, departman OKR\'ları ve pozisyonun politikalarıyla aynı bağlamda çalışır — insanlar <strong>karar onaylar</strong>, ajanlar işi yürütür.',
+    'os.cta_demo': 'Demo Dene', 'os.cta_app': 'Uygulamayı Aç', 'os.p_model': 'Model bağımsız', 'os.p_install': 'install.sh',
+    'os.diagram_alt': 'İç içe bağlam katmanları: şirket vizyonu içinde departman, içinde insan, içinde geliştirme ajanı; dış katmandan yukarı yönetime ve yana takım arkadaşlarına oklar.',
+    'dg.vision': 'Vizyon & Misyon', 'dg.objectives': 'Şirket Ana Hedefleri', 'dg.dept': 'Departman',
+    'dg.human': 'İnsan', 'dg.human_sub': 'İnsan Çalışan',
+    'dg.agent': 'Geliştirme Ajanı', 'dg.agent_sub': 'claude-sonnet · aktif', 'dg.policies': 'Politika ve Kurallar',
+    'dg.upper': 'Üst Yönetim', 'dg.teammate': 'Takım Arkadaşı',
+    'dg.st0': 'bağlam okuyor…', 'dg.st1': 'delege ediyor…', 'dg.st2': 'özet yazıyor…', 'dg.st3': 'onay bekliyor…',
+
+    'feat.label': 'Özellikler', 'feat.kicker': 'Ne yapar?', 'feat.title': 'Özellikler',
+    'feat.desc': 'Organizasyon hiyerarşisinden ajan hafızasına, delegasyon onaylarından tek komut kuruluma — gerçek iş süreçlerinin içinde çalışan bir katman.',
+    'feat.cta_all': 'Tüm özellikler & ekran görüntüleri',
+    'fh1.t': 'Organizasyon Hiyerarşisi', 'fh1.d': 'Şirket · departman · personel · ajan katmanları',
+    'fh2.t': 'Personel Bazlı Ajanlar', 'fh2.d': 'Her pozisyona model, skill ve politika',
+    'fh3.t': 'A2A Delegasyon', 'fh3.d': 'Ajan-ajan görev devri, iki aşamalı onay',
+    'fh4.t': 'Policy & Skill', 'fh4.d': 'Markdown + Git; değişiklik onay akışıyla',
+    'fh5.t': 'Kurumsal Hafıza', 'fh5.d': 'Oturumlar AI ile özetlenir, bağlam korunur',
+    'fh6.t': 'Tek Komut Kurulum', 'fh6.d': 'install.sh — SSL, Nginx, Docker; self-hosted',
+
+    'open.label': 'Açık Kaynak', 'open.kicker': 'Açık kaynak · Self-hosted', 'open.title': 'Kaynak açık, veriler sizde',
+    'open.desc': 'MIT lisansı. Kendi sunucunuzda çalışır, kod tamamen görünür. Sizden gizli çalışan hiçbir katman yok.',
+    'open.proj': 'Proje', 'open.docs': 'Dokümantasyon',
+    'open.stack': 'FastAPI + SvelteKit · SQLite · Model bağımsız',
+    'open.company': 'Fabrika Yazılım Tic. Ltd. Şti. · İstanbul',
+    'open.role': 'Kurucu — Fabrika Yazılım',
+    'open.copy': 'Kopyala', 'open.copied': 'Kopyalandı',
+
+    'ov.title': 'Özellikler & Ekran Görüntüleri',
+    'ov.features_label': 'Tüm Özellikler', 'ov.shots_label': 'Ekran Görüntüleri — büyütmek için tıklayın',
+    'og1': 'Organizasyon & Yetki', 'og2': 'Ajan, Model & Hafıza', 'og3': 'Politika, Skill & Entegrasyon', 'og4': 'Kurulum & Operasyon',
+    'bar.docs': 'Dokümantasyon', 'bar.copy': '© 2026 Fabrika Yazılım Tic. Ltd. Şti.',
+
+    'f1.t': 'Organizasyon Hiyerarşisi', 'f1.d': 'Şirket, departman, personel ve ajan katmanlarını tanımla. Org chart\'ı görselleştir, yöneticileri ve raporlama yapısını belirle.',
+    'f2.t': 'Personel Bazlı Ajanlar', 'f2.d': 'Her pozisyona özel ajan: model seçimi, versiyon, skill\'ler ve politikalar. Claude, GPT-4 veya Gemini — tek arayüzden.',
+    'f3.t': 'A2A Delegasyon', 'f3.d': 'Ajan-to-ajan görev devri. Bir ajan başka bir ajana iş atar; sorumlu insan onaylar ya da reddeder. İki aşamalı onay akışı.',
+    'f4.t': 'Policy & Skill Yönetimi', 'f4.d': 'Politikalar ve yetenekler Markdown dosyalarıyla tanımlanır. Git ile versiyon kontrolü; değişiklik talepleri onay akışıyla.',
+    'f5.t': 'Rol Tabanlı Erişim', 'f5.d': '5 kademeli yetki: Kurucu → Yönetici → Bölüm Müdürü → Ajan Sorumlusu → Kullanıcı. Her kademe kendi kapsamında.',
+    'f6.t': 'Tek Komut Prodüksiyon Kurulumu', 'f6.d': '<code>bash install.sh</code> — Let\'s Encrypt SSL, Nginx, Docker Compose. Sihirbaz JWT/şifreleme anahtarlarını üretir. Tüm veriler kendi sunucunda.',
+    'f7.t': 'S3 / R2 Yedekleme', 'f7.d': 'Tek tıkla veritabanı yedeği — AWS S3, Cloudflare R2 veya MinIO\'ya. Kimlik bilgileri AES-256 ile şifreli.',
+    'f8.t': 'Sosyal Medya Skill\'leri', 'f8.d': 'Ajanlara Instagram Business ve WhatsApp Business skill\'i ekle. Gönderi oluştur, mesaj gönder — sohbet arayüzünden.',
+    'f9.t': 'SLA & AI Telemetri Dashboard', 'f9.d': 'Oturum sayıları, token harcaması, aktif ajan durumu. Yöneticilere ajan başarı oranı (SLA) renk kodlu tabloyla sunulur.',
+    'f10.t': 'Uzun Dönem Ajan Hafızası', 'f10.d': 'Kapanan oturumlar AI tarafından özetlenerek hafıza kaydına dönüşür. Ajanın geçmiş bağlamı korunur.',
+    'f11.t': 'Telegram Bildirimleri', 'f11.d': 'Davet ve şifre sıfırlama bildirimleri Telegram Bot API üzerinden anında. E-posta altyapısına gerek yok.',
+    'f12.t': 'AI Onboarding', 'f12.d': 'İlk kurulumda şirket adını yaz — AI web araştırması yapar ve departmanlar, ajanlar, yetenekler ile politikaları otomatik oluşturur.',
+    'f13.t': 'Otomatik Güncelleme Bildirimi', 'f13.d': 'Platform yeni sürüm kontrolünü arka planda yapar (GitHub Releases API). Güncelleme varsa dashboard\'da banner gösterilir.',
+    's1': 'Gösterge Paneli — Canlı Telemetri & SLA', 's2': 'Organizasyon Şeması', 's3': 'Ajan Yönetimi', 's4': 'Personel Listesi',
+    's5': 'Skill Kütüphanesi', 's6': 'Politika Yönetimi', 's7': 'Ajanla Sohbet — Canlı ERP Sorgusu', 's8': 'Değişiklik Onay Akışı',
+    's9': 'Ajan-Ajan Delegasyonu (A2A)', 's10': 'Model Sağlayıcı Ayarları',
+  },
+  en: {
+    'os.label': 'Agentic Work OS', 'os.kicker': 'Agentic Work OS', 'os.title': 'Agentic Work OS',
+    'os.desc': '<strong>Living AI agents</strong> inside your org chart. Every agent works in the same context as the company vision, department OKRs and its position\'s policies — humans <strong>approve decisions</strong>, agents run the work.',
+    'os.cta_demo': 'Try Demo', 'os.cta_app': 'Open App', 'os.p_model': 'Model-agnostic', 'os.p_install': 'install.sh',
+    'os.diagram_alt': 'Nested context layers: department inside company vision, human inside it, development agent inside that; arrows from the outer layer to upper management and to teammates.',
+    'dg.vision': 'Vision & Mission', 'dg.objectives': 'Company Objectives', 'dg.dept': 'Department',
+    'dg.human': 'Human', 'dg.human_sub': 'Human Employee',
+    'dg.agent': 'Development Agent', 'dg.agent_sub': 'claude-sonnet · active', 'dg.policies': 'Policies & Rules',
+    'dg.upper': 'Upper Management', 'dg.teammate': 'Teammate',
+    'dg.st0': 'reading context…', 'dg.st1': 'delegating…', 'dg.st2': 'writing summary…', 'dg.st3': 'awaiting approval…',
+
+    'feat.label': 'Features', 'feat.kicker': 'What it does', 'feat.title': 'Features',
+    'feat.desc': 'From org hierarchy to agent memory, from delegation approvals to one-command install — a layer that runs inside your real business processes.',
+    'feat.cta_all': 'All features & screenshots',
+    'fh1.t': 'Organization Hierarchy', 'fh1.d': 'Company · department · personnel · agent layers',
+    'fh2.t': 'Personnel-Based Agents', 'fh2.d': 'A model, skills and policies per position',
+    'fh3.t': 'A2A Delegation', 'fh3.d': 'Agent-to-agent routing, two-stage approval',
+    'fh4.t': 'Policy & Skill', 'fh4.d': 'Markdown + Git; changes via approval flow',
+    'fh5.t': 'Corporate Memory', 'fh5.d': 'Sessions summarized by AI, context preserved',
+    'fh6.t': 'One-Command Install', 'fh6.d': 'install.sh — SSL, Nginx, Docker; self-hosted',
+
+    'open.label': 'Open Source', 'open.kicker': 'Open source · Self-hosted', 'open.title': 'Source open, data yours',
+    'open.desc': 'MIT license. Runs on your own server, the code is fully visible. No hidden layers working behind your back.',
+    'open.proj': 'Project', 'open.docs': 'Documentation',
+    'open.stack': 'FastAPI + SvelteKit · SQLite · Model-agnostic',
+    'open.company': 'Fabrika Yazılım Tic. Ltd. Şti. · Istanbul',
+    'open.role': 'Founder — Fabrika Yazılım',
+    'open.copy': 'Copy', 'open.copied': 'Copied',
+
+    'ov.title': 'Features & Screenshots',
+    'ov.features_label': 'All Features', 'ov.shots_label': 'Screenshots — click to enlarge',
+    'og1': 'Organization & Authority', 'og2': 'Agents, Model & Memory', 'og3': 'Policy, Skills & Integration', 'og4': 'Setup & Operations',
+    'bar.docs': 'Documentation', 'bar.copy': '© 2026 Fabrika Yazılım Tic. Ltd. Şti.',
+
+    'f1.t': 'Organization Hierarchy', 'f1.d': 'Define company, department, personnel and agent layers. Visualize the org chart, set managers and reporting structures.',
+    'f2.t': 'Personnel-Based Agents', 'f2.d': 'A dedicated agent per position: model, version, skills and policies. Claude, GPT-4 or Gemini — from one interface.',
+    'f3.t': 'A2A Delegation', 'f3.d': 'Agent-to-agent task routing. One agent assigns work to another; the responsible human approves or rejects. Two-stage flow.',
+    'f4.t': 'Policy & Skill Management', 'f4.d': 'Policies and capabilities are defined via Markdown files. Version controlled with Git; change requests go through approval.',
+    'f5.t': 'Role-Based Access', 'f5.d': '5-level permissions: Founder → Executive → Dept. Head → Agent Owner → User. Each level within its own scope.',
+    'f6.t': 'One-Command Production Deploy', 'f6.d': '<code>bash install.sh</code> — Let\'s Encrypt SSL, Nginx, Docker Compose. The wizard generates JWT/encryption keys. All data on your servers.',
+    'f7.t': 'S3 / R2 Backup', 'f7.d': 'One-click database backup to AWS S3, Cloudflare R2 or MinIO. Credentials stored encrypted with AES-256.',
+    'f8.t': 'Social Media Skills', 'f8.d': 'Give agents Instagram Business and WhatsApp Business skills. Create posts, send messages — from the chat interface.',
+    'f9.t': 'SLA & AI Telemetry Dashboard', 'f9.d': 'Session counts, token spend, active agent status. Managers see per-agent SLA in a color-coded table.',
+    'f10.t': 'Long-Term Agent Memory', 'f10.d': 'Closed sessions are summarized by AI into memory records. Agent context is preserved across conversations.',
+    'f11.t': 'Telegram Notifications', 'f11.d': 'Invitations and password resets delivered instantly via Telegram Bot API. No email infrastructure needed.',
+    'f12.t': 'AI Onboarding', 'f12.d': 'Type your company name at first setup — AI researches the web and auto-creates departments, agents, skills and policies.',
+    'f13.t': 'Automatic Update Notifications', 'f13.d': 'The platform checks for new versions in the background (GitHub Releases API). An update banner appears in the dashboard.',
+    's1': 'Dashboard — Live Telemetry & SLA', 's2': 'Organization Chart', 's3': 'Agent Management', 's4': 'Personnel Directory',
+    's5': 'Skill Library', 's6': 'Policy Management', 's7': 'Chat With an Agent — Live ERP Query', 's8': 'Change Approval Workflow',
+    's9': 'Agent-to-Agent Delegation (A2A)', 's10': 'AI Provider Settings',
+  },
+  de: {
+    'os.label': 'Agentic Work OS', 'os.kicker': 'Agentic Work OS', 'os.title': 'Agentic Work OS',
+    'os.desc': '<strong>Lebende KI-Agenten</strong> in Ihrem Organigramm. Jeder Agent arbeitet im selben Kontext wie Unternehmensvision, Abteilungs-OKRs und die Richtlinien seiner Position — Menschen <strong>genehmigen Entscheidungen</strong>, Agenten führen die Arbeit aus.',
+    'os.cta_demo': 'Demo testen', 'os.cta_app': 'App öffnen', 'os.p_model': 'Modellunabhängig', 'os.p_install': 'install.sh',
+    'os.diagram_alt': 'Verschachtelte Kontextebenen: Abteilung in der Unternehmensvision, Mensch darin, Entwicklungsagent darin; Pfeile von der äußeren Ebene zur Geschäftsleitung und zu Teamkollegen.',
+    'dg.vision': 'Vision & Mission', 'dg.objectives': 'Unternehmensziele', 'dg.dept': 'Abteilung',
+    'dg.human': 'Mensch', 'dg.human_sub': 'Menschlicher Mitarbeiter',
+    'dg.agent': 'Entwicklungsagent', 'dg.agent_sub': 'claude-sonnet · aktiv', 'dg.policies': 'Richtlinien & Regeln',
+    'dg.upper': 'Obere Führungsebene', 'dg.teammate': 'Teamkollege',
+    'dg.st0': 'liest Kontext…', 'dg.st1': 'delegiert…', 'dg.st2': 'schreibt Zusammenfassung…', 'dg.st3': 'wartet auf Freigabe…',
+
+    'feat.label': 'Funktionen', 'feat.kicker': 'Was es kann', 'feat.title': 'Funktionen',
+    'feat.desc': 'Von Organisationshierarchie bis Agentengedächtnis, von Delegationsfreigaben bis Ein-Befehl-Installation — eine Schicht in Ihren echten Geschäftsprozessen.',
+    'feat.cta_all': 'Alle Funktionen & Screenshots',
+    'fh1.t': 'Organisationshierarchie', 'fh1.d': 'Unternehmen · Abteilung · Personal · Agent',
+    'fh2.t': 'Personalbezogene Agenten', 'fh2.d': 'Modell, Skills und Richtlinien pro Position',
+    'fh3.t': 'A2A-Delegation', 'fh3.d': 'Agent-zu-Agent, zweistufige Freigabe',
+    'fh4.t': 'Policy & Skill', 'fh4.d': 'Markdown + Git; Änderungen per Freigabe',
+    'fh5.t': 'Unternehmensgedächtnis', 'fh5.d': 'Sitzungen KI-zusammengefasst, Kontext bleibt',
+    'fh6.t': 'Ein-Befehl-Installation', 'fh6.d': 'install.sh — SSL, Nginx, Docker; self-hosted',
+
+    'open.label': 'Open Source', 'open.kicker': 'Open Source · Self-hosted', 'open.title': 'Quelloffen, Daten bei Ihnen',
+    'open.desc': 'MIT-Lizenz. Läuft auf Ihrem eigenen Server, der Code ist vollständig einsehbar. Keine versteckten Schichten.',
+    'open.proj': 'Projekt', 'open.docs': 'Dokumentation',
+    'open.stack': 'FastAPI + SvelteKit · SQLite · Modellunabhängig',
+    'open.company': 'Fabrika Yazılım Tic. Ltd. Şti. · Istanbul',
+    'open.role': 'Gründer — Fabrika Yazılım',
+    'open.copy': 'Kopieren', 'open.copied': 'Kopiert',
+
+    'ov.title': 'Funktionen & Screenshots',
+    'ov.features_label': 'Alle Funktionen', 'ov.shots_label': 'Screenshots — zum Vergrößern klicken',
+    'og1': 'Organisation & Berechtigungen', 'og2': 'Agenten, Modell & Gedächtnis', 'og3': 'Richtlinien, Skills & Integration', 'og4': 'Einrichtung & Betrieb',
+    'bar.docs': 'Dokumentation', 'bar.copy': '© 2026 Fabrika Yazılım Tic. Ltd. Şti.',
+
+    'f1.t': 'Organisationshierarchie', 'f1.d': 'Definieren Sie Unternehmens-, Abteilungs-, Personal- und Agentenebenen. Visualisieren Sie das Organigramm.',
+    'f2.t': 'Personalbezogene Agenten', 'f2.d': 'Ein dedizierter Agent pro Position: Modell, Version, Skills und Richtlinien. Claude, GPT-4 oder Gemini.',
+    'f3.t': 'A2A-Delegation', 'f3.d': 'Agent-zu-Agent-Weiterleitung. Ein Agent weist einem anderen Arbeit zu; der Mensch genehmigt oder lehnt ab.',
+    'f4.t': 'Policy & Skill-Management', 'f4.d': 'Richtlinien und Fähigkeiten über Markdown-Dateien. Versionskontrolle mit Git; Änderungen per Freigabe.',
+    'f5.t': 'Rollenbasierter Zugriff', 'f5.d': '5 Stufen: Gründer → Führungskraft → Abteilungsleiter → Agentenverantwortlicher → Nutzer.',
+    'f6.t': 'Ein-Befehl-Produktions-Deploy', 'f6.d': '<code>bash install.sh</code> — Let\'s Encrypt SSL, Nginx, Docker Compose. Schlüssel werden automatisch generiert.',
+    'f7.t': 'S3 / R2-Backup', 'f7.d': 'Ein-Klick-Datenbank-Backup zu AWS S3, Cloudflare R2 oder MinIO. AES-256-verschlüsselt.',
+    'f8.t': 'Social-Media-Skills', 'f8.d': 'Agenten mit Instagram Business und WhatsApp Business Skills. Posts und Nachrichten aus dem Chat.',
+    'f9.t': 'SLA & KI-Telemetrie-Dashboard', 'f9.d': 'Sitzungen, Token-Verbrauch, Agentenstatus. SLA pro Agent in farbcodierter Tabelle.',
+    'f10.t': 'Langzeitgedächtnis für Agenten', 'f10.d': 'Abgeschlossene Sitzungen werden zusammengefasst. Agentenkontext bleibt erhalten.',
+    'f11.t': 'Telegram-Benachrichtigungen', 'f11.d': 'Einladungen und Passwortrücksetzungen über Telegram Bot API. Kein E-Mail-Dienst nötig.',
+    'f12.t': 'KI-Onboarding', 'f12.d': 'Firmenname eingeben — KI recherchiert im Web und erstellt Abteilungen, Agenten, Fähigkeiten und Richtlinien.',
+    'f13.t': 'Automatische Update-Benachrichtigungen', 'f13.d': 'Die Plattform prüft im Hintergrund auf neue Versionen (GitHub Releases API). Ein Banner erscheint im Dashboard.',
+    's1': 'Dashboard — Live-Telemetrie & SLA', 's2': 'Organigramm', 's3': 'Agentenverwaltung', 's4': 'Personalverzeichnis',
+    's5': 'Skill-Bibliothek', 's6': 'Richtlinienverwaltung', 's7': 'Chat mit einem Agenten — Live-ERP-Abfrage', 's8': 'Änderungsgenehmigung',
+    's9': 'Agent-zu-Agent-Delegation (A2A)', 's10': 'KI-Anbieter-Einstellungen',
+  },
+  es: {
+    'os.label': 'Agentic Work OS', 'os.kicker': 'Agentic Work OS', 'os.title': 'Agentic Work OS',
+    'os.desc': '<strong>Agentes de IA vivos</strong> dentro de tu organigrama. Cada agente trabaja en el mismo contexto que la visión de empresa, los OKR del departamento y las políticas de su puesto — las personas <strong>aprueban decisiones</strong>, los agentes ejecutan el trabajo.',
+    'os.cta_demo': 'Probar demo', 'os.cta_app': 'Abrir app', 'os.p_model': 'Independiente del modelo', 'os.p_install': 'install.sh',
+    'os.diagram_alt': 'Capas de contexto anidadas: departamento dentro de la visión de empresa, humano dentro, agente de desarrollo dentro; flechas de la capa externa a la dirección y a los compañeros.',
+    'dg.vision': 'Visión y Misión', 'dg.objectives': 'Objetivos de Empresa', 'dg.dept': 'Departamento',
+    'dg.human': 'Humano', 'dg.human_sub': 'Empleado Humano',
+    'dg.agent': 'Agente de Desarrollo', 'dg.agent_sub': 'claude-sonnet · activo', 'dg.policies': 'Políticas y Reglas',
+    'dg.upper': 'Alta Dirección', 'dg.teammate': 'Compañero de Equipo',
+    'dg.st0': 'leyendo contexto…', 'dg.st1': 'delegando…', 'dg.st2': 'escribiendo resumen…', 'dg.st3': 'esperando aprobación…',
+
+    'feat.label': 'Características', 'feat.kicker': 'Qué hace', 'feat.title': 'Características',
+    'feat.desc': 'De la jerarquía organizacional a la memoria del agente, de las aprobaciones de delegación a la instalación en un comando — una capa dentro de tus procesos reales.',
+    'feat.cta_all': 'Todas las características y capturas',
+    'fh1.t': 'Jerarquía Organizacional', 'fh1.d': 'Empresa · departamento · personal · agente',
+    'fh2.t': 'Agentes por Personal', 'fh2.d': 'Modelo, skills y políticas por puesto',
+    'fh3.t': 'Delegación A2A', 'fh3.d': 'Agente a agente, aprobación en dos etapas',
+    'fh4.t': 'Policy & Skill', 'fh4.d': 'Markdown + Git; cambios con flujo de aprobación',
+    'fh5.t': 'Memoria Corporativa', 'fh5.d': 'Sesiones resumidas por IA, contexto preservado',
+    'fh6.t': 'Instalación en Un Comando', 'fh6.d': 'install.sh — SSL, Nginx, Docker; self-hosted',
+
+    'open.label': 'Código Abierto', 'open.kicker': 'Código abierto · Self-hosted', 'open.title': 'Código abierto, datos tuyos',
+    'open.desc': 'Licencia MIT. Corre en tu propio servidor, el código es totalmente visible. Sin capas ocultas.',
+    'open.proj': 'Proyecto', 'open.docs': 'Documentación',
+    'open.stack': 'FastAPI + SvelteKit · SQLite · Independiente del modelo',
+    'open.company': 'Fabrika Yazılım Tic. Ltd. Şti. · Estambul',
+    'open.role': 'Fundador — Fabrika Yazılım',
+    'open.copy': 'Copiar', 'open.copied': 'Copiado',
+
+    'ov.title': 'Características y Capturas',
+    'ov.features_label': 'Todas las Características', 'ov.shots_label': 'Capturas — clic para ampliar',
+    'og1': 'Organización y Permisos', 'og2': 'Agentes, Modelo y Memoria', 'og3': 'Políticas, Skills e Integración', 'og4': 'Instalación y Operación',
+    'bar.docs': 'Documentación', 'bar.copy': '© 2026 Fabrika Yazılım Tic. Ltd. Şti.',
+
+    'f1.t': 'Jerarquía Organizacional', 'f1.d': 'Define capas de empresa, departamento, personal y agente. Visualiza el organigrama, establece managers.',
+    'f2.t': 'Agentes por Personal', 'f2.d': 'Un agente dedicado por puesto: modelo, versión, skills y políticas. Claude, GPT-4 o Gemini.',
+    'f3.t': 'Delegación A2A', 'f3.d': 'Enrutamiento de agente a agente. Un agente asigna trabajo a otro; el humano aprueba o rechaza.',
+    'f4.t': 'Gestión de Políticas y Skills', 'f4.d': 'Políticas y capacidades definidas con archivos Markdown. Control de versiones con Git.',
+    'f5.t': 'Acceso Basado en Roles', 'f5.d': '5 niveles: Fundador → Ejecutivo → Jefe de Depto. → Responsable de Agente → Usuario.',
+    'f6.t': 'Deploy de Producción en Un Comando', 'f6.d': '<code>bash install.sh</code> — SSL Let\'s Encrypt, Nginx, Docker Compose. Genera claves automáticamente.',
+    'f7.t': 'Copias S3 / R2', 'f7.d': 'Copia de seguridad con un clic a AWS S3, Cloudflare R2 o MinIO. Cifrado AES-256.',
+    'f8.t': 'Skills de Redes Sociales', 'f8.d': 'Da a los agentes skills de Instagram Business y WhatsApp Business. Publica y envía mensajes desde el chat.',
+    'f9.t': 'SLA & Dashboard de Telemetría IA', 'f9.d': 'Sesiones, gasto en tokens, estado de agentes. SLA por agente en tabla con código de colores.',
+    'f10.t': 'Memoria a Largo Plazo', 'f10.d': 'Las sesiones cerradas se resumen en registros de memoria. El contexto del agente se preserva.',
+    'f11.t': 'Notificaciones por Telegram', 'f11.d': 'Invitaciones y restablecimientos por Telegram Bot API. Sin infraestructura de correo.',
+    'f12.t': 'Onboarding con IA', 'f12.d': 'Escribe el nombre de tu empresa — la IA busca en la web y crea departamentos, agentes, skills y políticas.',
+    'f13.t': 'Notificaciones de Actualización', 'f13.d': 'La plataforma verifica nuevas versiones en segundo plano (GitHub Releases API). Aparece un banner en el dashboard.',
+    's1': 'Panel — Telemetría en Vivo y SLA', 's2': 'Organigrama', 's3': 'Gestión de Agentes', 's4': 'Directorio de Personal',
+    's5': 'Biblioteca de Skills', 's6': 'Gestión de Políticas', 's7': 'Chat con un Agente — Consulta ERP en Vivo', 's8': 'Flujo de Aprobación de Cambios',
+    's9': 'Delegación Agente-a-Agente (A2A)', 's10': 'Configuración de Proveedores IA',
+  },
+};
+
+const LANGS = ['tr', 'en', 'de', 'es'];
+const META = {
+  tr: { t: 'agent.fab.engineering — Agentic Work OS', d: 'Organizasyon şemasında yaşayan yapay zeka ajanları. Her ajan; şirket vizyonu, departman OKR\'ları ve pozisyon politikalarıyla aynı bağlamda çalışır. Açık kaynak, self-hosted, model bağımsız.' },
+  en: { t: 'agent.fab.engineering — Agentic Work OS', d: 'Living AI agents inside your org chart. Every agent works in the same context as the company vision, department OKRs and its position\'s policies. Open source, self-hosted, model-agnostic.' },
+  de: { t: 'agent.fab.engineering — Agentic Work OS', d: 'Lebende KI-Agenten in Ihrem Organigramm. Jeder Agent arbeitet im Kontext von Unternehmensvision, Abteilungs-OKRs und Positionsrichtlinien. Open Source, self-hosted, modellunabhängig.' },
+  es: { t: 'agent.fab.engineering — Agentic Work OS', d: 'Agentes de IA vivos dentro de tu organigrama. Cada agente trabaja en el contexto de la visión de empresa, los OKR del departamento y las políticas del puesto. Código abierto, self-hosted.' },
+};
+
+/* ─────────────  new copy  ───────────── */
+const NEW = {
+  tr: {
+    'nav.layers':'Katmanlar','nav.features':'Özellikler','nav.product':'Ürün','nav.install':'Kurulum','nav.cta':'Demo iste',
+    'hero.h':'<span class="l1">Ajanlar yürütür.</span> <span class="human">İnsanlar</span> karar verir.',
+    'hero.cta1':'Demo iste','hero.frame':'Kare 01 · Ajan','hero.alt':'Turuncu ekranlı, boyası dökülmüş kutu kafalı bir robot; arkasında koyu gökyüzü.',
+    'live.day':'İstanbul {t}. Ajanlar iş başında, insanlar onay bekleyenlere bakıyor.',
+    'live.night':'İstanbul {t}. İnsanlar uyuyor, ajanlar kuyruğu eritiyor. Onaylar sabaha hazır.',
+    'lay.k':'Bağlam katmanları','lay.title':'Her ajan, içinde yaşadığı <span class="human">katmanları</span> bilir.',
+    'lay.desc':'Ajanın bağlamı, onu çevreleyen katmanlardan derlenir: dıştan içe okunur, içten dışa sorumluluk taşınır.',
+    'lay1.d':'Şirketin neden var olduğu. Her ajanın ilk okuduğu şey.','lay2.d':'OKR\'lar, öncelikler ve departmanın ortak kuralları.',
+    'lay3.d':'Sorumlu çalışan. Ajanı o yönetir, kararı o onaylar.','lay4.d':'Kendi modeli, skill\'leri ve politikaları olan dijital meslektaş.',
+    'hum.k':'İnsan döngüde','hum.title':'İşi ajan yürütür. Kararı <span class="human">insan</span> verir.',
+    'hum.alt1':'Camlı bir ofiste kırmızı bir robot ve yaşlı bir adam aynı masada, başları önde çalışıyor.','hum.cap1':'Kare 02 · Onay',
+    'hum.alt2':'Gözlüklü, sakallı bir adam dizüstü bilgisayarının başında; yanında eski, beyaz bir robot ona bakıyor.','hum.cap2':'Kare 03 · Eşleşme',
+    'feat.alt':'Kalabalık bir kafeteryada beyaz bir robot tabletten bir şey okuyor; arkada turuncu lambalar.','feat.cap':'Kare 04 · Hafıza',
+    'prod.k':'Dokümantasyon','prod.title':'Ürünü <span class="human">dokümantasyonda</span> gör.','prod.desc':'Kurulum, kavramlar ve güncel ekran görüntüleri dokümantasyonda. Ürün hızlı geliştiği için en doğru kaynak orası.','prod.cta':'Dokümantasyonu aç',
+    'inst.alt':'Cam duvarın önünde, şehre bakan bir masada dizüstü bilgisayarla çalışan bir robotun silueti.','inst.cap':'Kare 05 · Kurulum',
+    'inst.title':'Tek komutla, <span class="human">kendi</span> sunucunda.','inst.desc':'Docker çalışan her sunucuda kurulur. SSL, Nginx ve anahtar üretimini sihirbaz yapar. Verilerin sunucundan çıkmaz.',
+    'ct.k':'İletişim','ct.title':'Konuşalım<span style="color:var(--signal-ink)">.</span>','ct.desc':'Demo görmek, bir şey sormak ya da projeye sponsor olmak için yaz. Mesajın doğrudan kuruluşa ulaşır.',
+    'ct.intent':'Ne istiyorsun?','ct.i.demo':'Demo istiyorum','ct.i.contact':'İletişime geçmek istiyorum','ct.i.sponsor':'Sponsor olmak istiyorum',
+    'ct.name':'Adın','ct.email':'E-posta','ct.org':'Şirket / kurum (isteğe bağlı)','ct.msg':'Mesajın',
+    'ct.x.demo':'Ekip büyüklüğü','ct.x.contact':'Konu','ct.x.sponsor':'Sponsorluk türü',
+    'ct.o.demo':['1–10 kişi','11–50 kişi','51–250 kişi','250+ kişi'],
+    'ct.o.contact':['Ürün sorusu','Kurulum desteği','Ortaklık','Basın','Diğer'],
+    'ct.o.sponsor':['Geliştirme fonu','Hackathon / etkinlik','Topluluk','Diğer'],
+    'ct.consent':'Bilgilerimin bu talebe yanıt vermek için saklanmasını kabul ediyorum.','ct.send':'Gönder','ct.sending':'Gönderiliyor…',
+    'ct.ok':'Teşekkürler, mesajın ulaştı. Referans: {id}','ct.err':'Gönderilemedi. Biraz sonra tekrar dene ya da bilgi@kuntaykunt.com adresine yaz.',
+    'ct.invalid':'İşaretli alanları kontrol et.','ct.rate':'Kısa sürede çok fazla mesaj gönderildi. Biraz sonra tekrar dene.',
+    'ft.h':'İnsanlar karar verir, <span class="human">ajanlar</span> yürütür.','ft.links':'Bağlantılar'
+  },
+  en: {
+    'nav.layers':'Layers','nav.features':'Features','nav.product':'Product','nav.install':'Install','nav.cta':'Request a demo',
+    'hero.h':'<span class="l1">Agents run the work.</span> <span class="human">People</span> decide.',
+    'hero.cta1':'Request a demo','hero.frame':'Frame 01 · Agent','hero.alt':'A robot with a weathered, box-shaped head and a glowing orange screen against a dark sky.',
+    'live.day':'Istanbul {t}. Agents are on shift; people are looking at what waits for approval.',
+    'live.night':'Istanbul {t}. People are asleep, agents are clearing the queue. Approvals are ready by morning.',
+    'lay.k':'Context layers','lay.title':'Every agent knows the <span class="human">layers</span> it lives in.',
+    'lay.desc':'An agent\'s context is composed from the layers around it: read from the outside in, with responsibility carried from the inside out.',
+    'lay1.d':'Why the company exists. The first thing every agent reads.','lay2.d':'OKRs, priorities and the department\'s shared rules.',
+    'lay3.d':'The responsible employee. They manage the agent and approve the decisions.','lay4.d':'A digital colleague with its own model, skills and policies.',
+    'hum.k':'Human in the loop','hum.title':'Agents run the work. <span class="human">People</span> make the call.',
+    'hum.alt1':'In a glass-walled office a red robot and an older man work at the same desk, heads bowed.','hum.cap1':'Frame 02 · Approval',
+    'hum.alt2':'A bearded man with glasses at his laptop; an old white robot beside him looks his way.','hum.cap2':'Frame 03 · Pairing',
+    'feat.alt':'In a crowded canteen a white robot reads something on a tablet; orange lamps glow behind it.','feat.cap':'Frame 04 · Memory',
+    'prod.k':'Documentation','prod.title':'See the product <span class="human">in the docs</span>.','prod.desc':'Setup, concepts and current screenshots live in the documentation. The product moves fast, so that is the most accurate source.','prod.cta':'Open the docs',
+    'inst.alt':'Silhouette of a robot working on a laptop at a table by a glass wall, facing the city.','inst.cap':'Frame 05 · Install',
+    'inst.title':'One command, on <span class="human">your</span> server.','inst.desc':'Installs on any server running Docker. The wizard sets up SSL, Nginx and key generation. Your data never leaves your server.',
+    'ct.k':'Contact','ct.title':'Let\'s talk<span style="color:var(--signal-ink)">.</span>','ct.desc':'Write to us to see a demo, ask something or sponsor the project. Your message goes straight to the team.',
+    'ct.intent':'What do you need?','ct.i.demo':'I want a demo','ct.i.contact':'I want to get in touch','ct.i.sponsor':'I want to sponsor',
+    'ct.name':'Your name','ct.email':'Email','ct.org':'Company / organization (optional)','ct.msg':'Your message',
+    'ct.x.demo':'Team size','ct.x.contact':'Topic','ct.x.sponsor':'Type of sponsorship',
+    'ct.o.demo':['1–10 people','11–50 people','51–250 people','250+ people'],
+    'ct.o.contact':['Product question','Setup help','Partnership','Press','Other'],
+    'ct.o.sponsor':['Development fund','Hackathon / event','Community','Other'],
+    'ct.consent':'I agree that my details are stored to answer this request.','ct.send':'Send','ct.sending':'Sending…',
+    'ct.ok':'Thank you, your message arrived. Reference: {id}','ct.err':'Could not send. Try again shortly or write to bilgi@kuntaykunt.com.',
+    'ct.invalid':'Check the highlighted fields.','ct.rate':'Too many messages in a short time. Try again later.',
+    'ft.h':'People decide, <span class="human">agents</span> run the work.','ft.links':'Links'
+  },
+  de: {
+    'nav.layers':'Ebenen','nav.features':'Funktionen','nav.product':'Produkt','nav.install':'Installation','nav.cta':'Demo anfragen',
+    'hero.h':'<span class="l1">Agenten erledigen die Arbeit.</span> <span class="human">Menschen</span> entscheiden.',
+    'hero.cta1':'Demo anfragen','hero.frame':'Bild 01 · Agent','hero.alt':'Ein Roboter mit abgenutztem, kastenförmigem Kopf und leuchtend orangem Bildschirm vor dunklem Himmel.',
+    'live.day':'Istanbul {t}. Die Agenten sind im Dienst, die Menschen prüfen, was auf Freigabe wartet.',
+    'live.night':'Istanbul {t}. Die Menschen schlafen, die Agenten arbeiten die Warteschlange ab. Freigaben liegen morgens bereit.',
+    'lay.k':'Kontextebenen','lay.title':'Jeder Agent kennt die <span class="human">Ebenen</span>, in denen er lebt.',
+    'lay.desc':'Der Kontext eines Agenten entsteht aus den Ebenen, die ihn umgeben: von außen nach innen gelesen, von innen nach außen verantwortet.',
+    'lay1.d':'Warum es das Unternehmen gibt. Das Erste, was jeder Agent liest.','lay2.d':'OKRs, Prioritäten und die gemeinsamen Regeln der Abteilung.',
+    'lay3.d':'Die verantwortliche Person. Sie führt den Agenten und gibt Entscheidungen frei.','lay4.d':'Ein digitaler Kollege mit eigenem Modell, eigenen Skills und Richtlinien.',
+    'hum.k':'Mensch im Loop','hum.title':'Agenten erledigen die Arbeit. <span class="human">Menschen</span> entscheiden.',
+    'hum.alt1':'In einem Büro mit Glaswänden arbeiten ein roter Roboter und ein älterer Mann am selben Tisch, die Köpfe gesenkt.','hum.cap1':'Bild 02 · Freigabe',
+    'hum.alt2':'Ein bärtiger Mann mit Brille am Laptop; neben ihm schaut ihn ein alter weißer Roboter an.','hum.cap2':'Bild 03 · Paarung',
+    'feat.alt':'In einer vollen Kantine liest ein weißer Roboter etwas auf einem Tablet; dahinter orange Lampen.','feat.cap':'Bild 04 · Gedächtnis',
+    'prod.k':'Dokumentation','prod.title':'Das Produkt <span class="human">in der Doku</span> ansehen.','prod.desc':'Installation, Konzepte und aktuelle Screenshots finden Sie in der Dokumentation. Das Produkt entwickelt sich schnell, dort steht der aktuelle Stand.','prod.cta':'Dokumentation öffnen',
+    'inst.alt':'Silhouette eines Roboters, der an einem Tisch vor einer Glaswand mit Blick auf die Stadt am Laptop arbeitet.','inst.cap':'Bild 05 · Installation',
+    'inst.title':'Ein Befehl, auf <span class="human">Ihrem</span> Server.','inst.desc':'Läuft auf jedem Server mit Docker. Der Assistent richtet SSL, Nginx und die Schlüsselerzeugung ein. Ihre Daten verlassen Ihren Server nicht.',
+    'ct.k':'Kontakt','ct.title':'Lassen Sie uns reden<span style="color:var(--signal-ink)">.</span>','ct.desc':'Schreiben Sie uns für eine Demo, eine Frage oder um das Projekt zu sponsern. Ihre Nachricht geht direkt ans Team.',
+    'ct.intent':'Was brauchen Sie?','ct.i.demo':'Ich möchte eine Demo','ct.i.contact':'Ich möchte Kontakt aufnehmen','ct.i.sponsor':'Ich möchte sponsern',
+    'ct.name':'Ihr Name','ct.email':'E-Mail','ct.org':'Firma / Organisation (optional)','ct.msg':'Ihre Nachricht',
+    'ct.x.demo':'Teamgröße','ct.x.contact':'Thema','ct.x.sponsor':'Art der Förderung',
+    'ct.o.demo':['1–10 Personen','11–50 Personen','51–250 Personen','250+ Personen'],
+    'ct.o.contact':['Produktfrage','Installationshilfe','Partnerschaft','Presse','Sonstiges'],
+    'ct.o.sponsor':['Entwicklungsfonds','Hackathon / Event','Community','Sonstiges'],
+    'ct.consent':'Ich stimme zu, dass meine Angaben zur Beantwortung dieser Anfrage gespeichert werden.','ct.send':'Senden','ct.sending':'Wird gesendet…',
+    'ct.ok':'Danke, Ihre Nachricht ist angekommen. Referenz: {id}','ct.err':'Senden fehlgeschlagen. Versuchen Sie es gleich noch einmal oder schreiben Sie an bilgi@kuntaykunt.com.',
+    'ct.invalid':'Bitte markierte Felder prüfen.','ct.rate':'Zu viele Nachrichten in kurzer Zeit. Bitte später erneut versuchen.',
+    'ft.h':'Menschen entscheiden, <span class="human">Agenten</span> erledigen die Arbeit.','ft.links':'Links'
+  },
+  es: {
+    'nav.layers':'Capas','nav.features':'Funciones','nav.product':'Producto','nav.install':'Instalación','nav.cta':'Pedir demo',
+    'hero.h':'<span class="l1">Los agentes ejecutan.</span> <span class="human">Las personas</span> deciden.',
+    'hero.cta1':'Pedir demo','hero.frame':'Plano 01 · Agente','hero.alt':'Un robot de cabeza cuadrada y desgastada con una pantalla naranja encendida sobre un cielo oscuro.',
+    'live.day':'Estambul {t}. Los agentes están en turno; las personas revisan lo que espera aprobación.',
+    'live.night':'Estambul {t}. Las personas duermen, los agentes vacían la cola. Las aprobaciones estarán listas por la mañana.',
+    'lay.k':'Capas de contexto','lay.title':'Cada agente conoce las <span class="human">capas</span> en las que vive.',
+    'lay.desc':'El contexto de un agente se compone de las capas que lo rodean: se lee de fuera hacia dentro y la responsabilidad va de dentro hacia fuera.',
+    'lay1.d':'Por qué existe la empresa. Lo primero que lee cada agente.','lay2.d':'OKR, prioridades y las reglas comunes del departamento.',
+    'lay3.d':'La persona responsable. Gestiona al agente y aprueba las decisiones.','lay4.d':'Un colega digital con su propio modelo, skills y políticas.',
+    'hum.k':'Persona en el circuito','hum.title':'Los agentes ejecutan. <span class="human">Las personas</span> deciden.',
+    'hum.alt1':'En una oficina de paredes de cristal, un robot rojo y un hombre mayor trabajan en la misma mesa con la cabeza inclinada.','hum.cap1':'Plano 02 · Aprobación',
+    'hum.alt2':'Un hombre barbudo con gafas ante su portátil; a su lado, un viejo robot blanco lo mira.','hum.cap2':'Plano 03 · Pareja',
+    'feat.alt':'En una cantina llena, un robot blanco lee algo en una tableta; detrás, lámparas naranjas.','feat.cap':'Plano 04 · Memoria',
+    'prod.k':'Documentación','prod.title':'Mira el producto <span class="human">en la documentación</span>.','prod.desc':'La instalación, los conceptos y las capturas actuales están en la documentación. El producto avanza rápido y esa es la fuente más precisa.','prod.cta':'Abrir la documentación',
+    'inst.alt':'Silueta de un robot que trabaja con un portátil en una mesa junto a un muro de cristal, frente a la ciudad.','inst.cap':'Plano 05 · Instalación',
+    'inst.title':'Un comando, en <span class="human">tu</span> servidor.','inst.desc':'Se instala en cualquier servidor con Docker. El asistente configura SSL, Nginx y las claves. Tus datos no salen de tu servidor.',
+    'ct.k':'Contacto','ct.title':'Hablemos<span style="color:var(--signal-ink)">.</span>','ct.desc':'Escríbenos para ver una demo, preguntar algo o patrocinar el proyecto. Tu mensaje llega directo al equipo.',
+    'ct.intent':'¿Qué necesitas?','ct.i.demo':'Quiero una demo','ct.i.contact':'Quiero ponerme en contacto','ct.i.sponsor':'Quiero patrocinar',
+    'ct.name':'Tu nombre','ct.email':'Correo electrónico','ct.org':'Empresa / organización (opcional)','ct.msg':'Tu mensaje',
+    'ct.x.demo':'Tamaño del equipo','ct.x.contact':'Tema','ct.x.sponsor':'Tipo de patrocinio',
+    'ct.o.demo':['1–10 personas','11–50 personas','51–250 personas','250+ personas'],
+    'ct.o.contact':['Pregunta de producto','Ayuda con la instalación','Alianza','Prensa','Otro'],
+    'ct.o.sponsor':['Fondo de desarrollo','Hackathon / evento','Comunidad','Otro'],
+    'ct.consent':'Acepto que se guarden mis datos para responder a esta solicitud.','ct.send':'Enviar','ct.sending':'Enviando…',
+    'ct.ok':'Gracias, tu mensaje llegó. Referencia: {id}','ct.err':'No se pudo enviar. Inténtalo de nuevo en un momento o escribe a bilgi@kuntaykunt.com.',
+    'ct.invalid':'Revisa los campos marcados.','ct.rate':'Demasiados mensajes en poco tiempo. Inténtalo más tarde.',
+    'ft.h':'Las personas deciden, <span class="human">los agentes</span> ejecutan.','ft.links':'Enlaces'
+  }
+};
+Object.keys(NEW).forEach(l => Object.assign(COPY[l], NEW[l]));
+
+let currentLang = 'tr';
+const t = k => (COPY[currentLang] || COPY.tr)[k] ?? COPY.tr[k] ?? '';
+
+function setLang(lang, push) {
+  if (!LANGS.includes(lang)) lang = 'tr';
+  currentLang = lang;
+  const dict = COPY[lang] || COPY.tr;
+  document.querySelectorAll('[data-i18n]').forEach(el => { const v = dict[el.dataset.i18n]; if (v != null) el.textContent = v; });
+  document.querySelectorAll('[data-i18n-html]').forEach(el => { const v = dict[el.dataset.i18nHtml]; if (v != null) el.innerHTML = v; });
+  document.querySelectorAll('[data-i18n-alt]').forEach(el => {
+    const v = dict[el.dataset.i18nAlt]; if (v == null) return;
+    if (el.tagName === 'IMG') el.alt = v; else el.setAttribute('aria-label', v);
+  });
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.textContent.trim().toLowerCase() === lang));
+  document.documentElement.lang = lang;
+  const m = META[lang] || META.tr;
+  document.title = m.t;
+  const md = document.querySelector('meta[name="description"]'); if (md) md.setAttribute('content', m.d);
+  if (push !== false) {
+    const u = new URL(location.href);
+    if (lang === 'tr') u.searchParams.delete('lang'); else u.searchParams.set('lang', lang);
+    history.replaceState(null, '', u);
+  }
+  renderFeatures(); renderTopic(); renderClock();
+  try { localStorage.setItem('lang', lang); } catch (e) {}
+}
+
+/* features list */
+function renderFeatures() {
+  document.getElementById('featList').innerHTML = [1,2,3,4,5,6,7,9,10,12]
+    .map(i => `<div class="feat"><h3>${t('f'+i+'.t')}</h3><p>${t('f'+i+'.d')}</p></div>`).join('');
+}
+/* hero status line + Istanbul clock */
+(function () {
+  const el = document.getElementById('agentStatus');
+  if (!el || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  let i = 0;
+  setInterval(() => {
+    i = (i + 1) % 4; el.style.opacity = '0';
+    setTimeout(() => { el.textContent = t('dg.st' + i); el.style.opacity = ''; }, 200);
+  }, 2800);
+})();
+function renderClock() {
+  const el = document.getElementById('clock'); if (!el) return;
+  const parts = new Intl.DateTimeFormat('en-GB', {timeZone:'Europe/Istanbul', hour:'2-digit', minute:'2-digit', hour12:false}).format(new Date());
+  const h = +parts.slice(0, 2);
+  el.textContent = t(h >= 7 && h < 19 ? 'live.day' : 'live.night').replace('{t}', parts);
+}
+setInterval(renderClock, 30000);
+
+/* nested layers */
+(function () {
+  const rings = document.getElementById('rings'), btns = [...document.querySelectorAll('.layer-btn')];
+  let auto = !matchMedia('(prefers-reduced-motion: reduce)').matches, cur = 4;
+  const set = n => { cur = n; rings.dataset.active = n; btns.forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.layer === n))); };
+  btns.forEach(b => { const go = () => { auto = false; set(+b.dataset.layer); }; b.addEventListener('click', go); b.addEventListener('mouseenter', go); b.addEventListener('focus', go); });
+  setInterval(() => { if (auto) set(cur % 4 + 1); }, 3200);
+})();
+
+/* copy install */
+const INSTALL_CMD = 'curl -fsSL https://raw.githubusercontent.com/fab-agent/agentic-organization/main/install.sh | bash';
+function copyInstall(btn) {
+  const label = btn.querySelector('span');
+  const flash = () => { btn.classList.add('done'); label.textContent = t('open.copied'); setTimeout(() => { btn.classList.remove('done'); label.textContent = t('open.copy'); }, 1800); };
+  const legacy = () => { const ta = document.createElement('textarea'); ta.value = INSTALL_CMD; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); flash(); } catch (e) {} ta.remove(); };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(INSTALL_CMD).then(flash).catch(legacy); else legacy();
+}
+
+/* contact form */
+const form = document.getElementById('cform'), msgEl = document.getElementById('formMsg'), loadedAt = Date.now();
+const intentVal = () => form.querySelector('input[name=intent]:checked').value;
+function renderTopic() {
+  const v = intentVal(), sel = document.getElementById('c-topic'), keep = sel.selectedIndex;
+  document.getElementById('topicLabel').textContent = t('ct.x.' + v);
+  const opts = t('ct.o.' + v);
+  sel.innerHTML = opts.map((o, i) => `<option value="${o.replace(/"/g,'&quot;')}">${o}</option>`).join('');
+  if (keep > 0 && keep < opts.length) sel.selectedIndex = keep;
+}
+form.querySelectorAll('input[name=intent]').forEach(r => r.addEventListener('change', () => { document.getElementById('c-topic').selectedIndex = 0; renderTopic(); }));
+document.querySelectorAll('[data-intent]').forEach(a => a.addEventListener('click', () => {
+  const r = form.querySelector(`input[name=intent][value=${a.dataset.intent}]`); if (r) { r.checked = true; renderTopic(); }
+}));
+function say(text, cls) { msgEl.textContent = text; msgEl.className = 'form-msg ' + (cls || ''); }
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = form.elements, bad = [];
+  const mark = (el, ok) => { el.setAttribute('aria-invalid', String(!ok)); if (!ok) bad.push(el); };
+  mark(f.name, f.name.value.trim().length >= 2);
+  mark(f.email, /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.email.value.trim()));
+  mark(f.message, f.message.value.trim().length >= 5);
+  const consent = document.getElementById('c-consent'); if (!consent.checked) bad.push(consent);
+  if (bad.length) { say(t('ct.invalid'), 'err'); bad[0].focus(); return; }
+  const btn = document.getElementById('sendBtn'), label = btn.querySelector('span');
+  btn.disabled = true; label.textContent = t('ct.sending'); say('');
+  try {
+    const res = await fetch('/api/contact', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+      intent: intentVal(), name: f.name.value.trim(), email: f.email.value.trim(), org: f.org.value.trim(),
+      topic: f.topic.value, message: f.message.value.trim(), lang: currentLang, website: f.website.value, elapsed: Date.now() - loadedAt
+    })});
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.ok) { say(t('ct.ok').replace('{id}', data.ref || ''), 'ok'); form.reset(); renderTopic(); }
+    else if (res.status === 429) say(t('ct.rate'), 'err');
+    else say(t('ct.err'), 'err');
+  } catch (err) { say(t('ct.err'), 'err'); }
+  finally { btn.disabled = false; label.textContent = t('ct.send'); }
+});
+
+/* boot */
+(function () {
+  let lang = new URLSearchParams(location.search).get('lang');
+  if (!lang) { try { lang = localStorage.getItem('lang'); } catch (e) {} }
+  if (!lang) { const n = (navigator.language || 'tr').slice(0, 2); lang = LANGS.includes(n) ? n : 'tr'; }
+  setLang(lang, !!new URLSearchParams(location.search).get('lang'));
+})();
+</script>
+</body>
+</html>
