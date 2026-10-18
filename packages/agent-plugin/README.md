@@ -1,4 +1,4 @@
-# @3rdpartyagent/agent-plugin
+# @fab-agent/agent-plugin
 
 opencode plugin that connects a developer workstation to the
 **agentic-organization** backend.
@@ -34,7 +34,7 @@ mode (a single stderr warning) so it is safe outside a managed workstation.
 ```jsonc
 // /etc/opencode/opencode.json (baked fallback; 3pa run mounts the verified one, ADR-0011)
 {
-  "plugin": ["@3rdpartyagent/agent-plugin"],
+  "plugin": ["@fab-agent/agent-plugin"],
   "provider": {
     "fabagent": {
       "npm": "@ai-sdk/openai-compatible",

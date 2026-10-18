@@ -1,5 +1,5 @@
 {
-  "name": "@3rdpartyagent/agent-plugin",
+  "name": "@fab-agent/agent-plugin",
   "version": "0.1.0",
   "description": "opencode org plugin — streams tool-call events to the agentic-organization backend for audit and (Phase 1+) policy enforcement.",
   "type": "module",

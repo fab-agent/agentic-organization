@@ -1,5 +1,5 @@
 {
-  "name": "@3rdpartyagent/cli",
+  "name": "@fab-agent/cli",
   "version": "0.1.0",
   "description": "3rdParty Agent Platform — 3pa workstation CLI",
   "type": "module",

@@ -142,6 +142,6 @@ jobs:
 
             ## `3pa` CLI
             - `dist/3pa.mjs` — single-file bundle (`node >=20`), `sha256` alongside
-            - GitHub Packages: `@3rdpartyagent/cli@${{ needs.version.outputs.version }}`
+            - GitHub Packages: `@fab-agent/cli@${{ needs.version.outputs.version }}`
 
             See `docs/architecture/version-compat.md` for the compatibility matrix.
