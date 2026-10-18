@@ -198,3 +198,54 @@ def test_change_request_dept_head_is_a_user_id(pg):
             )
         )
         s.commit()
+
+
+def test_harness_activation_race_has_one_winner(pg):
+    """Two writers on one logical key: B commits v1 after A looked and before A wrote."""
+    from sqlmodel import Session
+
+    import database
+    from models import Company, HarnessArtifact, Personnel
+    from services import harness as h
+
+    with Session(database.engine) as setup:
+        co = Company(name="H Co", slug="h-co")
+        setup.add(co)
+        setup.flush()
+        agent = Personnel(
+            company_id=co.id, name="A", slug="a-h", title="t", role="r", type="agent"
+        )
+        setup.add(agent)
+        setup.commit()
+        company_id, agent_id = co.id, agent.id
+
+    def art(version, text):
+        return HarnessArtifact(
+            company_id=company_id,
+            level="person",
+            target_id=agent_id,
+            kind="prompt_text",
+            key="main",
+            version=version,
+            content=text,
+            content_hash=h.content_hash(text),
+            status="active",
+        )
+
+    a = Session(database.engine)
+    b = Session(database.engine)
+    try:
+        assert (
+            a.query(HarnessArtifact).filter_by(company_id=company_id).count() == 0
+        )  # A looks
+        h._install(b, art(1, "from B"), None)
+        b.commit()  # B wins
+        with pytest.raises(h.HarnessError):
+            h._install(a, art(2, "from A"), None)  # A allocated v2 after B committed
+        a.rollback()
+    finally:
+        a.close()
+        b.close()
+    with Session(database.engine) as check:
+        rows = check.query(HarnessArtifact).filter_by(company_id=company_id).all()
+        assert [(r.version, r.status) for r in rows] == [(1, "active")]
