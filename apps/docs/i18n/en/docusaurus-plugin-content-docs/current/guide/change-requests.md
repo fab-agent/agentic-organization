@@ -56,3 +56,7 @@ The page has status filters: All, Pending, Dept Approved, Committed, Rejected. W
 :::info Supported Git system: GitHub
 Change-request commits currently work only for **GitHub**. Managing company policies like a code repository with a local git system is **planned** work and does not exist yet; see [Developer Notes](/developer-notes/overview).
 :::
+
+:::info Direct edits
+Agent settings (model, status, owner, skills, policy links) can be written directly through the API only by a company-wide founder or executive; a department head may only set up an agent that is still `draft`. For a live agent everyone opens a change request.
+:::

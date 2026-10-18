@@ -14,7 +14,7 @@ This page lists the **real gaps** found while verifying the documentation agains
 |---|---|---|
 | **In-app backup is SQLite only** | `api/backup.py` backs up only the SQLite file. All Docker installations use PostgreSQL | On PostgreSQL, Settings → Backup Now does not work; `pg_dump` is needed separately |
 | **`ENCRYPTION_KEY` is not used** | `.env.example` and `setup-env.sh` generate it, the code does not read it. The real key is `data/.secret` | Misleading; `data/.secret` must be included in backups |
-| **Role checks are partly interface-only** | Invites/role grants, change-request approval and the eval API check role and scope; many other APIs (departments, personnel, flows…) still check only company membership. Endpoints that edit personnel/agent settings directly can bypass change-request approval | Risk of privilege escalation with direct API access |
+| **Role checks are partly interface-only** | Invites/role grants, change-request approval and the eval API check role and scope; many other APIs (departments, personnel, flows…) still check only company membership. People/structure edits need a managing role; agent settings (model, status, skills, policy links) need a company-wide founder/executive, or a department head while the agent is still `draft` | Risk of privilege escalation with direct API access |
 | **No link to the Inbox in the sidebar** | `/inbox` opens only at sign-in for the `user` role | Other roles type the address by hand |
 | **No manager password-reset button** | `POST /auth/reset/{id}` exists, not in the interface | API only |
 | **No interface for the policy engine mode** | `off/dry_run/enforce` through `PUT /policies/config` | API needed for enforcement |

@@ -14,7 +14,7 @@ Bu sayfa, dokümantasyonu koda karşı doğrularken bulunan **gerçek eksikleri*
 |---|---|---|
 | **Uygulama içi yedekleme yalnızca SQLite** | `api/backup.py` yalnızca SQLite dosyasını yedekler. Tüm Docker kurulumları PostgreSQL kullanır | PostgreSQL'de Ayarlar → Yedekle çalışmaz; `pg_dump` ayrıca gerekir |
 | **`ENCRYPTION_KEY` kullanılmıyor** | `.env.example` ve `setup-env.sh` üretir, kod okumaz. Gerçek anahtar `data/.secret` | Yanıltıcı; yedeğe `data/.secret` dahil edilmeli |
-| **Rol kontrolü kısmen yalnızca arayüzde** | Davet/rol atama, değişiklik talebi onayı ve eval API rol ve kapsam denetler; birçok başka API (departman, personel, akış…) hâlâ yalnızca şirket üyeliğini kontrol eder. Personel/ajan ayarlarını doğrudan değiştiren uçlar değişiklik talebi onayını atlayabilir | API'ye doğrudan erişimde yetki yükseltme riski |
+| **Rol kontrolü kısmen yalnızca arayüzde** | Davet/rol atama, değişiklik talebi onayı ve eval API rol ve kapsam denetler; birçok başka API (departman, personel, akış…) hâlâ yalnızca şirket üyeliğini kontrol eder. Personel yapısı yönetici rolü, ajan ayarları (model, durum, yetenek, politika bağı) şirket genelindeki yönetici/kurucu ya da henüz `draft` olan ajan için bölüm yöneticisi gerektirir | API'ye doğrudan erişimde yetki yükseltme riski |
 | **Gelen Kutusu'na kenar çubuğunda bağlantı yok** | `/inbox` yalnızca `user` rolünde girişte açılır | Diğer roller adresi elle yazar |
 | **Yönetici şifre sıfırlama düğmesi yok** | `POST /auth/reset/{id}` var, arayüzde yok | Yalnızca API ile |
 | **Politika motoru kipi için arayüz yok** | `PUT /policies/config` ile `off/dry_run/enforce` | Zorlama için API gerekir |

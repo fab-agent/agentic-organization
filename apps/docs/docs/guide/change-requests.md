@@ -56,3 +56,7 @@ Sayfada durum filtreleri vardır: Tümü, Bekliyor, Bölüm Onaylandı, Commit E
 :::info Desteklenen Git sistemi: GitHub
 Değişiklik talebi commit'i şu an yalnızca **GitHub** için çalışır. Yerel bir git sistemiyle şirket politikalarını kod deposu gibi yönetmek **planlanan** bir çalışmadır, henüz yoktur; bkz. [Geliştirici Notları](/developer-notes/overview).
 :::
+
+:::info Doğrudan düzenleme
+Ajan ayarlarını (model, durum, sorumlu, yetenek, politika bağı) API üzerinden doğrudan yalnızca şirket genelindeki kurucu veya yönetici değiştirebilir; bölüm yöneticisi yalnızca henüz `draft` durumundaki bir ajanı hazırlayabilir. Canlı bir ajan için herkes değişiklik talebi açar.
+:::

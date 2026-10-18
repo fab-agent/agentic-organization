@@ -163,6 +163,98 @@ def _get_person_and_check_membership(
     return person
 
 
+_MANAGER_ROLES = {"founder", "executive", "dept_head"}
+_FINAL_ROLES = {"founder", "executive"}
+
+
+def _my_roles(session, user_id: str, company_id: str | None) -> list[CompanyMember]:
+    if not company_id:
+        return []
+    return list(
+        session.exec(
+            select(CompanyMember).where(
+                CompanyMember.user_id == user_id,
+                CompanyMember.company_id == company_id,
+            )
+        ).all()
+    )
+
+
+def _require_org_manager(
+    session, user_id: str, company_id: str | None, *department_ids: str | None
+) -> None:
+    """Structure edits (people, departments of people) need a managing role.
+
+    A company-wide founder/executive/dept_head may edit anyone; a department-scoped
+    membership only people of that department (before and after the edit).
+    """
+    mine = [
+        m for m in _my_roles(session, user_id, company_id) if m.role in _MANAGER_ROLES
+    ]
+    if any(m.scope_id is None for m in mine):
+        return
+    scopes = {m.scope_id for m in mine}
+    wanted = {d for d in department_ids if d}
+    if wanted and wanted <= scopes:
+        return
+    raise HTTPException(
+        status_code=403, detail="Bu işlem için yönetici yetkisi gerekir"
+    )
+
+
+def _require_direct_agent_edit(
+    session,
+    user_id: str,
+    person: Personnel,
+    *,
+    live: bool = True,
+    new_status: str | None = None,
+) -> None:
+    """Agent configuration, skills and policy links change through a change request.
+
+    Only the final approvers (company-wide founder/executive) may write directly:
+    they could approve the same request anyway. A manager of the person's department
+    may set up an agent that is not live yet (`draft`, or still being created) so that
+    creating an agent stays possible; going live, or touching a live agent, is a
+    change request.
+    """
+    mine = _my_roles(session, user_id, person.company_id)
+    if any(m.role in _FINAL_ROLES and m.scope_id is None for m in mine):
+        return
+    if not live and new_status in (None, "draft"):
+        try:
+            _require_org_manager(
+                session, user_id, person.company_id, person.department_id
+            )
+            return
+        except HTTPException:
+            pass
+    raise HTTPException(
+        status_code=403,
+        detail="Ajan ayarları değişiklik talebiyle değişir (iki aşamalı onay)",
+    )
+
+
+def _agent_is_live(session, person_id: str) -> bool:
+    cfg = session.exec(
+        select(AgentConfig).where(AgentConfig.personnel_id == person_id)
+    ).first()
+    return bool(cfg and cfg.status != "draft")
+
+
+def _check_same_company(session, company_id: str | None, **ids: str | None) -> None:
+    """department_id / manager_id / responsible_id must belong to the company."""
+    for kind, value in ids.items():
+        if not value:
+            continue
+        if kind == "department_id":
+            row = session.get(Department, value)
+        else:
+            row = session.get(Personnel, value)
+        if row is None or row.company_id != company_id:
+            raise HTTPException(status_code=422, detail=f"{kind} bu şirkete ait değil")
+
+
 # ── Personnel CRUD ─────────────────────────────────────────────────────────────
 
 
@@ -196,8 +288,18 @@ def create_personnel(
     body: PersonnelCreate, current_user: User = Depends(get_current_user)
 ):
     with get_session() as session:
-        if body.company_id:
-            check_company_membership(current_user.id, body.company_id, session)
+        if not body.company_id:
+            raise HTTPException(status_code=422, detail="company_id gerekli")
+        check_company_membership(current_user.id, body.company_id, session)
+        _require_org_manager(
+            session, current_user.id, body.company_id, body.department_id
+        )
+        _check_same_company(
+            session,
+            body.company_id,
+            department_id=body.department_id,
+            manager_id=body.manager_id,
+        )
         person = Personnel(
             name=body.name,
             slug=body.slug,
@@ -238,6 +340,21 @@ def update_personnel(
 ):
     with get_session() as session:
         person = _get_person_and_check_membership(person_id, current_user.id, session)
+        _require_org_manager(
+            session,
+            current_user.id,
+            person.company_id,
+            person.department_id,
+            body.department_id
+            if body.department_id is not None
+            else person.department_id,
+        )
+        _check_same_company(
+            session,
+            person.company_id,
+            department_id=body.department_id,
+            manager_id=body.manager_id,
+        )
         if body.name is not None:
             person.name = body.name
         if body.slug is not None:
@@ -355,6 +472,9 @@ def invite_personnel(
 def delete_personnel(person_id: str, current_user: User = Depends(get_current_user)):
     with get_session() as session:
         person = _get_person_and_check_membership(person_id, current_user.id, session)
+        _require_org_manager(
+            session, current_user.id, person.company_id, person.department_id
+        )
         log_action(
             session,
             "delete",
@@ -376,6 +496,9 @@ def archive_personnel(person_id: str, current_user: User = Depends(get_current_u
     """Soft-delete: sets agent status to 'inactive'. Preserves DB record and Git history."""
     with get_session() as session:
         person = _get_person_and_check_membership(person_id, current_user.id, session)
+        _require_org_manager(
+            session, current_user.id, person.company_id, person.department_id
+        )
         cfg = session.exec(
             select(AgentConfig).where(AgentConfig.personnel_id == person_id)
         ).first()
@@ -440,6 +563,12 @@ def create_agent_config(
 ):
     with get_session() as session:
         person = _get_person_and_check_membership(person_id, current_user.id, session)
+        _require_direct_agent_edit(
+            session, current_user.id, person, live=False, new_status=body.status
+        )
+        _check_same_company(
+            session, person.company_id, responsible_id=body.responsible_id
+        )
         existing = session.exec(
             select(AgentConfig).where(AgentConfig.personnel_id == person_id)
         ).first()
@@ -485,7 +614,17 @@ def update_agent_config(
     current_user: User = Depends(get_current_user),
 ):
     with get_session() as session:
-        _get_person_and_check_membership(person_id, current_user.id, session)
+        person = _get_person_and_check_membership(person_id, current_user.id, session)
+        _require_direct_agent_edit(
+            session,
+            current_user.id,
+            person,
+            live=_agent_is_live(session, person_id),
+            new_status=body.status,
+        )
+        _check_same_company(
+            session, person.company_id, responsible_id=body.responsible_id
+        )
         cfg = session.exec(
             select(AgentConfig).where(AgentConfig.personnel_id == person_id)
         ).first()
@@ -532,6 +671,17 @@ def update_agent_config(
         }
 
 
+def _skill_of_person(session, person_id: str, skill_id: str) -> Skill:
+    """The skill must belong to this person's agent (not just any agent)."""
+    skill = session.get(Skill, skill_id)
+    cfg = session.exec(
+        select(AgentConfig).where(AgentConfig.personnel_id == person_id)
+    ).first()
+    if not skill or not cfg or skill.agent_id != cfg.id:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return skill
+
+
 # ── Skills ────────────────────────────────────────────────────────────────────
 
 
@@ -553,7 +703,10 @@ def add_skill(
     person_id: str, body: SkillCreate, current_user: User = Depends(get_current_user)
 ):
     with get_session() as session:
-        _get_person_and_check_membership(person_id, current_user.id, session)
+        person = _get_person_and_check_membership(person_id, current_user.id, session)
+        _require_direct_agent_edit(
+            session, current_user.id, person, live=_agent_is_live(session, person_id)
+        )
         cfg = session.exec(
             select(AgentConfig).where(AgentConfig.personnel_id == person_id)
         ).first()
@@ -585,10 +738,11 @@ def update_skill(
     current_user: User = Depends(get_current_user),
 ):
     with get_session() as session:
-        _get_person_and_check_membership(person_id, current_user.id, session)
-        skill = session.get(Skill, skill_id)
-        if not skill:
-            raise HTTPException(status_code=404, detail="Skill not found")
+        person = _get_person_and_check_membership(person_id, current_user.id, session)
+        _require_direct_agent_edit(
+            session, current_user.id, person, live=_agent_is_live(session, person_id)
+        )
+        skill = _skill_of_person(session, person_id, skill_id)
         if body.name is not None:
             skill.name = body.name
         if body.version is not None:
@@ -615,10 +769,11 @@ def delete_skill(
     person_id: str, skill_id: str, current_user: User = Depends(get_current_user)
 ):
     with get_session() as session:
-        _get_person_and_check_membership(person_id, current_user.id, session)
-        skill = session.get(Skill, skill_id)
-        if not skill:
-            raise HTTPException(status_code=404, detail="Skill not found")
+        person = _get_person_and_check_membership(person_id, current_user.id, session)
+        _require_direct_agent_edit(
+            session, current_user.id, person, live=_agent_is_live(session, person_id)
+        )
+        skill = _skill_of_person(session, person_id, skill_id)
         log_action(
             session, "delete", "skill", entity_id=skill.id, entity_name=skill.name
         )
@@ -636,11 +791,20 @@ def set_agent_policies(
     """Replace the full set of agent-specific policy links for a personnel's agent config."""
     with get_session() as session:
         person = _get_person_and_check_membership(person_id, current_user.id, session)
+        _require_direct_agent_edit(
+            session, current_user.id, person, live=_agent_is_live(session, person_id)
+        )
         cfg = session.exec(
             select(AgentConfig).where(AgentConfig.personnel_id == person_id)
         ).first()
         if not cfg:
             raise HTTPException(status_code=404, detail="Agent config not found")
+        for pid in body.policy_ids:
+            pol = session.get(Policy, pid)
+            if pol is None or pol.company_id != person.company_id:
+                raise HTTPException(
+                    status_code=422, detail="Politika bu şirkete ait değil"
+                )
         existing = session.exec(
             select(AgentPolicyLink).where(AgentPolicyLink.agent_config_id == cfg.id)
         ).all()
