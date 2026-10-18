@@ -39,6 +39,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       publish: ${{ steps.v.outputs.publish }}
       latest: ${{ steps.v.outputs.latest }}
+      prerelease: ${{ steps.v.outputs.prerelease }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -58,6 +59,7 @@ jobs:
           semver="^v${num}\.${num}\.${num}(-${ident}(\.${ident})*)?\$"
           publish=false
           latest=false
+          prerelease=false
           version="0.0.0-dev.$(date +%s)"
           if [ "$REF_TYPE" = "tag" ]; then
             if ! printf '%s' "$REF_NAME" | grep -Eq "$semver"; then
@@ -65,6 +67,7 @@ jobs:
               exit 1
             fi
             version="${REF_NAME#v}"
+            case "$version" in *-*) prerelease=true ;; esac
             if [ "$EVENT" = "push" ] || [ "$DRY_RUN" = "false" ]; then
               publish=true
               case "$version" in
@@ -80,6 +83,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
 
   images-check:
     needs: version
@@ -121,11 +125,15 @@ jobs:
           cache: npm
           cache-dependency-path: packages/cli/package-lock.json
       - working-directory: packages/cli
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           npm ci --no-audit --no-fund
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
           npm run typecheck
           npm test
           npm run bundle
+          test "$(node dist/3pa.mjs --version)" = "$VERSION"
           sha256sum dist/3pa.mjs | tee dist/3pa.mjs.sha256
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -175,10 +183,11 @@ jobs:
       - name: Smoke-install the tarball
         env:
           PKG: ${{ matrix.pkg }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           mkdir smoke && cd smoke && npm init -y >/dev/null
           npm install --no-audit --no-fund ../out/*.tgz
-          if [ "$PKG" = "cli" ]; then ./node_modules/.bin/3pa --version; fi
+          if [ "$PKG" = "cli" ]; then test "$(./node_modules/.bin/3pa --version)" = "$VERSION"; fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: npm-${{ matrix.pkg }}
@@ -244,7 +253,7 @@ jobs:
       - name: Publish the exact tarball (scripts disabled)
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DIST_TAG: ${{ needs.version.outputs.latest == 'true' && 'latest' || 'next' }}
+          DIST_TAG: ${{ needs.version.outputs.latest == 'true' && 'latest' || (needs.version.outputs.prerelease == 'true' && 'next' || 'maintenance') }}
         run: npm publish out/*.tgz --ignore-scripts --tag "$DIST_TAG"
 
   release:
@@ -262,7 +271,8 @@ jobs:
         with:
           files: dist/3pa.mjs*
           generate_release_notes: true
-          prerelease: ${{ needs.version.outputs.latest != 'true' }}
+          prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.version.outputs.latest == 'true' }}
           body: |
             ## Container images
             - `${{ env.IMAGE_NS }}/agentic-org-sandbox:${{ needs.version.outputs.version }}`
