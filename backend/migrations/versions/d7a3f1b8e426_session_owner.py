@@ -19,6 +19,9 @@ depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    cols = {c["name"] for c in sa.inspect(op.get_bind()).get_columns("agentsession")}
+    if "user_id" in cols:  # fresh create_all databases already have it
+        return
     with op.batch_alter_table("agentsession", schema=None) as batch_op:
         batch_op.add_column(
             sa.Column("user_id", sqlmodel.sql.sqltypes.AutoString(), nullable=True)
