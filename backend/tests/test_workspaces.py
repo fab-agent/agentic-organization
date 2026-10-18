@@ -512,6 +512,8 @@ def test_controller_client_sends_the_secret_and_maps_calls():
             return httpx.Response(200, json={"status": "running"})
         if req.url.path.endswith("/file") and req.method == "GET":
             return httpx.Response(200, content=b"data")
+        if req.method == "POST" and req.url.path == "/v1/workspaces/w1":
+            return httpx.Response(200, json={"status": "running"})
         return httpx.Response(200, json={"ok": True})
 
     rt = _controller(handler)
@@ -600,3 +602,98 @@ def test_the_agent_gets_its_own_fresh_token_and_never_anyone_elses(
             and principal.company_id == co.id
         )
     assert captured["create"]["FABAGENT_TOKEN"] != captured["start"]["FABAGENT_TOKEN"]
+
+
+def _ws_world(client, db_session, monkeypatch):
+    from services.auth import create_access_token
+    from tests.conftest import make_company, make_member, make_personnel, make_user
+
+    monkeypatch.setenv("WORKSPACE_RUNTIME", "fake")
+    monkeypatch.setenv("WORKSPACE_PUBLIC_BASE_URL", "https://agents.example")
+    co = make_company(db_session)
+    u = make_user(db_session, email="z@a.com", name="Z")
+    make_member(db_session, u.id, co.id, role="user")
+    p = make_personnel(db_session, co.id, name="Z H", slug="z-h", type="human")
+    p.user_id = u.id
+    db_session.add(p)
+    db_session.commit()
+    return co, {"Authorization": f"Bearer {create_access_token(u.id)}"}
+
+
+def test_suspending_or_deleting_revokes_the_workspace_agents_credentials(
+    client, db_session, monkeypatch
+):
+    import time
+
+    from services.gateway_auth import create_persona_token, decode_persona_token
+    from services.persona_revocation import is_revoked
+
+    co, h = _ws_world(client, db_session, monkeypatch)
+    ws = client.post("/workspaces", headers=h).json()
+    agent_id = ws["agent_persona_id"]
+    token = create_persona_token(agent_id, co.id)
+    pr = decode_persona_token(token, expected_audience="gateway")
+    assert not is_revoked(pr.jti, agent_id, pr.issued_at)
+    time.sleep(1.1)
+    client.post(f"/workspaces/{ws['id']}/suspend", headers=h)
+    assert is_revoked(pr.jti, agent_id, pr.issued_at)  # the old token is dead
+    time.sleep(1.1)
+    client.post(f"/workspaces/{ws['id']}/resume", headers=h)
+    fresh = decode_persona_token(
+        create_persona_token(agent_id, co.id), expected_audience="gateway"
+    )
+    assert not is_revoked(fresh.jti, agent_id, fresh.issued_at)  # a new one works
+
+
+def test_the_controller_runtime_needs_a_gateway_url_before_any_token_is_minted(
+    client, db_session, monkeypatch
+):
+    import httpx
+
+    from services import workspace_runtime as wr
+
+    co, h = _ws_world(client, db_session, monkeypatch)
+    monkeypatch.delenv("WORKSPACE_PUBLIC_BASE_URL")
+    rt = wr.ControllerRuntime(
+        "http://ctl",
+        "aB3dE5gH7jK9mN1pQ3sT5vW7yZ0bC2dE4fG6",
+        client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda r: httpx.Response(200, json={"status": "running"})
+            )
+        ),
+    )
+    from main import app
+    from services.workspace_runtime import get_runtime
+
+    app.dependency_overrides[get_runtime] = lambda: rt
+    try:
+        r = client.post("/workspaces", headers=h)
+    finally:
+        app.dependency_overrides.pop(get_runtime, None)
+    assert r.status_code == 503 and "WORKSPACE_PUBLIC_BASE_URL" in r.text
+
+
+def test_housekeeping_suspends_idle_and_purges_expired_workspaces(
+    client, db_session, monkeypatch
+):
+    from datetime import datetime, timedelta
+
+    from models import Workspace
+    from services import workspaces as svc
+    from services.workspace_runtime import _fake
+
+    co, h = _ws_world(client, db_session, monkeypatch)
+    ws = client.post("/workspaces", headers=h).json()
+    row = db_session.get(Workspace, ws["id"])
+    row.last_active_at = datetime.utcnow() - timedelta(hours=3)
+    db_session.add(row)
+    db_session.commit()
+    assert svc.suspend_idle(db_session, _fake, datetime.utcnow()) == 1
+    client.delete(f"/workspaces/{ws['id']}", headers=h)
+    row = db_session.get(Workspace, ws["id"])
+    row.purge_after = datetime.utcnow() - timedelta(days=1)
+    db_session.add(row)
+    db_session.commit()
+    assert svc.purge_expired(db_session, _fake, datetime.utcnow()) == 1
+    assert ws["id"] not in _fake.volumes

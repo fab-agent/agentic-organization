@@ -152,6 +152,16 @@ def live_workspace(session, personnel_id: str) -> Workspace | None:
 # ── background jobs (wired to the scheduler separately) ───────────────────────
 
 
+def revoke_credentials(session, ws: Workspace) -> None:
+    """A stopped, removed or replaced workspace must not leave a usable token behind."""
+    from services.persona_revocation import revoke_all
+    from services.workspace_agent import find_workspace_agent
+
+    agent = find_workspace_agent(session, ws.personnel_id)
+    if agent is not None:
+        revoke_all(agent.id, ws.company_id, "workspace stopped or removed")
+
+
 def suspend_idle(
     session, runtime: WorkspaceRuntime, now: datetime, idle_minutes: int = 30
 ) -> int:
@@ -171,6 +181,7 @@ def suspend_idle(
             runtime.stop(ws.id)
         except WorkspaceRuntimeError:
             continue
+        revoke_credentials(session, ws)
         ws.state = "suspended"
         ws.suspended_at = now
         ws.updated_at = now

@@ -48,8 +48,5 @@ def test_full_lifecycle_against_real_docker():
         time.sleep(4)
         assert rt.read_file(wid, "in/sub/a.txt") == b"hello"
     finally:
-        try:
-            rt.remove(wid)
-            rt.purge_volume(wid)
-        except Exception:
-            pass
+        rt.remove(wid)  # a failed cleanup must show up, not leave volumes behind
+        rt.purge_volume(wid)

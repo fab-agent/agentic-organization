@@ -165,6 +165,21 @@ _scheduled_flows: dict[str, str] = {}
 _flow_reload_lock = threading.Lock()
 
 
+def _workspace_housekeeping() -> None:
+    from datetime import datetime
+
+    from services import workspaces as ws_service
+    from services.workspace_runtime import job_runtime
+
+    runtime = job_runtime()
+    if runtime is None:
+        return
+    with get_session() as session:
+        now = datetime.utcnow()
+        ws_service.suspend_idle(session, runtime, now)
+        ws_service.purge_expired(session, runtime, now)
+
+
 def _reload_flow_schedules():
     """Sync the scheduler's flow jobs with the enabled flows in the DB.
 
@@ -327,6 +342,21 @@ def on_startup():
         )
     except Exception as e:
         logger.warning("work review init failed", extra={"extra": {"error": str(e)}})
+
+    # Workspace housekeeping (ADR-0018): suspend idle workspaces, purge the volumes of
+    # workspaces deleted more than the retention period ago. No-op without a runtime.
+    try:
+        _scheduler.add_job(
+            _workspace_housekeeping,
+            "interval",
+            minutes=15,
+            id="workspace_housekeeping",
+            replace_existing=True,
+        )
+    except Exception as e:
+        logger.warning(
+            "workspace housekeeping init failed", extra={"extra": {"error": str(e)}}
+        )
 
     # Persona-token revocation housekeeping (ADR-0007/0009): prune expired
     # RevokedToken rows; auto-revoke stale `3pa run` sessions when

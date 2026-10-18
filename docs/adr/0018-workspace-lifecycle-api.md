@@ -138,17 +138,17 @@ sidebar, and lists `/workspace/out` in the files strip.
 
 ## Follow-ups
 
-1. `sandbox/workspace/` image: first cut in place (`sandbox/workspace/`, scripts
-   tested without Docker; the image is **not yet built or run** — do that before
-   depending on it).
+1. `sandbox/workspace/` image: built and run on real Docker (2026-10-18; see the status
+   note above). Still to do: a multi-user load check.
 2. `WorkspaceRuntime` interface + `workspaces` table + REST endpoints
    (create / me / list / get / suspend / resume / delete / restore, files
    manifest / download / upload) — **done** against an in-memory `FakeRuntime`
    (`backend/api/workspaces.py`, `services/workspace_runtime.py`,
-   `services/workspaces.py`, migration `b8d4f2a61c93`). Still to do: the real
-   runtime (a client for the `workspace-controller` service), wiring
-   `suspend_idle` / `purge_expired` into the scheduler, and letting a running
-   agent turn or flow block idle suspension (needs run state).
+   `services/workspaces.py`, migration `b8d4f2a61c93`), plus the real runtime:
+   `workspace-controller/` and `ControllerRuntime` (2026-10-18), with `suspend_idle` /
+   `purge_expired` on a 15-minute scheduler job. Still to do: letting a running agent
+   turn or flow block idle suspension (needs run state), the capacity model, storage
+   quotas, a body-aware Docker socket policy, and the compose deployment.
 3. WebSocket attach endpoint and ticket store.
 4. `fab`: WebSocket transport for the agent pane, workspace state in the
    sidebar, files strip. **Partly done:** first-run create / resume, the state in

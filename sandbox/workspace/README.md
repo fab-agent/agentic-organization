@@ -17,7 +17,7 @@ managed by `workspace-controller/` (see its README).
 | `Dockerfile` | `node:22-bookworm-slim` + opencode + org plugin + managed config (as `sandbox/Dockerfile`), plus LibreOffice (writer/calc/impress), poppler, qpdf, Chromium, fonts, `tmux`, `tini`, optional Docling. Non-root `agent` (uid 10001). |
 | `entrypoint.sh` | Main process. Scrubs `OPENCODE_*` env overrides (ADR-0011), creates `/workspace/{in,out}`, keeps the tmux session `agent` alive (recreates it if the tmux server dies), exits on SIGTERM. |
 | `session-start.sh` | Idempotent creation of the tmux session with `remain-on-exit` (shared by the entrypoint and `attach.sh`). |
-| `attach.sh` | Installed as `workspace-attach`. Restarts a dead agent pane, then `tmux attach`. The workspace-controller runs it via `docker exec -it`. |
+| `attach.sh` | Installed as `workspace-attach`. Restarts a dead agent pane, then `tmux attach`. **Attaching from a client (WebSocket / `docker exec -it` by the controller) is not implemented yet**; today use `docker exec -it <container> workspace-attach` on the host. |
 | `chrome-headless.sh` | `chromium --headless=new --no-sandbox …`; exported as `CHROME_BIN`. |
 | `context-sync.sh` | Installed as `workspace-context-sync`. Fetches the agent's company context (`GET /workstation/context`, ETag-cached, token on stdin) into `/home/agent/.config/fab/context.md`; keeps the previous content on any failure. Run by the entrypoint before the agent starts and periodically. |
 | `opencode.json` | The sandbox's managed config plus that context file in `instructions` (a test guards against drift). |
@@ -85,5 +85,7 @@ session) — see ADR-0020.
 - **Chromium runs with `--no-sandbox`** (its own sandbox needs capabilities the
   container drops). The container, non-root user and egress proxy are the boundary.
 - **Docling is opt-in** (image size). ADR-0015's ingest worker runs it server-side.
-- No resource limits beyond `compose.yaml`; capacity planning is ADR-0014
-  follow-up 4.
+- Resource limits come from the run flags (`workspace-controller` sets memory, CPU and
+  pids; `compose.yaml` for local runs). There is no disk quota on the volumes yet and no
+  capacity model; see ADR-0014 follow-up 4. Resuming recreates the container (fresh
+  token), so a running tmux session does not survive a suspend.

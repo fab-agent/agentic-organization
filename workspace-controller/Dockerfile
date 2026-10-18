@@ -4,9 +4,9 @@
 #   docker build -f workspace-controller/Dockerfile -t fab-workspace-controller .
 FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends docker.io \
-    && rm -rf /var/lib/apt/lists/* && pip install --no-cache-dir fastapi==0.115.* uvicorn==0.32.*
+    && rm -rf /var/lib/apt/lists/* && pip install --no-cache-dir fastapi==0.141.1 uvicorn==0.52.4 starlette==1.6.0
 WORKDIR /app
-COPY workspace-controller/app.py workspace-controller/docker_ops.py /app/
+COPY workspace-controller/app.py workspace-controller/docker_ops.py workspace-controller/fileio.py /app/
 USER nobody
 EXPOSE 8090
 CMD ["uvicorn", "--factory", "app:build_app", "--host", "0.0.0.0", "--port", "8090"]

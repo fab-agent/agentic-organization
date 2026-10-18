@@ -8,13 +8,16 @@ no user-facing endpoints: every call carries the shared secret, every id is a UU
 from __future__ import annotations
 
 import hmac
+import logging
 import os
+import threading
 
-from docker_ops import BadInput, Config, Docker, DockerError
+from docker_ops import MAX_FILE_BYTES, BadInput, Config, Docker, DockerError, TooLarge
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 MIN_SECRET = 32
+log = logging.getLogger("workspace-controller")
 
 
 class CreateBody(BaseModel):
@@ -26,8 +29,10 @@ def build_app(docker: Docker | None = None, secret: str | None = None) -> FastAP
     secret = (
         secret if secret is not None else os.getenv("WORKSPACE_CONTROLLER_SECRET", "")
     )
-    if len(secret) < MIN_SECRET:
-        raise RuntimeError("WORKSPACE_CONTROLLER_SECRET must be at least 32 characters")
+    if len(secret) < MIN_SECRET or len(set(secret)) < 12:
+        raise RuntimeError(
+            "WORKSPACE_CONTROLLER_SECRET must be a random secret of at least 32 characters"
+        )
     docker = docker or Docker(
         Config(
             image=os.environ["WORKSPACE_IMAGE"],
@@ -52,10 +57,27 @@ def build_app(docker: Docker | None = None, secret: str | None = None) -> FastAP
             return fn()
         except BadInput as e:
             raise HTTPException(status_code=422, detail=str(e))
+        except TooLarge:
+            raise HTTPException(status_code=413, detail="too large")
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="not found")
         except DockerError as e:
-            raise HTTPException(status_code=502, detail=str(e)[:200])
+            # a stable, secret-free message; Docker's own text stays in the controller log
+            log.warning("docker error: %s | %s", e.public, e.detail)
+            raise HTTPException(status_code=502, detail=e.public)
+
+    transfers = threading.BoundedSemaphore(
+        int(os.getenv("WORKSPACE_MAX_TRANSFERS", "4"))
+    )
+
+    def transfer(fn):
+        """At most a few file transfers at once: each can hold up to the size cap."""
+        if not transfers.acquire(timeout=30):
+            raise HTTPException(status_code=503, detail="busy")
+        try:
+            return fn()
+        finally:
+            transfers.release()
 
     @app.get("/health")
     def health():
@@ -103,17 +125,35 @@ def build_app(docker: Docker | None = None, secret: str | None = None) -> FastAP
 
     @app.get("/v1/workspaces/{wid}/files", dependencies=[Depends(auth)])
     def files(wid: str, area: str = "out"):
-        return {"files": guarded(lambda: docker.list_files(wid, area))}
+        return {
+            "files": transfer(lambda: guarded(lambda: docker.list_files(wid, area)))
+        }
 
     @app.get("/v1/workspaces/{wid}/file", dependencies=[Depends(auth)])
     def read(wid: str, path: str):
-        data = guarded(lambda: docker.read_file(wid, path))
+        data = transfer(lambda: guarded(lambda: docker.read_file(wid, path)))
         return Response(content=data, media_type="application/octet-stream")
 
     @app.put("/v1/workspaces/{wid}/file", dependencies=[Depends(auth)])
     async def write(wid: str, path: str, request: Request):
-        data = await request.body()
-        guarded(lambda: docker.write_file(wid, path, data))
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > MAX_FILE_BYTES:
+            raise HTTPException(status_code=413, detail="too large")
+        chunks, size = [], 0
+        async for chunk in request.stream():  # bounded while it is read
+            size += len(chunk)
+            if size > MAX_FILE_BYTES:
+                raise HTTPException(status_code=413, detail="too large")
+            chunks.append(chunk)
+        data = b"".join(chunks)
+        # blocking Docker work off the event loop
+        from starlette.concurrency import run_in_threadpool
+
+        await run_in_threadpool(
+            lambda: transfer(
+                lambda: guarded(lambda: docker.write_file(wid, path, data))
+            )
+        )
         return {"ok": True, "size": len(data)}
 
     return app

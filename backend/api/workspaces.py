@@ -18,6 +18,7 @@ from database import get_session
 from models import AgentConfig, CompanyMember, Personnel, User, Workspace
 from services.workspace_agent import ensure_workspace_agent, find_workspace_agent
 from services.workspace_runtime import (
+    ControllerRuntime,
     FileNotFound,
     WorkspaceRuntime,
     WorkspaceRuntimeError,
@@ -32,6 +33,7 @@ from services.workspaces import (
     is_owner,
     live_workspace,
     person_for_user,
+    revoke_credentials,
     safe_relpath,
     to_dict,
 )
@@ -82,7 +84,9 @@ def _runtime_failed(ws: Workspace, session, e: Exception, *, mark: bool) -> None
     raise HTTPException(status_code=502, detail=f"Workspace runtime error: {e}")
 
 
-def _runtime_env(session, person: Personnel, company_id: str) -> dict:
+def _runtime_env(
+    session, person: Personnel, company_id: str, *, strict: bool = False
+) -> dict:
     """What the agent process needs: the gateway URL, a fresh persona token for the
     person's own workspace agent and the model. The token is short-lived (default 24 h);
     resume recreates the container so it always starts with a fresh one."""
@@ -104,6 +108,10 @@ def _runtime_env(session, person: Personnel, company_id: str) -> dict:
     base = os.getenv("WORKSPACE_PUBLIC_BASE_URL", "").strip()
     if base:
         env["FABAGENT_BASE_URL"] = base
+    elif strict:
+        raise HTTPException(
+            status_code=503, detail="WORKSPACE_PUBLIC_BASE_URL is not configured"
+        )
     return env
 
 
@@ -168,7 +176,12 @@ def create_workspace(
                     workspace_id=ws.id,
                     company_id=cid,
                     personnel_id=person.id,
-                    env=_runtime_env(session, person, cid),
+                    env=_runtime_env(
+                        session,
+                        person,
+                        cid,
+                        strict=isinstance(runtime, ControllerRuntime),
+                    ),
                 )
             )
         except WorkspaceRuntimeError as e:
@@ -258,6 +271,7 @@ def suspend_workspace(
             runtime.stop(ws.id)
         except WorkspaceRuntimeError as e:
             _runtime_failed(ws, session, e, mark=False)
+        revoke_credentials(session, ws)
         ws.state = "suspended"
         ws.suspended_at = datetime.utcnow()
         ws.updated_at = ws.suspended_at
@@ -286,7 +300,15 @@ def resume_workspace(
         try:
             person = session.get(Personnel, ws.personnel_id)
             runtime.start(
-                ws.id, _runtime_env(session, person, ws.company_id) if person else None
+                ws.id,
+                _runtime_env(
+                    session,
+                    person,
+                    ws.company_id,
+                    strict=isinstance(runtime, ControllerRuntime),
+                )
+                if person
+                else None,
             )
         except WorkspaceRuntimeError as e:
             _runtime_failed(ws, session, e, mark=False)
@@ -316,6 +338,7 @@ def delete_workspace(
             runtime.remove(ws.id)
         except WorkspaceRuntimeError as e:
             _runtime_failed(ws, session, e, mark=False)
+        revoke_credentials(session, ws)
         now = datetime.utcnow()
         ws.state = "deleted"
         ws.deleted_at = now
@@ -356,7 +379,15 @@ def restore_workspace(
         try:
             person = session.get(Personnel, ws.personnel_id)
             runtime.restore(
-                ws.id, _runtime_env(session, person, ws.company_id) if person else None
+                ws.id,
+                _runtime_env(
+                    session,
+                    person,
+                    ws.company_id,
+                    strict=isinstance(runtime, ControllerRuntime),
+                )
+                if person
+                else None,
             )
         except WorkspaceRuntimeError as e:
             _runtime_failed(ws, session, e, mark=False)
@@ -370,6 +401,10 @@ def restore_workspace(
             session.commit()
         except IntegrityError:
             session.rollback()
+            try:  # the container was started before the database said no: undo it
+                runtime.remove(workspace_id)
+            except WorkspaceRuntimeError:
+                pass
             raise HTTPException(
                 status_code=409, detail="The person already has a live workspace"
             )

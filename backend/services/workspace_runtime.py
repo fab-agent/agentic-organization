@@ -162,7 +162,9 @@ class ControllerRuntime:
             raise WorkspaceRuntimeError("WORKSPACE_CONTROLLER_SECRET is too short")
         self._url = url.rstrip("/")
         self._h = {"X-Controller-Secret": secret}
-        self._c = client or httpx.Client(timeout=timeout)
+        # trust_env=False: the management channel carries the controller secret and
+        # persona tokens, so ambient proxy settings must not redirect it.
+        self._c = client or httpx.Client(timeout=timeout, trust_env=False)
 
     def _call(self, method: str, path: str, **kw):
         import httpx
@@ -186,9 +188,11 @@ class ControllerRuntime:
         return r
 
     def create(self, spec: WorkspaceSpec) -> None:
-        self._call(
+        r = self._call(
             "POST", f"/v1/workspaces/{spec.workspace_id}", json={"env": spec.env or {}}
         )
+        if r.json().get("status") != "running":
+            raise WorkspaceRuntimeError("workspace did not reach running")
 
     def start(self, workspace_id: str, env: dict | None = None) -> None:
         self._call(
@@ -239,6 +243,14 @@ class ControllerRuntime:
 
 _fake = FakeRuntime()
 _controller: ControllerRuntime | None = None
+
+
+def job_runtime() -> WorkspaceRuntime | None:
+    """The configured runtime for scheduled jobs (no FastAPI request), or None."""
+    try:
+        return get_runtime()
+    except HTTPException:
+        return None
 
 
 def get_runtime() -> WorkspaceRuntime:

@@ -50,4 +50,4 @@ Kişinin bilgisayarındaki bir klasör (ör. Masaüstü) sunucudaki çalışma a
 
 ## Çalışma alanı imajı
 
-`sandbox/workspace/` altında ilk sürüm: LibreOffice, PDF araçları ve headless Chromium; `sandbox/` ile aynı sertleştirme (root olmayan kullanıcı, varsayılan-reddet çıkış, ana makine bağlaması yok). **Docker'da henüz çalıştırılmadı.**
+`sandbox/workspace/` altında ilk sürüm: LibreOffice, PDF araçları ve headless Chromium; `sandbox/` ile aynı sertleştirme (root olmayan kullanıcı, varsayılan-reddet çıkış, ana makine bağlaması yok). Docker'da derlendi ve çalıştırıldı (18 Ekim 2026, tek sunucu); askıya alma sonrası sürdürmede kapsayıcı yeni token ile yeniden oluşturulur, bu yüzden çalışan tmux oturumu korunmaz.
