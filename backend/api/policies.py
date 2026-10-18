@@ -308,13 +308,24 @@ def update_policy(
             session.refresh(cr)
             return {"change_request_id": cr.id, "status": "submitted"}
 
+        # Both the policy as it is and as it would become must be the caller's to write
+        # (a department head cannot promote a policy to company scope or move it).
         _require_policy_write(session, user, p.company_id, p.scope, p.department_id)
+        new_scope = body.scope or p.scope
+        new_dept = (
+            (body.department_id or None)
+            if "department_id" in body.model_fields_set
+            else p.department_id
+        )
+        _require_policy_write(session, user, p.company_id, new_scope, new_dept)
         _check_targets(
             session,
             p.company_id,
             body.department_id or None,
             body.agent_config_id or None,
         )
+        if new_scope == "department" and not new_dept:
+            raise HTTPException(status_code=422, detail="Bölüm politikası bölüm ister")
         updates = body.model_dump(exclude_none=True)
         # Company-scoped policies are always active — ignore is_active overrides
         if p.scope == "company":

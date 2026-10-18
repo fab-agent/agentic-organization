@@ -878,3 +878,259 @@ def test_a_minted_gateway_token_stops_working_when_the_agent_is_deactivated(
     db_session.add(cfg)
     db_session.commit()
     assert auth_client.get("/v1/models", headers=h).status_code == 403
+
+
+# ═══ third pass (Codex review #3) ═══
+
+
+def _member_with(db_session, company_id, email, role, scope=None):
+    u = make_user(db_session, email=email, name=email)
+    m = make_member(db_session, u.id, company_id, role=role)
+    m.scope_id = scope
+    db_session.add(m)
+    db_session.commit()
+    return u
+
+
+def test_department_head_cannot_promote_or_move_a_policy(
+    auth_client, tenants, db_session
+):
+    t = tenants
+    other = Department(company_id=t["a"], name="Ops", slug="ops")
+    db_session.add(other)
+    db_session.flush()
+    pol = Policy(
+        company_id=t["a"],
+        name="D",
+        slug="d",
+        content="x",
+        scope="department",
+        department_id=t["dept"],
+    )
+    db_session.add(pol)
+    head = _member_with(db_session, t["a"], "dh@a.com", "dept_head", t["dept"])
+    db_session.commit()
+    h = _h(head)
+    assert (
+        auth_client.put(
+            f"/policies/{pol.id}", json={"content": "ok"}, headers=h
+        ).status_code
+        == 200
+    )
+    # into company scope, or into another department: both are refused
+    assert (
+        auth_client.put(
+            f"/policies/{pol.id}", json={"scope": "company"}, headers=h
+        ).status_code
+        == 403
+    )
+    r = auth_client.put(
+        f"/policies/{pol.id}", json={"department_id": other.id}, headers=h
+    )
+    assert r.status_code == 403
+
+
+def test_agent_owner_grant_needs_authority_over_the_agents_department(
+    auth_client, tenants, db_session
+):
+    t = tenants
+    other = Department(company_id=t["a"], name="Ops", slug="ops2")
+    db_session.add(other)
+    db_session.flush()
+    b_agent = make_personnel(
+        db_session, t["a"], name="OpsBot", slug="opsbot", type="agent"
+    )
+    b_agent.department_id = other.id
+    db_session.add(b_agent)
+    make_agent_config(db_session, b_agent.id)
+    head_a = _member_with(db_session, t["a"], "ha@a.com", "dept_head", t["dept"])
+    recipient = make_personnel(db_session, t["a"], name="Rec", slug="rec", type="human")
+    recipient.email = "rec@a.com"
+    recipient.department_id = t["dept"]
+    db_session.add(recipient)
+    db_session.commit()
+    inv = f"/personnel/{recipient.id}/invite"
+    r = auth_client.post(
+        inv, json={"role": "agent_owner", "scope_id": b_agent.id}, headers=_h(head_a)
+    )
+    assert r.status_code == 403  # the agent belongs to another department
+    r = auth_client.post(
+        inv, json={"role": "agent_owner", "scope_id": t["agent"]}, headers=_h(head_a)
+    )
+    assert r.status_code == 201  # own department's agent
+
+
+def test_is_active_must_be_a_real_boolean(auth_client, tenants, db_session):
+    from models import User
+
+    t = tenants
+    me = db_session.query(User).filter_by(email="admin@test.com").first()
+    for bad in (None, 0, "", "false"):
+        r = auth_client.patch(f"/users/{me.id}", json={"is_active": bad})
+        assert r.status_code == 422, bad
+    db_session.expire_all()
+    assert db_session.get(User, me.id).is_active is True
+
+
+def test_mcp_refuses_inactive_agents_and_disabled_skills(
+    auth_client, tenants, db_session
+):
+    from models import AgentConfig, Skill
+    from services.gateway_auth import AUD_AUDIT, create_persona_token
+
+    t = tenants
+    sk = Skill(agent_id=t["cfg"], name="calc", version="1", is_active=False)
+    db_session.add(sk)
+    db_session.commit()
+    token = (
+        create_persona_token(t["agent"], t["a"], audience=AUD_AUDIT)
+        if "audience" in create_persona_token.__code__.co_varnames
+        else create_persona_token(t["agent"], t["a"])
+    )
+    h = {"Authorization": f"Bearer {token}"}
+    call = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": "calc", "arguments": {}},
+    }
+    r = auth_client.post("/mcp", json=call, headers=h)
+    if r.status_code == 200:
+        assert "error" in r.json()  # disabled skill is unknown
+    cfg = db_session.get(AgentConfig, t["cfg"])
+    cfg.status = "inactive"
+    db_session.add(cfg)
+    db_session.commit()
+    r = auth_client.post(
+        "/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, headers=h
+    )
+    assert r.status_code in (401, 403)
+
+
+def test_a_revoked_persona_credential_cannot_issue_commands(
+    auth_client, tenants, db_session
+):
+    from services.gateway_auth import create_persona_token
+    from services.persona_revocation import revoke_all
+
+    t = tenants
+    token = create_persona_token(t["agent"], t["a"])
+    h = {"Authorization": f"Bearer {token}"}
+    body = {"personnel_id": t["agent"], "kind": "stop"}
+    assert (
+        auth_client.post("/workstation/commands", json=body, headers=h).status_code
+        == 201
+    )
+    revoke_all(t["agent"], t["a"], "test")
+    assert (
+        auth_client.post("/workstation/commands", json=body, headers=h).status_code
+        == 401
+    )
+
+
+def test_a_disabled_web_user_cannot_operate_a_persona(auth_client, tenants, db_session):
+    from models import User
+
+    t = tenants
+    admin = db_session.query(User).filter_by(email="admin@test.com").first()
+    body = {"personnel_id": t["agent"], "kind": "stop"}
+    assert auth_client.post("/workstation/commands", json=body).status_code == 201
+    admin.is_active = False
+    db_session.add(admin)
+    db_session.commit()
+    assert auth_client.post("/workstation/commands", json=body).status_code == 401
+
+
+def test_chain_admin_is_limited_to_the_callers_companies(auth_client, tenants):
+    t = tenants
+    assert (
+        auth_client.get(
+            "/audit/chain/verify", params={"company_id": t["a"]}, headers=t["atk"]
+        ).status_code
+        == 404
+    )
+    mine = auth_client.get("/audit/chain/verify", headers=t["atk"]).json()
+    assert set(mine["chains"]) <= {t["b"]}
+    assert (
+        auth_client.get("/audit/chain/anchors", headers=t["plain"]).status_code == 403
+    )
+    anchors = auth_client.get("/audit/chain/anchors", headers=t["atk"]).json()
+    assert all(k == t["b"] for k in anchors["chains"])
+    assert (
+        auth_client.post("/audit/chain/anchors", headers=t["plain"]).status_code == 403
+    )
+
+
+def test_refresh_is_refused_for_an_inactive_agent(auth_client, tenants, db_session):
+    from models import AgentConfig
+    from services.gateway_auth import create_persona_refresh_token
+
+    t = tenants
+    refresh = create_persona_refresh_token(t["agent"], t["a"])
+    cfg = db_session.get(AgentConfig, t["cfg"])
+    cfg.status = "inactive"
+    db_session.add(cfg)
+    db_session.commit()
+    r = auth_client.post(
+        "/workstation/persona-token/refresh", json={"refresh_token": refresh}
+    )
+    assert r.status_code == 403
+
+
+def test_a2a_result_waits_for_the_responsible_human(auth_client, tenants, db_session):
+    from unittest.mock import patch
+
+    from api import a2a
+    from models import A2ARequest
+
+    t = tenants
+    dst = make_personnel(db_session, t["a"], name="Dst", slug="dst", type="agent")
+    make_agent_config(db_session, dst.id)
+    db_session.commit()
+    body = {"from_agent_id": t["agent"], "to_agent_id": dst.id, "task": "do"}
+    rid = auth_client.post("/a2a/requests", json=body).json()["id"]
+    req = db_session.get(A2ARequest, rid)
+    req.status = "running"
+    db_session.add(req)
+    db_session.commit()
+
+    async def fake(session_id, task):
+        return "the result"
+
+    with patch("api.a2a._run_agent_task", fake):
+        a2a._execute_a2a_task(rid)
+    db_session.expire_all()
+    req = db_session.get(A2ARequest, rid)
+    assert req.status == "pending_result_approval" and req.result == "the result"
+    assert req.result_approved_at is None
+    r = auth_client.post(
+        f"/a2a/requests/{rid}/approve-result", json={"approver_id": "x"}
+    )
+    assert r.status_code == 200 and r.json()["status"] == "completed"
+
+
+def test_workspace_and_task_access_ends_with_membership(
+    auth_client, tenants, db_session
+):
+    from models import TaskRequest
+
+    t = tenants
+    task = TaskRequest(
+        company_id=t["a"],
+        requester_user_id=t["plain_user"].id,
+        title="x",
+        body="y",
+        status="pending",
+    )
+    db_session.add(task)
+    db_session.commit()
+    assert auth_client.get("/task-requests", headers=t["plain"]).json()
+    db_session.query(CompanyMember).filter_by(user_id=t["plain_user"].id).delete()
+    db_session.commit()
+    assert auth_client.get("/task-requests", headers=t["plain"]).json() == []
+    assert (
+        auth_client.get(
+            f"/task-requests/{task.id}/stream", headers=t["plain"]
+        ).status_code
+        == 404
+    )

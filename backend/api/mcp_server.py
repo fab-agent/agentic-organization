@@ -19,7 +19,7 @@ import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel import select
 
-from api.deps import get_persona_audit
+from api.deps import get_persona_exec
 from database import get_session
 from models import AgentConfig, Skill
 from services.agent_runtime import build_tool_definitions, execute_skill
@@ -46,7 +46,11 @@ def _persona_skills(persona_id: str) -> list[Skill]:
         ).first()
         if not cfg:
             return []
-        return list(session.exec(select(Skill).where(Skill.agent_id == cfg.id)).all())
+        return list(
+            session.exec(
+                select(Skill).where(Skill.agent_id == cfg.id, Skill.is_active == True)  # noqa: E712
+            ).all()
+        )
 
 
 def _tools_for(persona_id: str) -> list[dict]:
@@ -124,7 +128,7 @@ async def _handle(msg: dict, principal: PersonaPrincipal) -> dict | None:
 
 @router.post("/mcp")
 async def mcp_endpoint(
-    request: Request, principal: PersonaPrincipal = Depends(get_persona_audit)
+    request: Request, principal: PersonaPrincipal = Depends(get_persona_exec)
 ):
     """JSON-RPC 2.0 — a single message or a batch array."""
     try:

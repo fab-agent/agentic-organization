@@ -148,11 +148,17 @@ def test_audit_ingest_needs_persona_token(client):
 
 def test_chain_verify_endpoint(client, auth_client, db_session):
     assert client.post("/audit/chain/verify").status_code in (401, 405)
-    audit_chain.append(actor_type="system", action="x", company_id="co-x")
+    co = auth_client._test_company.id
+    audit_chain.append(actor_type="system", action="x", company_id=co)
+    audit_chain.append(actor_type="system", action="x", company_id="co-other")
     r = auth_client.get("/audit/chain/verify")
     assert r.status_code == 200
     assert r.json()["ok"] is True
-    assert "co-x" in r.json()["chains"]
+    # only the caller's own chains, never another company's
+    assert co in r.json()["chains"] and "co-other" not in r.json()["chains"]
 
-    r2 = auth_client.get("/audit/chain/verify", params={"company_id": "co-x"})
+    r2 = auth_client.get("/audit/chain/verify", params={"company_id": co})
     assert r2.json()["ok"] is True and r2.json()["count"] == 1
+    # someone else's chain is not readable by naming it
+    r3 = auth_client.get("/audit/chain/verify", params={"company_id": "co-other"})
+    assert r3.status_code == 404

@@ -41,7 +41,7 @@ Birden fazla ajana paralel devredilirse (ör. bir orkestratör ajanın uzmanlara
 Her kartta görev, bağlam, (varsa) sonuç ve onaylayan görünür. Düğmeler duruma göre değişir:
 
 - **Görevi Onayla & Çalıştır** → görev başlar.
-- **Sonucu Onayla** → sonuç talep eden oturuma döner.
+- **Sonucu Onayla** → sonuç talep eden oturuma döner. Hedef ajan görevi bitirince sonuç **onay bekler**; onaylanana kadar sohbete düşmez.
 - **Reddet** / **Sonucu Reddet**.
 
 Onaylayabilecek kişi, hedef ajanın **sorumlu insanıdır**; başkası onaylamaya çalışırsa sistem reddeder. Bekleyen devirleri **Telegram botu** üzerinden de görüp onaylayabilirsiniz (`/onaylar` komutu; bkz. [Ayarlar → Entegrasyonlar](/guide/settings#entegrasyonlar)).

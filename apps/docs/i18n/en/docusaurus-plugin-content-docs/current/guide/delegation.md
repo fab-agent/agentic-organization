@@ -41,7 +41,7 @@ The **Delegation** (`/a2a`) page lists the handovers in the company. The badge i
 Each card shows the task, context, the result (if any) and the approver. The buttons change with the status:
 
 - **Approve & Run Task** → the task starts.
-- **Approve Result** → the result returns to the requesting session.
+- **Approve Result** → the result returns to the requesting session. When the target agent finishes, the result **waits for approval** and does not reach the chat until approved.
 - **Reject** / **Reject Result**.
 
 The person who can approve is the target agent's **responsible human**; if someone else tries to approve, the system refuses. You can also see and approve pending handovers through the **Telegram bot** (the `/onaylar` command; see [Settings → Integrations](/guide/settings#integrations)).

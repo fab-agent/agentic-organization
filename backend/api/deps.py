@@ -54,3 +54,10 @@ def get_persona_audit(authorization: str | None = Header(None)) -> PersonaPrinci
     from services.gateway_auth import AUD_AUDIT
 
     return _persona_from_header(authorization, AUD_AUDIT)
+
+
+def get_persona_exec(authorization: str | None = Header(None)) -> PersonaPrincipal:
+    """Persona principal for *executing* tools (MCP): audit audience, active agent only."""
+    from services.gateway_auth import AUD_AUDIT
+
+    return _persona_from_header(authorization, AUD_AUDIT, require_active=True)

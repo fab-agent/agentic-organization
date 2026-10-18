@@ -206,6 +206,19 @@ def require_may_grant(
         dept = person.department_id
     if not has_role(session, user_id, company_id, allowed_roles, department_id=dept):
         raise HTTPException(status_code=403, detail="Bu rolü atama yetkiniz yok")
+    if role == "agent_owner":
+        # The grant also hands over an agent: the grantor needs authority over *it*.
+        from models import Personnel
+
+        agent = session.get(Personnel, scope_id) if scope_id else None
+        if agent is None or not has_role(
+            session,
+            user_id,
+            company_id,
+            allowed_roles,
+            department_id=agent.department_id,
+        ):
+            raise HTTPException(status_code=403, detail="Bu ajan için yetkiniz yok")
 
 
 def lock_company(session, company_id: str) -> None:

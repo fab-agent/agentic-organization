@@ -113,7 +113,14 @@ def can_manage(session, user: User, ws: Workspace) -> bool:
 
 
 def is_owner(ws: Workspace, user: User) -> bool:
-    return ws.user_id is not None and ws.user_id == user.id
+    """The workspace's owner, and still a member of its company."""
+    if ws.user_id is None or ws.user_id != user.id:
+        return False
+    from database import get_session
+    from services import authz
+
+    with get_session() as session:
+        return authz.is_member(session, user.id, ws.company_id)
 
 
 def to_dict(ws: Workspace) -> dict:

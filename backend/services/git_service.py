@@ -26,7 +26,33 @@ from models import (
     SyncLog,
 )
 
-REPO_DIR = Path("data/git-repo")
+REPO_ROOT = Path("data/git-repo")
+_SLUG = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+
+
+# ── Per-config working copies ─────────────────────────────────────────────────
+
+
+def repo_dir(config: GitConfig) -> Path:
+    """One working copy per Git connection, keyed by its immutable id, so one
+    company's remote, index and history never meet another's."""
+    return REPO_ROOT / config.id
+
+
+def _inside(root: Path, *parts: str) -> Path:
+    """`root/parts...`, refusing slugs that are not plain names or that would leave
+    the working copy (the slug is data, not a path)."""
+    for part in parts:
+        name = part[:-5] if part.endswith(".yaml") else part
+        if not _SLUG.fullmatch(name):
+            raise ValueError(f"unsafe name in path: {part!r}")
+    path = root.joinpath(*parts)
+    if (
+        root.resolve() not in path.resolve().parents
+        and path.resolve() != root.resolve()
+    ):
+        raise ValueError("path leaves the working copy")
+    return path
 
 
 # ── YAML serialisers ──────────────────────────────────────────────────────────
@@ -96,14 +122,15 @@ class GitSyncService:
 
     def _get_repo(self, config: GitConfig) -> Repo:
         """Clone once, then reuse. Re-injects auth on every call."""
+        root = repo_dir(config)
         try:
-            repo = Repo(REPO_DIR)
+            repo = Repo(root)
             with repo.remotes.origin.config_writer as cw:
                 cw.set("url", self._auth_url(config))
         except (InvalidGitRepositoryError, NoSuchPathError):
-            REPO_DIR.mkdir(parents=True, exist_ok=True)
+            root.mkdir(parents=True, exist_ok=True)
             repo = Repo.clone_from(
-                self._auth_url(config), REPO_DIR, branch=config.branch, depth=50
+                self._auth_url(config), root, branch=config.branch, depth=50
             )
         return repo
 
@@ -116,7 +143,7 @@ class GitSyncService:
     # ── Export (DB → YAML files) ──────────────────────────────────────────────
 
     def export_to_files(
-        self, session: Session, company_id: str | None = None
+        self, session: Session, root: Path, company_id: str | None = None
     ) -> list[Path]:
         written: list[Path] = []
 
@@ -124,7 +151,7 @@ class GitSyncService:
         if company_id:
             dept_q = dept_q.where(Department.company_id == company_id)
         for dept in session.exec(dept_q).all():
-            path = REPO_DIR / "departments" / f"{dept.slug}.yaml"
+            path = _inside(root, "departments", f"{dept.slug}.yaml")
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(
                 yaml.dump(
@@ -158,7 +185,7 @@ class GitSyncService:
                 else None
             )
 
-            path = REPO_DIR / "agents" / agent.slug / "agent.yaml"
+            path = _inside(root, "agents", agent.slug, "agent.yaml")
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(
                 yaml.dump(
@@ -175,10 +202,12 @@ class GitSyncService:
 
     # ── Import (YAML files → DB) ──────────────────────────────────────────────
 
-    def import_from_files(self, session: Session, company_id: str | None = None) -> int:
+    def import_from_files(
+        self, session: Session, root: Path, company_id: str | None = None
+    ) -> int:
         changed = 0
 
-        dept_dir = REPO_DIR / "departments"
+        dept_dir = root / "departments"
         if dept_dir.exists():
             for f in dept_dir.glob("*.yaml"):
                 try:
@@ -205,7 +234,7 @@ class GitSyncService:
                 except Exception as exc:
                     print(f"  ! import dept {f.name}: {exc}")
 
-        agents_dir = REPO_DIR / "agents"
+        agents_dir = root / "agents"
         if agents_dir.exists():
             for f in agents_dir.glob("*/agent.yaml"):
                 try:
@@ -261,7 +290,9 @@ class GitSyncService:
             repo.remotes.origin.pull(config.branch)
 
             sha = repo.head.commit.hexsha
-            count = self.import_from_files(session, company_id=config.company_id)
+            count = self.import_from_files(
+                session, repo_dir(config), company_id=config.company_id
+            )
 
             config.last_synced = datetime.utcnow()
             config.last_commit_sha = sha
@@ -293,7 +324,9 @@ class GitSyncService:
             repo = self._get_repo(config)
             repo.remotes.origin.pull(config.branch)
 
-            written = self.export_to_files(session, company_id=config.company_id)
+            written = self.export_to_files(
+                session, repo_dir(config), company_id=config.company_id
+            )
             if not written:
                 log.status = "no_changes"
                 log.message = "Dışa aktarılacak kayıt yok"
@@ -302,7 +335,7 @@ class GitSyncService:
                 session.refresh(log)
                 return log
 
-            rel_paths = [str(p.relative_to(REPO_DIR)) for p in written]
+            rel_paths = [str(p.relative_to(repo_dir(config))) for p in written]
             repo.index.add(rel_paths)
 
             diff_staged = repo.index.diff("HEAD")
@@ -366,7 +399,7 @@ class GitSyncService:
         if config.company_id:
             agent_q = agent_q.where(Personnel.company_id == config.company_id)
         for agent in session.exec(agent_q).all():
-            yaml_path = REPO_DIR / "agents" / agent.slug / "agent.yaml"
+            yaml_path = _inside(repo_dir(config), "agents", agent.slug, "agent.yaml")
             cfg = session.exec(
                 select(AgentConfig).where(AgentConfig.personnel_id == agent.id)
             ).first()
@@ -401,7 +434,7 @@ class GitSyncService:
         if config.company_id:
             dept_q = dept_q.where(Department.company_id == config.company_id)
         for dept in session.exec(dept_q).all():
-            yaml_path = REPO_DIR / "departments" / f"{dept.slug}.yaml"
+            yaml_path = _inside(repo_dir(config), "departments", f"{dept.slug}.yaml")
             if not yaml_path.exists():
                 diffs.append(
                     {

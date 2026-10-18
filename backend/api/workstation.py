@@ -23,11 +23,11 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlmodel import select
 
-from api.auth import get_current_user, require_manager
+from api.auth import get_current_user
 from api.deps import get_persona_audit, get_persona_gateway
 from database import get_session
 from models import AgentConfig, CompanyMember, PersonaCommand, Personnel, User
-from services import audit_chain
+from services import audit_chain, authz
 from services.auth import create_access_token
 from services.gateway_auth import (
     PersonaPrincipal,
@@ -260,7 +260,9 @@ def workstation_audit_verify(
 # ── 3pa login: persona selection + token (ADR-0007) ─────────────────────────
 
 
-def _personas_for_user(session, user: User) -> list[dict]:
+def _personas_for_user(
+    session, user: User, *, include_inactive: bool = False
+) -> list[dict]:
     """
     Agent personas this user may act as: every agent in a company where they are
     founder or a company-wide executive (an executive scoped to a department: that
@@ -285,7 +287,7 @@ def _personas_for_user(session, user: User) -> list[dict]:
             .where(Personnel.type == "agent")
         ).all()
         for person, cfg in agents:
-            if cfg.status != "active":
+            if cfg.status != "active" and not include_inactive:
                 continue  # draft/inactive agents are not usable personas
             allowed = m.role == "founder" or (
                 m.role == "executive"
@@ -413,8 +415,18 @@ def refresh_persona_token(body: RefreshRequest):
 
     with get_session() as session:
         person = session.get(Personnel, principal.persona_id)
-        if not person or person.type != "agent":
+        if (
+            not person
+            or person.type != "agent"
+            or person.company_id != principal.company_id
+        ):
             raise HTTPException(status_code=401, detail="Persona bulunamadı")
+        cfg = session.exec(
+            select(AgentConfig).where(AgentConfig.personnel_id == person.id)
+        ).first()
+        if not cfg or cfg.status != "active":
+            # An inactive agent's credentials are not renewed; mint again on reactivation.
+            raise HTTPException(status_code=403, detail="Ajan etkin değil")
 
     if principal.jti:
         revoke_jti(principal.jti, principal.persona_id, principal.company_id, "rotated")
@@ -473,13 +485,25 @@ def _persona_operator(authorization: str | None, personnel_id: str) -> str:
     # 1. A persona token that IS this persona (self-operation).
     try:
         principal = decode_persona_token(token, expected_audience=AUD_GATEWAY)
-        if principal.persona_id == personnel_id:
-            return f"persona:{personnel_id}"
-        raise HTTPException(status_code=403, detail="Başka persona için yetki yok")
-    except HTTPException:
-        raise
     except Exception:
-        pass
+        principal = None
+    if principal is not None:
+        if principal.persona_id != personnel_id:
+            raise HTTPException(status_code=403, detail="Başka persona için yetki yok")
+        from services.persona_revocation import is_revoked
+
+        # A revoked or stale credential must not operate its own persona.
+        if is_revoked(principal.jti, principal.persona_id, principal.issued_at):
+            raise HTTPException(status_code=401, detail="Persona token iptal edilmiş")
+        with get_session() as session:
+            person = session.get(Personnel, principal.persona_id)
+            if (
+                not person
+                or person.type != "agent"
+                or person.company_id != principal.company_id
+            ):
+                raise HTTPException(status_code=401, detail="Persona bulunamadı")
+        return f"persona:{personnel_id}"
 
     # 2. A web session for a user who owns this persona.
     try:
@@ -488,9 +512,14 @@ def _persona_operator(authorization: str | None, personnel_id: str) -> str:
         raise HTTPException(status_code=401, detail="Geçersiz token")
     with get_session() as session:
         user = session.get(User, user_id)
-        if not user:
+        if not user or not user.is_active:
             raise HTTPException(status_code=401, detail="Kullanıcı bulunamadı")
-        allowed = {p["personnel_id"] for p in _personas_for_user(session, user)}
+        # Stopping/revoking must work on an inactive agent too (a stolen token must
+        # not come back to life when the agent is reactivated).
+        allowed = {
+            p["personnel_id"]
+            for p in _personas_for_user(session, user, include_inactive=True)
+        }
     if personnel_id not in allowed:
         raise HTTPException(status_code=403, detail="Bu persona için yetkiniz yok")
     return f"user:{user_id}"
@@ -636,30 +665,67 @@ def oidc_exchange(body: OIDCExchange):
 
 
 @router.get("/audit/chain/verify")
-def verify_chain(company_id: str | None = None, _: User = Depends(require_manager)):
+def verify_chain(company_id: str | None = None, user: User = Depends(get_current_user)):
     """
-    Verify the tamper-evident audit chain(s) and report the first break, if any.
-    With `company_id` → just that tenant's chain; without → every chain.
+    Verify the tamper-evident audit chain and report the first break, if any.
+    Only the chains of companies where the caller is a company-wide founder or
+    executive: `company_id` selects one, otherwise all of the caller's.
     """
+    with get_session() as session:
+        mine = _final_companies(session, user)
+        if company_id:
+            authz.require_role(
+                session, user.id, company_id, authz.FINAL, company_wide=True
+            )
+            mine = [company_id]
+    chains = {c: audit_chain.verify(c) for c in sorted(mine)}
     if company_id:
-        return audit_chain.verify(company_id)
-    return audit_chain.verify_all()
+        return chains[company_id]
+    return {"ok": all(c["ok"] for c in chains.values()), "chains": chains}
+
+
+def _final_companies(session, user: User) -> list[str]:
+    return sorted(
+        {
+            m.company_id
+            for m in authz.memberships_all(session, user.id)
+            if m.role in authz.FINAL and m.scope_id is None
+        }
+    )
 
 
 @router.get("/audit/chain/anchors")
-def audit_chain_anchors(_: User = Depends(require_manager)):
+def audit_chain_anchors(user: User = Depends(get_current_user)):
     """
     External-anchor check (ADR-0006): compares live chain heads to the
     append-only anchor log, flagging truncation / rewrite that `verify` cannot.
+    The answer is limited to the caller's own companies' chains.
     """
     from services import audit_anchor
 
-    return audit_anchor.check_anchors()
+    with get_session() as session:
+        mine = set(_final_companies(session, user))
+    if not mine:
+        raise HTTPException(status_code=403, detail="Yönetici yetkisi gerekli")
+    full = audit_anchor.check_anchors()
+    chains = {k: v for k, v in full["chains"].items() if k in mine}
+    issues = [i for i in full["issues"] if i["chain_key"] in mine]
+    internal = audit_chain.verify_all()["chains"]
+    internal_ok = all(v["ok"] for k, v in internal.items() if k in mine)
+    return {
+        "ok": not issues and internal_ok,
+        "chains": chains,
+        "issues": issues,
+        "internal_verify_ok": internal_ok,
+    }
 
 
 @router.post("/audit/chain/anchors", status_code=202)
-def audit_chain_anchor_now(_: User = Depends(require_manager)):
+def audit_chain_anchor_now(user: User = Depends(get_current_user)):
     """Force an anchor now (also runs hourly on a schedule)."""
     from services import audit_anchor
 
+    with get_session() as session:
+        if not _final_companies(session, user):
+            raise HTTPException(status_code=403, detail="Yönetici yetkisi gerekli")
     return audit_anchor.anchor_heads()

@@ -299,7 +299,10 @@ def approve_request(
 
 @router.post("/requests/{req_id}/approve-result")
 def approve_result(
-    req_id: str, body: A2AResultApprove, user: User = Depends(get_current_user)
+    req_id: str,
+    body: A2AResultApprove,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
 ):
     """Approve the result and mark the request as completed."""
     with get_session() as session:
@@ -318,12 +321,17 @@ def approve_result(
         session.add(req)
         session.commit()
         session.refresh(req)
+        if req.from_session_id:
+            background_tasks.add_task(_maybe_compile_results, req.from_session_id)
         return _req_to_dict(req, session)
 
 
 @router.post("/requests/{req_id}/reject")
 def reject_request(
-    req_id: str, body: A2AReject, user: User = Depends(get_current_user)
+    req_id: str,
+    body: A2AReject,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(get_current_user),
 ):
     with get_session() as session:
         req = _own_request(session, user, req_id)
@@ -350,6 +358,8 @@ def reject_request(
         session.add(req)
         session.commit()
         session.refresh(req)
+        if req.from_session_id:
+            background_tasks.add_task(_maybe_compile_results, req.from_session_id)
         return _req_to_dict(req, session)
 
 
@@ -387,17 +397,24 @@ def _maybe_compile_results(from_session_id: str) -> None:
             return
 
         # Any still in flight?
-        blocking = [r for r in reqs if r.status in ("pending_approval", "running")]
+        blocking = [
+            r
+            for r in reqs
+            if r.status in ("pending_approval", "running", "pending_result_approval")
+        ]
         if blocking:
             return
 
         # Collect results
         done = []
         for r in reqs:
-            if not r.result:
-                continue
             agent = session.get(Personnel, r.to_agent_id)
-            done.append((agent.name if agent else "Ajan", r.result, r.status))
+            name = agent.name if agent else "Ajan"
+            if r.status == "completed" and r.result:
+                done.append((name, r.result, r.status))
+            elif r.status == "rejected":
+                # An unapproved or rejected result is never released to the chat.
+                done.append((name, "_Sonuç onaylanmadı / reddedildi._", r.status))
 
         if not done:
             return
@@ -470,15 +487,12 @@ def _execute_a2a_task(req_id: str) -> None:
         req = session.get(A2ARequest, req_id)
         if req:
             req.result = result or "[Boş yanıt]"
-            req.status = "completed"  # auto-approve result
-            req.result_approved_at = datetime.utcnow()
+            # The result waits for the responsible human; nothing is released to the
+            # originating chat before POST .../approve-result.
+            req.status = "pending_result_approval"
             req.updated_at = datetime.utcnow()
             session.add(req)
             session.commit()
-
-    # Trigger compilation once all sibling delegations finish
-    if from_session_id_copy:
-        _maybe_compile_results(from_session_id_copy)
 
 
 # ── Delegation status for chat UI ─────────────────────────────────────────────
@@ -505,7 +519,11 @@ def session_delegation_status(session_id: str, user: User = Depends(get_current_
         ).all()
 
     total = len(reqs)
-    pending = sum(1 for r in reqs if r.status in ("pending_approval", "running"))
+    pending = sum(
+        1
+        for r in reqs
+        if r.status in ("pending_approval", "running", "pending_result_approval")
+    )
     completed = sum(1 for r in reqs if r.status == "completed")
     rejected = sum(1 for r in reqs if r.status == "rejected")
     return {

@@ -146,11 +146,12 @@ def list_task_requests(
 ):
     with get_session() as session:
         q = select(TaskRequest)
-        # Show tasks the user submitted OR tasks assigned to them as responsible
+        # Show tasks the user submitted OR tasks assigned to them as responsible,
+        # in companies they still belong to.
         q = q.where(
             (TaskRequest.requester_user_id == current_user.id)
             | (TaskRequest.responsible_user_id == current_user.id)
-        )
+        ).where(TaskRequest.company_id.in_(authz.company_ids(session, current_user.id)))
         if company_id:
             q = q.where(TaskRequest.company_id == company_id)
         if status:
@@ -226,7 +227,7 @@ async def run_task(
     """Responsible human reviews, optionally adds a note, and triggers agent execution."""
     with get_session() as session:
         task = session.get(TaskRequest, task_id)
-        if not task:
+        if not task or not authz.is_member(session, current_user.id, task.company_id):
             raise HTTPException(status_code=404, detail="Task not found")
         if task.responsible_user_id != current_user.id:
             raise HTTPException(
@@ -351,9 +352,10 @@ async def stream_task(task_id: str, current_user: User = Depends(get_current_use
     """
     with get_session() as session:
         task = session.get(TaskRequest, task_id)
-        if not task or current_user.id not in (
-            task.requester_user_id,
-            task.responsible_user_id,
+        if (
+            not task
+            or current_user.id not in (task.requester_user_id, task.responsible_user_id)
+            or not authz.is_member(session, current_user.id, task.company_id)
         ):
             raise HTTPException(status_code=404, detail="Task not found")
     q: asyncio.Queue = asyncio.Queue()
@@ -388,7 +390,7 @@ def reject_task(
 ):
     with get_session() as session:
         task = session.get(TaskRequest, task_id)
-        if not task:
+        if not task or not authz.is_member(session, current_user.id, task.company_id):
             raise HTTPException(status_code=404, detail="Task not found")
         if task.responsible_user_id != current_user.id:
             raise HTTPException(

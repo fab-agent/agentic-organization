@@ -130,6 +130,8 @@ def update_user(user_id: str, body: dict, caller: User = Depends(_require_any_fo
         user = session.get(User, user_id)
         if not user or not _controls_account(session, caller, user_id):
             raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
+        if "is_active" in body and not isinstance(body["is_active"], bool):
+            raise HTTPException(status_code=422, detail="is_active: true | false")
         if "name" in body:
             user.name = str(body["name"])
         if "is_active" in body:
