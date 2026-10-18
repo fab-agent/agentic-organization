@@ -8,52 +8,47 @@ everything is logged tamper-evidently.
 Full rationale for the decisions: [`docs/adr/`](adr/). Architecture picture:
 [`docs/architecture/agentic-os.md`](architecture/agentic-os.md).
 
-## Current state (2026-09-30)
+## Current state (2026-10-18)
 
-Two layers are on `main`. Per-ADR detail lives in each ADR's own *Implementation status*
-section; this page only says what is done and what is next.
+Per-ADR detail lives in each ADR's own status notes; this page only says what is done and what is next.
+Release **v1.4.0** is out (GHCR images, `@fab-agent/cli` and `@fab-agent/agent-plugin` on GitHub Packages,
+the `3pa` bundle on the release page). The repository is a monorepo: `apps/docs` (documentation site) and
+`apps/landing` (marketing site) live beside the product.
 
-**Agentic OS layer for developers (ADR-0001 – 0013): done.** Gateway + guardrails, fail-closed
-scoped policy engine, tamper-evident audit with external anchoring, Postgres + pgvector, `3pa` CLI
-+ OIDC, signed `/.well-known/opencode` and command channel, sandbox with default-deny egress,
-injection defense layers 1–5, token refresh/revocation, severity scoring with Telegram alerts,
-release workflows. Documented at [agent-docs.fab.engineering](https://agent-docs.fab.engineering).
-Left over (small): read-only rootfs, Redis rate limit / audit lock for multi-worker, `3pa update`,
-rule-authoring UI, injection layer 6 (output scanning).
+**Agentic OS layer for developers (ADR-0001 – 0013): done**, with one honest caveat recorded in ADR-0006:
+audit appends are best-effort, so "fail-closed audit" is an intent, not a guarantee.
 
-**Department terminal workspace (ADR-0014, 0018 – 0021): implemented up to the runtime.**
-`fab` client (Rust + Ratatui), workspace lifecycle API, one agent per person, token-budgeted prompt
-assembly, Jev intent classifier, work review, fit rating with rubric / calibration / shadow gates,
-training-need signal. PR #21; migration head `f8c4e1b73a26`. Everything that evaluates people is
-**off per company** until legal review.
+**Decided and partly built (ADR-0014 – 0023, all `accepted`):**
 
-| Not usable at a real customer yet | Why |
-|---|---|
-| Server-side workspace runtime | Only a test `FakeRuntime`; contract is in ADR-0018; the image has not been run in Docker |
-| Fit rating | Never measured against the live Jev API; thresholds are proposals; not legally reviewed (ADR-0019 open question 4) |
+| ADR | Built | Not built |
+|---|---|---|
+| 0015 ingestion + ranking | – | Docling worker, `DocumentChunk` ACL, Jev ranker |
+| 0016 installation kit | `openai_compatible` routing | OIDC for web/TUI, setup flow, ERP template |
+| 0017 policies as code | tool-rule engine, change requests | Git as source of truth, import job, behaviour checks |
+| 0018 workspace API | REST + `FakeRuntime` | real runtime/controller, WebSocket attach, image run in Docker |
+| 0019 / 0021 review + rating | work review, rubric, rating, contest, training signal | live calibration, legal review, rubric in Git |
+| 0020 prompt + intent | budgeted assembly, Jev intent (off by default) | on-demand lookup, tool-schema deferral |
+| 0022 herdr + department view + learning loop | `assistant_user` view (chat, files, status stream, my context), typed `harness` change requests with versions, rollback, per-chat pinning, plugin spec | the proposer/probe/judge loop, outputs list, sources panel, the plugin itself, local Assistant folder helper |
+| 0023 eval | run diagnosis, gateway failure events, deterministic judges + text-judge scaffold, `/eval` viewer | calibrated text judges on stored text, replay |
+
+**Authorisation:** every tenant-owned resource is checked against the role *in the owning company*
+(`services/authz.py`; a route-auth guard test and a tenant-isolation suite protect it). Known and documented:
+instance-level settings (provider keys, database connections, backup, social) are not per company.
 
 ### Decisions waiting on people
 
-- Accept ADR-0014, 0018 – 0021 (all still `proposed`).
 - Legal review (KVKK / GDPR) before rating or manager sharing is enabled.
 - Retention (default 365 days) and export authority; whether the minimum group size (3) is permanent.
+- Whether a multi-company installation needs per-company provider/database/backup settings.
 
 ### Next, in priority order
 
-1. Run the rubric calibration against the live Jev API with 20+ labelled samples; update thresholds.
-2. Real workspace runtime + controller (Docker or worker node, idle suspend, capacity model).
-3. While legal review runs: name / address recognition in the redaction filter; move the rubric to the
-   policy repo behind a change request; `fab` rubric view and the missing screens (unit findings,
-   shared signals for managers, contest resolver); easier `shadow → live` promotion.
-4. Decide whether intent classification becomes default-on (measured: 0/48 wrongly trimmed, p50 0.24 s).
-5. Small debts: token refresh for long-lived workspaces, per-provider token estimate factor, whether the
-   `needs_company_knowledge` tag is needed.
-
-### Not started from the original plan
-
-ADR-0015 (document ingestion with Docling and Jev ranking), ADR-0016 (installation kit) and
-ADR-0017 (policies as code and daily review) are still proposals with no Docling / ingestion code (grep-verified 2026-09-30); only the
-`openai_compatible` provider routing from ADR-0016 already exists. The earlier plan for them (steps 2, 3, 5 – 8) stands; see those ADRs.
+1. Real workspace runtime + controller (Docker or worker node, idle suspend, capacity model).
+2. Rubric calibration against the live Jev API with 20+ labelled samples.
+3. The learning loop's missing half: signal intake, proposer, probe environment, judges with calibration.
+4. Department view completion: outputs list/download, sources panel, "My review", local Assistant folder.
+5. The herdr plugin (acceptance tests in `docs/architecture/herdr-plugin-spec.md`).
+6. Audit durability: acknowledge an append before allowing the action (ADR-0006 follow-up).
 
 ## Fixed principles
 
