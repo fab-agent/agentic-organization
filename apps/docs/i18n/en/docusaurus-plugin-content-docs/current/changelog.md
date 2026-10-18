@@ -12,6 +12,8 @@ The platform's changes, newest first. For technical detail see the repository's 
 - **Invites and role grants:** who may grant which role is enforced in the API; an existing founder/executive membership cannot be lowered.
 - **Evaluation (ADR-0023, stage 1):** run diagnosis from audit events and the `/eval` API. → [Evaluation](/workstation/eval)
 - **Audit chain:** workstation events are stamped `origin: client` by the server; policy decisions carry the verified `run`.
+- **Multi-company authorisation:** policies, skills, departments, memberships, flows, sessions, invites and token minting are tied to the role in the owning company; a chat session belongs to its owner and the agent's managers; a `draft` agent cannot be used; an invite never resets the password of an account that belongs to another company.
+- **Gateway:** timeouts, connection errors, unparseable replies, cut streams and empty output are written to the audit event.
 - **ADRs:** 0003, 0006, 0014–0023 accepted; some decisions of 0014 and 0019 are narrowed/superseded by ADR-0022.
 - **Repository:** the documentation (`apps/docs`) and landing page (`apps/landing`) now live in this repository; the version number matches the code; the licence is Commons Clause + MIT in `LICENSE`.
 

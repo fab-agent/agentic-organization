@@ -51,8 +51,8 @@ Comparison:
 | Settings (providers, Git, backup, databases…) | | | | ✓ | ✓ |
 | Telegram settings, user management, deleting the company | | | | | ✓ |
 
-:::caution Difference between the interface and the API
-The table above describes what is **shown and doable in the interface**. On the API side, operations such as departments, personnel and flows only check company membership; a role check also exists in the API for these operations: updating company details (executive+), deleting the company (founder), user management and Telegram (founder), provider keys, and writing policies/skills/backup/databases (being at least a department head in some company). In a sensitive installation, restrict direct access to the API. See [Security](/technical/security).
+:::info The interface and the API apply the same rules
+Roles are also checked in the API against the company and scope: policies, skills, departments, memberships, flows, sessions, invites and agent settings are open only to authorised members of the owning company; another company's resource returns `404`, an unauthorised member gets `403`. Installation-level settings (provider keys, database connections, backup) are not tied to a company; see [Known limits](/developer-notes/known-limits).
 :::
 
 ## Changing a role

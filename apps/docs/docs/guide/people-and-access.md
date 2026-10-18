@@ -51,8 +51,8 @@ Karşılaştırma:
 | Ayarlar (sağlayıcılar, Git, yedek, veritabanı…) | | | | ✓ | ✓ |
 | Telegram ayarları, kullanıcı yönetimi, şirketi silme | | | | | ✓ |
 
-:::caution Arayüz ile API arasındaki fark
-Yukarıdaki tablo **arayüzde** görünen ve yapılabilen şeyleri anlatır. API tarafında departman, personel, akış gibi işlemler yalnızca şirket üyeliğini kontrol eder; rol kontrolü şu işlemlerde API'de de vardır: şirket bilgilerini güncelleme (yönetici+), şirketi silme (kurucu), kullanıcı yönetimi ve Telegram (kurucu), sağlayıcı anahtarları, politika/yetenek/yedek/veritabanı yazma işlemleri (bir şirkette en az bölüm yöneticisi olmak). Hassas bir kurulumda API'ye doğrudan erişimi kısıtlayın. Bkz. [Güvenlik](/technical/security).
+:::info Arayüz ve API aynı kuralları uygular
+Roller API'de de şirket ve kapsama göre denetlenir: politika, yetenek, bölüm, üyelik, akış, oturum, davet ve ajan ayarları yalnızca sahibi olan şirketin yetkili üyelerine açıktır; başka şirketin kaynağı için `404` döner. Yetkisiz üye `403` alır. Örnek düzeyi ayarlar (sağlayıcı anahtarı, veritabanı bağlantısı, yedek) şirkete bağlı değildir; bkz. [Bilinen sınırlar](/developer-notes/known-limits).
 :::
 
 ## Rol değiştirme

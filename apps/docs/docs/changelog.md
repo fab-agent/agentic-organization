@@ -12,6 +12,8 @@ Platformun değişiklikleri, yeniden eskiye doğru. Teknik ayrıntı için depod
 - **Davet ve rol atama:** hangi rolü kimin verebileceği API'de denetlenir; mevcut kurucu/yönetici üyeliği düşürülemez.
 - **Değerlendirme (ADR-0023, aşama 1):** denetim olaylarından çalışma teşhisi ve `/eval` API'si. → [Değerlendirme](/workstation/eval)
 - **Denetim zinciri:** iş istasyonu olaylarına sunucu `origin: client` damgası; politika kararları doğrulanmış `run` taşır.
+- **Çok kiracılı yetki:** politika, yetenek, bölüm, üyelik, akış, oturum, davet ve token üretimi artık sahibi olan şirketin rolüne bağlı; sohbet oturumu sahibine ve ajanın yöneticilerine aittir; `draft` ajan kullanılamaz; başka bir şirketin hesabına davet şifresini sıfırlamaz.
+- **Gateway:** zaman aşımı, bağlantı hatası, çözümlenemeyen yanıt, kesilen akış ve boş çıktı denetim olayına yazılır.
 - **ADR'ler:** 0003, 0006, 0014–0023 kabul edildi; 0014 ve 0019'un bazı kararları ADR-0022 ile daraltıldı/yerine geçildi.
 - **Depo:** dokümantasyon (`apps/docs`) ve açılış sayfası (`apps/landing`) artık bu depoda; sürüm numarası kodla hizalandı; lisans Commons Clause + MIT olarak `LICENSE` dosyasında.
 
