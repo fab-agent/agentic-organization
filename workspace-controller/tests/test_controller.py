@@ -290,7 +290,7 @@ def test_files_go_through_a_locked_down_helper_container(ctl):
     )
     r = c.get(f"/v1/workspaces/{WID}/files?area=out", headers=H).json()["files"]
     assert [f["path"] for f in r] == ["out/.env"]
-    args, _, cap = helper.calls[-1]
+    args, _, _cap = helper.calls[-1]
     assert args[args.index("--network") + 1] == "none"
     assert args[args.index("--user") + 1] == "10001:10001"
     assert "--read-only" in args and "--cap-drop" in args

@@ -207,7 +207,7 @@ class Docker:
                 '{{.State.Running}}|{{.Config.Image}}|{{index .Config.Labels "fab.managed"}}',
             )
             if state is not None:
-                running, image, label = (state.split("|") + ["", "", ""])[:3]
+                _running, image, label = (state.split("|") + ["", "", ""])[:3]
                 if label != "workspace-controller" or image != self.cfg.egress_image:
                     # not ours or out of date: replace rather than trust it
                     self.run(["rm", "-f", EGRESS], None, None)
