@@ -102,6 +102,8 @@ replay set and from pending proposals, and personal data is not embedded in
 immutable Git/audit entries (only references). Redaction is not anonymisation and
 is not treated as such.
 
+> **Status (2026-10-18):** signal intake exists (`LearningSignal`, `POST /learning/signals`): thumbs and short corrections from the owner of the chat, tied to their person record, redacted, deduplicated per answer and kind, capped per day, only when work review is on, erased with the person, withdrawable. Nothing consumes the signals yet.
+
 ### 4. Poisoning and judge integrity
 
 Signals are deduplicated, capped per person, and need a minimum number of

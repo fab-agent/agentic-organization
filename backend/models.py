@@ -875,3 +875,28 @@ class HarnessArtifact(SQLModel, table=True):
     source_cr_id: str | None = Field(default=None, foreign_key="changerequest.id")
     evidence_json: str = Field(default="[]")  # references only, never text
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class LearningSignal(SQLModel, table=True):
+    """A verified human signal about one assistant answer (ADR-0022 §3).
+
+    Only authenticated, linked people can give one; it is tied to their person record
+    so erasure removes it; the optional note is redacted and short. Task content, tool
+    results and documents are never copied here. Nothing consumes these yet except a
+    future proposer; they are evidence references, not lessons.
+    """
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "message_id", "kind", name="uq_learning_signal"),
+    )
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    company_id: str = Field(foreign_key="company.id", index=True)
+    personnel_id: str = Field(foreign_key="personnel.id", index=True)  # the human
+    persona_id: str = Field(foreign_key="personnel.id", index=True)  # the agent
+    user_id: str = Field(foreign_key="user.id")
+    session_id: str = Field(foreign_key="agentsession.id")
+    message_id: str = Field(foreign_key="sessionmessage.id")
+    kind: str  # thumbs_up | thumbs_down | correction
+    note: str | None = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)

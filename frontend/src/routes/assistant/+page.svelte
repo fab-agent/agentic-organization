@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { assistantApi, type AssistantContext } from '$lib/api/assistant';
+	import { learningApi, type SignalKind } from '$lib/api/learning';
 	import { outputsApi, isRisky, type OutputFile } from '$lib/api/outputs';
 	import { sessionsApi, streamMessage, type Attachment } from '$lib/api/sessions';
 	import { companyStore } from '$lib/stores/company.svelte';
@@ -9,7 +10,7 @@
 	import { Loader, Paperclip, Send, X } from '@lucide/svelte';
 
 	type Source = { kind: string; date: string; snippet: string };
-	type Turn = { role: 'user' | 'assistant'; content: string; sources?: Source[] };
+	type Turn = { role: 'user' | 'assistant'; content: string; sources?: Source[]; id?: string; rated?: SignalKind };
 
 	let ctx: AssistantContext | null = $state(null);
 	let error: string | null = $state(null);
@@ -130,6 +131,7 @@
 		await toBottom();
 		let answer = '';
 		let cited: Source[] = [];
+		let messageId: string | undefined;
 		try {
 			for await (const ev of streamMessage(sid, text, ctl.signal, sent)) {
 				if (mine !== epoch) break; // the company changed under us
@@ -141,7 +143,8 @@
 				} else if (ev.type === 'sources') {
 					cited = ev.items;
 				} else if (ev.type === 'error') error = ev.message;
-				else if (ev.type === 'done' || ev.type === 'stream_end') break;
+				else if (ev.type === 'done') { messageId = ev.message_id; break; }
+				else if (ev.type === 'stream_end') break;
 				await toBottom();
 			}
 		} catch (e) {
@@ -149,12 +152,28 @@
 		} finally {
 			// Only the generation that started this send may touch the shared state.
 			if (mine === epoch) {
-				if (answer) turns = [...turns, { role: 'assistant', content: answer, sources: cited }];
+				if (answer) turns = [...turns, { role: 'assistant', content: answer, sources: cited, id: messageId }];
 				streamingText = '';
 				streaming = false;
 				status = '';
 				await toBottom();
 			}
+		}
+	}
+
+	async function rate(i: number, kind: SignalKind) {
+		const t = turns[i];
+		if (!t?.id) return;
+		try {
+			if (t.rated === kind) {
+				await learningApi.withdraw(t.id, kind);
+				turns[i] = { ...t, rated: undefined };
+			} else {
+				await learningApi.give(t.id, kind);
+				turns[i] = { ...t, rated: kind };
+			}
+		} catch (e) {
+			error = (e as Error).message;
 		}
 	}
 
@@ -180,10 +199,16 @@
 		</header>
 
 		<div bind:this={scroller} class="flex-1 overflow-y-auto p-4 space-y-4" aria-live="polite">
-			{#each turns as t}
+			{#each turns as t, i}
 				<div class={t.role === 'user' ? 'ml-auto max-w-[85%] rounded-xl bg-primary/10 px-3 py-2' : 'max-w-[90%]'}>
 					{#if t.role === 'assistant'}
 						<MessageContent content={t.content} />
+						{#if t.id}
+							<div class="mt-1 flex gap-2 text-xs">
+								<button aria-pressed={t.rated === 'thumbs_up'} class={t.rated === 'thumbs_up' ? 'font-semibold' : 'text-muted-foreground'} onclick={() => rate(i, 'thumbs_up')}>👍 Yararlı</button>
+								<button aria-pressed={t.rated === 'thumbs_down'} class={t.rated === 'thumbs_down' ? 'font-semibold' : 'text-muted-foreground'} onclick={() => rate(i, 'thumbs_down')}>👎 Değil</button>
+							</div>
+						{/if}
 						{#if t.sources?.length}
 							<details class="mt-1 rounded-lg border p-2 text-xs">
 								<summary class="cursor-pointer font-medium">Kaynaklar ({t.sources.length})</summary>

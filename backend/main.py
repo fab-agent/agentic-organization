@@ -45,6 +45,7 @@ from api.git_sync import router as git_router
 from api.harness import router as harness_router
 from api.inbox import router as inbox_router
 from api.journal import router as journal_router
+from api.learning import router as learning_router
 from api.mcp_server import router as mcp_router
 from api.onboarding import router as onboarding_router
 from api.personnel import router as personnel_router
@@ -125,6 +126,7 @@ app.include_router(workspaces_router)
 app.include_router(work_review_router)
 app.include_router(assistant_router)
 app.include_router(harness_router)
+app.include_router(learning_router)
 app.include_router(mcp_router)
 app.include_router(well_known_router)
 app.include_router(git_router)

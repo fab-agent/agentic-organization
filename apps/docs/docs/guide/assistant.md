@@ -14,6 +14,7 @@ Muhasebe, finans, İK gibi birimler için tasarlanmış küçük bir ekrandır. 
 - **Durum satırı:** asistan çalışırken "Çalışıyor: araç adı" gibi kısa durumlar görürsünüz. Ham akıl yürütme, araç argümanları ve araç sonuçları bu görünüme gönderilmez.
 - **Kaynaklar:** yanıt geçmiş çalışmalardan bilgi kullandıysa, yanıtın altında "Kaynaklar" açılır: tür, tarih ve kısa (kişisel veriden arındırılmış) bir özet. Tam metin ve iç kimlikler gösterilmez.
 - **Çıktılarım:** asistanın çalışma alanındaki `out/` dosyaları listelenir ve indirilir. Dosya hiçbir zaman otomatik açılmaz; makro/komut içerebilen türler için indirmeden önce uyarı çıkar. (Çalışma alanı çalışma zamanı henüz gerçek değil; liste şimdilik boş olabilir.)
+- **Geri bildirim:** her yanıtın altındaki 👍/👎 bir sinyal olarak kaydedilir (yalnızca şirket iş incelemesini açtıysa; günde en fazla 50, yanıt başına tür başına bir tane, istediğiniz zaman geri çekilebilir). Sinyaller henüz hiçbir istemi değiştirmez; ileride öneri üretiminde kanıt olarak kullanılacaktır.
 - **Bağlamım:** adınız, biriminiz, yöneticiniz ve çalışma arkadaşlarınız (yalnızca ad ve görev), asistanınıza bağlı araçlar, size uygulanan politikalar, şirketin misyonu ve vizyonu, birim hedefleri.
 
 ## Ne yapamazsınız?

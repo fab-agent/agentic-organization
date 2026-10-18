@@ -44,6 +44,7 @@ from models import (
     Company,
     CompanyMember,
     Department,
+    LearningSignal,
     Personnel,
     RunDiagnosis,
     WorkNote,
@@ -262,7 +263,7 @@ def purge_expired(today: date | None = None) -> int:
 def erase_person(session, personnel_id: str) -> int:
     """Erase everything work review holds (signals, notes, ratings) about one person. The caller commits."""
     n = 0
-    for model in (WorkSignal, WorkNote, WorkRating, WorkTrainingShare):
+    for model in (WorkSignal, WorkNote, WorkRating, WorkTrainingShare, LearningSignal):
         n += (
             session.execute(
                 delete(model).where(model.personnel_id == personnel_id)

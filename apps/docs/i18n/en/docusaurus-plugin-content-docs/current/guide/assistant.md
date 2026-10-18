@@ -14,6 +14,7 @@ A small screen for departments such as accounting, finance and HR. You do not ne
 - **Status line:** while the assistant works you see short states such as "Working: tool name". Raw reasoning, tool arguments and tool results are not sent to this view.
 - **Sources:** when an answer used knowledge from past work, a "Sources" fold appears under it: kind, date and a short snippet with personal identifiers removed. Full text and internal ids are not shown.
 - **My outputs:** the files in the assistant's workspace `out/` are listed and can be saved. A file is never opened automatically; types that can carry macros or commands ask for confirmation first. (The workspace runtime is not real yet, so the list may be empty for now.)
+- **Feedback:** the 👍/👎 under each answer is stored as a signal (only if the company switched work review on; at most 50 a day, one per answer and kind, withdrawable at any time). Signals do not change any prompt yet; they will be used as evidence for proposals later.
 - **My context:** your name, department, manager and colleagues (name and role only), the tools connected to your assistant, the policies that apply to you, the company's mission and vision, department goals.
 
 ## What you cannot do
