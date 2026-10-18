@@ -38,6 +38,8 @@ placement table, with no change to the API in section 3.
 
 > **Note (2026-10-18, acceptance review):** a stopped container does not keep a running tmux process; "suspend" keeps the volume and "resume" starts a fresh session, while a plain disconnect leaves the container running. The manifest/sync rationale is narrowed by ADR-0022 (no automatic platform sync; ADR-0019 §8 is superseded) — the file APIs stay, the automatic sync does not.
 
+> **Status (2026-10-18):** the controller (`workspace-controller/`: FastAPI, shared-secret auth, UUID-only ids, fixed image, env allowlist, argv-only Docker CLI, files through `docker cp` tar streams) and the backend `ControllerRuntime` exist (`WORKSPACE_RUNTIME=controller`). The workspace and egress images were built and run; create / suspend / resume (container recreated on its volumes with a fresh persona token) / remove / restore / purge and the file APIs pass against real Docker (`backend/tests/test_workspace_controller_live.py`, opt-in). Still open: WebSocket attach, the idle scheduler, the capacity model, a verb-filtering socket proxy in front of Docker, and the compose deployment.
+
 ### 2. Workspace model
 
 One workspace per human `Personnel` (`personnel_id`). The person's single agent

@@ -4,9 +4,11 @@ Department workspace image (ADR-0014, ADR-0018): one long-lived server-side
 container per person, with the work toolchain baked in and the agent running in a
 tmux session that survives client disconnects.
 
-**Status: first cut.** The shell logic is tested (below). **The image itself has
-not been built or run yet** — it was written in an environment without a Docker
-daemon. Build it and run the smoke checks at the end before relying on it.
+**Status.** The shell logic is tested (below). The image was built (≈2.7 GB) and run
+on 2026-10-18 with `--cap-drop ALL --security-opt no-new-privileges`, no network: non-root
+uid 10001, tmux session up, `in/` and `out/` created, LibreOffice converts a document to
+PDF, headless Chromium renders, files and home survive stop/start. It is created and
+managed by `workspace-controller/` (see its README).
 
 ## Files
 

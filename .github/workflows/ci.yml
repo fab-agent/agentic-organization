@@ -80,6 +80,10 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v --tb=short
         working-directory: backend
+
+      - name: Workspace controller tests (fake Docker runner)
+        run: pytest ../workspace-controller/tests -v --tb=short
+        working-directory: backend
         env:
           JWT_SECRET: ci-test-secret-not-for-production
           ENCRYPTION_KEY: ""

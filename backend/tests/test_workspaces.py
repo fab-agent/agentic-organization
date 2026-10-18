@@ -466,3 +466,137 @@ def test_attachment_header_is_safe_for_unicode_and_control_characters():
         _attachment("\x00\x01")
         == "attachment; filename=\"file\"; filename*=UTF-8''file"
     )
+
+
+# ── the controller client (ADR-0018 §1) ──────────────────────────────────────
+
+
+def _controller(handler):
+    import httpx
+
+    from services.workspace_runtime import ControllerRuntime
+
+    return ControllerRuntime(
+        "http://ctl:8090",
+        "s" * 40,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+
+def test_controller_client_sends_the_secret_and_maps_calls():
+    import httpx
+
+    from services.workspace_runtime import WorkspaceSpec
+
+    seen = []
+
+    def handler(req: httpx.Request):
+        seen.append(
+            (
+                req.method,
+                req.url.path,
+                req.headers.get("x-controller-secret"),
+                req.content,
+            )
+        )
+        if req.url.path.endswith("/files"):
+            return httpx.Response(
+                200,
+                json={
+                    "files": [
+                        {"path": "out/a.txt", "size": 1, "sha256": "x", "mtime_ns": 5}
+                    ]
+                },
+            )
+        if req.url.path.endswith("/status"):
+            return httpx.Response(200, json={"status": "running"})
+        if req.url.path.endswith("/file") and req.method == "GET":
+            return httpx.Response(200, content=b"data")
+        return httpx.Response(200, json={"ok": True})
+
+    rt = _controller(handler)
+    rt.create(WorkspaceSpec("w1", "c", "p", env={"FABAGENT_TOKEN": "t"}))
+    rt.start("w1", {"FABAGENT_TOKEN": "t2"})
+    rt.stop("w1")
+    assert rt.status("w1") == "running"
+    assert [f.path for f in rt.list_files("w1", "out")] == ["out/a.txt"]
+    assert rt.read_file("w1", "out/a.txt") == b"data"
+    rt.write_file("w1", "in/a.txt", b"x")
+    assert all(secret == "s" * 40 for _, _, secret, _ in seen)
+    assert b'"FABAGENT_TOKEN"' in seen[0][3]
+
+
+def test_controller_errors_become_runtime_errors_and_404_is_file_not_found():
+    import httpx
+    import pytest
+
+    from services.workspace_runtime import FileNotFound, WorkspaceRuntimeError
+
+    def handler(req):
+        if "missing" in req.url.params.get("path", ""):
+            return httpx.Response(404, json={"detail": "not found"})
+        if req.url.path.endswith("/stop"):
+            return httpx.Response(502, json={"detail": "docker said no"})
+        raise httpx.ConnectError("down")
+
+    rt = _controller(handler)
+    with pytest.raises(FileNotFound):
+        rt.read_file("w1", "out/missing.txt")
+    with pytest.raises(WorkspaceRuntimeError, match="docker said no"):
+        rt.stop("w1")
+    with pytest.raises(WorkspaceRuntimeError, match="unreachable"):
+        rt.status("w1")
+
+
+def test_controller_client_refuses_a_short_secret(monkeypatch):
+    import pytest
+
+    from services.workspace_runtime import ControllerRuntime, WorkspaceRuntimeError
+
+    with pytest.raises(WorkspaceRuntimeError):
+        ControllerRuntime("http://ctl", "short")
+
+
+def test_the_agent_gets_its_own_fresh_token_and_never_anyone_elses(
+    client, db_session, monkeypatch
+):
+    """create/resume pass the runtime an environment with the workspace agent's token."""
+    from services.auth import create_access_token
+    from services.gateway_auth import decode_persona_token
+    from services.workspace_runtime import _fake
+    from tests.conftest import make_company, make_member, make_personnel, make_user
+
+    monkeypatch.setenv("WORKSPACE_RUNTIME", "fake")
+    monkeypatch.setenv("WORKSPACE_PUBLIC_BASE_URL", "https://agents.example")
+    co = make_company(db_session)
+    u = make_user(db_session, email="w@a.com", name="W")
+    make_member(db_session, u.id, co.id, role="user")
+    p = make_personnel(db_session, co.id, name="W H", slug="w-h", type="human")
+    p.user_id = u.id
+    db_session.add(p)
+    db_session.commit()
+    h = {"Authorization": f"Bearer {create_access_token(u.id)}"}
+    captured = {}
+    orig_create, orig_start = _fake.create, _fake.start
+    _fake.create = lambda spec: (captured.update(create=spec.env), orig_create(spec))
+    _fake.start = lambda wid, env=None: (
+        captured.update(start=env),
+        orig_start(wid, env),
+    )
+    try:
+        ws = client.post("/workspaces", headers=h).json()
+        client.post(f"/workspaces/{ws['id']}/suspend", headers=h)
+        client.post(f"/workspaces/{ws['id']}/resume", headers=h)
+    finally:
+        _fake.create, _fake.start = orig_create, orig_start
+    for key in ("create", "start"):
+        env = captured[key]
+        assert env["FABAGENT_BASE_URL"] == "https://agents.example"
+        principal = decode_persona_token(
+            env["FABAGENT_TOKEN"], expected_audience="gateway"
+        )
+        assert (
+            principal.persona_id == ws["agent_persona_id"]
+            and principal.company_id == co.id
+        )
+    assert captured["create"]["FABAGENT_TOKEN"] != captured["start"]["FABAGENT_TOKEN"]

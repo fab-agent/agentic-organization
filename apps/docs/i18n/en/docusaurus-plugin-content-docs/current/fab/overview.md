@@ -18,7 +18,7 @@ sidebar_position: 1
 | **My work review** (`v`), ratings and contesting, training signal | Works, **off** per company by default |
 | Calibration tool, rubric linter, sampled rating | Works; **not measured** with live Jev |
 | Workspace image (LibreOffice, PDF tools, headless Chromium) | First version; **not run** in Docker |
-| **A real workspace runtime** | **None**: only a `FakeRuntime` for tests |
+| **A real workspace runtime** | **First version**: the Docker controller was exercised on one host; no attach, scheduler or capacity model |
 
 So today `fab` is not ready for use at a real customer: there is no real workspace runtime on the server side, and fit rating has not been measured with the live Jev API and has not passed legal review. For details see the [Administrator Guide](/fab/enablement).
 

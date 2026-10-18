@@ -32,8 +32,8 @@ Bu sayfa, dokümantasyonu koda karşı doğrularken bulunan **gerçek eksikleri*
 
 | Konu | Durum |
 |---|---|
-| Gerçek çalışma alanı çalışma zamanı | Yok; yalnızca test için `FakeRuntime` |
-| Çalışma alanı imajı | Docker'da çalıştırılmadı |
+| Gerçek çalışma alanı çalışma zamanı | İlk sürüm: Docker denetleyicisi tek sunucuda denendi; WebSocket bağlanma, boşta askıya alma, kapasite modeli ve soket vekili yok |
+| Çalışma alanı imajı | Derlendi ve çalıştırıldı; çok kullanıcılı yük altında denenmedi |
 | Puanlama ve kalibrasyon | Canlı Jev ile ölçülmedi; eşikler öneridir |
 | Süzme | Yalnızca biçime bakar; isim/adres tanımaz |
 | Hukuki inceleme | Puanlama ve yöneticiyle paylaşım açılmadan önce şart (KVKK/GDPR) |

@@ -17,8 +17,8 @@ sidebar_position: 1
 | Kişi başına tek ajan, token bütçeli prompt birleştirme, niyet sınıflandırma | Çalışıyor, testli |
 | **İş incelemem** (`v`), puanlar ve itiraz, eğitim sinyali | Çalışıyor, şirket başına **kapalı** gelir |
 | Kalibrasyon aracı, rubrik denetleyicisi (linter), örneklemeli puanlama | Çalışıyor; canlı Jev ile **ölçülmedi** |
-| Çalışma alanı imajı (LibreOffice, PDF araçları, headless Chromium) | İlk sürüm; Docker'da **çalıştırılmadı** |
-| **Gerçek çalışma alanı çalışma zamanı** | **Yok** — yalnızca test için `FakeRuntime` |
+| Çalışma alanı imajı (LibreOffice, PDF araçları, headless Chromium) | Derlendi ve çalıştırıldı (Docker, tek sunucu) |
+| **Gerçek çalışma alanı çalışma zamanı** | **İlk sürüm** — Docker denetleyicisi tek sunucuda denendi; bağlanma, zamanlayıcı ve kapasite yok |
 
 Bu yüzden bugün `fab` gerçek bir müşteride kullanıma hazır değildir: sunucu tarafında gerçek bir çalışma alanı çalışma zamanı yoktur ve uygunluk puanlaması canlı Jev API'siyle ölçülmemiş, hukuki incelemeden geçmemiştir. Ayrıntı için [Yönetici Rehberi](/fab/enablement).
 

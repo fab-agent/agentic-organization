@@ -1,0 +1,17 @@
+# Builds whose context is the repo root (sandbox/, sandbox/workspace/) copy only a few
+# paths; keep everything else (dependencies, history, data) out of the context.
+.git
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.svelte-kit
+**/target
+**/build
+**/dist
+backend/data
+data
+apps
+frontend
+docs

@@ -18,7 +18,7 @@ There is **one workspace** for each human personnel record (ADR-0018). The perso
 
 Only a separate **`workspace-controller`** service has access to the container runtime. The backend does not mount `docker.sock`; so that a bug in the API does not become root on the host. The backend talks to it with a shared secret through the `WorkspaceRuntime` interface (`create`, `start`, `stop`, `remove`, `attach`, `status`, `list_files`) (`WORKSPACE_CONTROLLER_URL`, `WORKSPACE_CONTROLLER_SECRET`).
 
-> **Current status:** the interface only has a test-purpose `FakeRuntime` implementation (`WORKSPACE_RUNTIME=fake`). The real controller (Docker or a worker node, idle suspension, capacity model) has not been written yet; the contract is written in ADR-0018.
+> **Current status (18 October 2026):** the controller (`workspace-controller/`) and a Docker runtime are written and were exercised with real Docker on one host: create, suspend/resume (with a fresh token), delete/restore, file list/upload/download, zero capabilities, non-root user, no direct internet, egress only through the filtering proxy. Not there yet: WebSocket attach, an idle-suspend scheduler, a capacity model, a verb-filtering socket proxy in front of Docker, and a production deployment (compose service).
 
 ## API
 

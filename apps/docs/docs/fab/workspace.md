@@ -18,7 +18,7 @@ Her insan personel için **bir çalışma alanı** vardır (ADR-0018). Kişinin 
 
 Yalnızca ayrı bir **`workspace-controller`** servisi kapsayıcı çalışma zamanına erişir. Backend `docker.sock` bağlamaz; bir API hatası sunucuda root yetkisine dönüşmesin diye. Backend, `WorkspaceRuntime` arayüzü üzerinden (`create`, `start`, `stop`, `remove`, `attach`, `status`, `list_files`) ortak sırla konuşur (`WORKSPACE_CONTROLLER_URL`, `WORKSPACE_CONTROLLER_SECRET`).
 
-> **Bugünkü durum:** arayüzün yalnızca test amaçlı `FakeRuntime` gerçeklemesi vardır (`WORKSPACE_RUNTIME=fake`). Gerçek denetleyici (Docker veya worker düğümü, boşta askıya alma, kapasite modeli) henüz yazılmadı; sözleşme ADR-0018'de yazılıdır.
+> **Bugünkü durum (18 Ekim 2026):** denetleyici (`workspace-controller/`) ve Docker çalışma zamanı yazıldı ve tek bir sunucuda gerçek Docker ile denendi: oluşturma, askıya alma/sürdürme (yeni token ile), silme/geri yükleme, dosya listeleme/yükleme/indirme, sıfır yetenek, kök olmayan kullanıcı, doğrudan internet yok, çıkış yalnızca filtreleyen vekilden. Henüz yok: WebSocket bağlanma, boşta askıya alma zamanlayıcısı, kapasite modeli, Docker önünde fiil filtreleyen soket vekili ve üretim dağıtımı (compose servisi).
 
 ## API
 

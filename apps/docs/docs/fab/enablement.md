@@ -12,7 +12,7 @@ Aşağıdaki özellikler **şirket başına kapalı** gelir; kurucu açar. Açma
 | Puanlama | `PUT /work-review/settings {"rating_enabled": true, "acknowledge_notice": true}` | İş incelemesi açık, `TYPESAFE_API_KEY`, kalibre rubrik |
 | Yöneticiyle paylaşım | `PUT /work-review/training-need/settings {"sharing_enabled": true}` | Hukuki inceleme |
 | Niyet sınıflandırma | AppConfig `intent.enabled` + `TYPESAFE_API_KEY` | İstek metni şirket dışına çıkar |
-| Çalışma alanı çalışma zamanı | `WORKSPACE_RUNTIME=fake` yalnızca test | Gerçeği yazılmadı |
+| Çalışma alanı çalışma zamanı | `WORKSPACE_RUNTIME=controller` + `WORKSPACE_CONTROLLER_URL` / `_SECRET` + `WORKSPACE_PUBLIC_BASE_URL` | `workspace-controller` ayrı çalıştırılır; Docker erişimi yalnızca ondadır |
 
 ## Açmadan önce karar verilmesi gerekenler
 
@@ -41,7 +41,7 @@ cargo build && python tests/e2e_sync.py
 - Canlı Jev API'si: puanlama ve kalibrasyon yalnızca sahte taşıma katmanıyla denendi.
 - Tüm eşikler öneridir, ölçülmemiştir.
 - Süzme yalnızca biçime bakar (isim ve düz yazı ayrıntılarını tanımaz).
-- Çalışma alanı imajı Docker'da çalıştırılmadı.
+- Docker denetleyicisi yalnızca tek sunucuda denendi; Docker önünde soket vekili, kapasite ve zamanlayıcı yok.
 - `fab` yalnızca 24×110'luk sahte terminalde denendi.
 
 ## Geliştirici notları

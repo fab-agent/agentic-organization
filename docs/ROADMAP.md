@@ -25,7 +25,7 @@ audit appends are best-effort, so "fail-closed audit" is an intent, not a guaran
 | 0015 ingestion + ranking | – | Docling worker, `DocumentChunk` ACL, Jev ranker |
 | 0016 installation kit | `openai_compatible` routing | OIDC for web/TUI, setup flow, ERP template |
 | 0017 policies as code | tool-rule engine, change requests | Git as source of truth, import job, behaviour checks |
-| 0018 workspace API | REST + `FakeRuntime` | real runtime/controller, WebSocket attach, image run in Docker |
+| 0018 workspace API | REST, `workspace-controller` + Docker runtime (exercised on one host), image built and run | WebSocket attach, idle-suspend scheduler, capacity model, socket proxy, production deployment |
 | 0019 / 0021 review + rating | work review, rubric, rating, contest, training signal | live calibration, legal review, rubric in Git |
 | 0020 prompt + intent | budgeted assembly, Jev intent (off by default) | on-demand lookup, tool-schema deferral |
 | 0022 herdr + department view + learning loop | `assistant_user` view (chat, files, status stream, my context), typed `harness` change requests with versions, rollback, per-chat pinning, plugin spec | the proposer/probe/judge loop, outputs list, sources panel, the plugin itself, local Assistant folder helper |
@@ -43,7 +43,7 @@ instance-level settings (provider keys, database connections, backup, social) ar
 
 ### Next, in priority order
 
-1. Real workspace runtime + controller (Docker or worker node, idle suspend, capacity model).
+1. Workspace runtime completion: WebSocket attach, idle suspend, capacity model, socket proxy, compose deployment.
 2. Rubric calibration against the live Jev API with 20+ labelled samples.
 3. The learning loop's missing half: signal intake, proposer, probe environment, judges with calibration.
 4. Department view completion: outputs list/download, sources panel, "My review", local Assistant folder.

@@ -32,7 +32,7 @@ This page lists the **real gaps** found while verifying the documentation agains
 
 | Topic | Status |
 |---|---|
-| Real workspace runtime | None; only a `FakeRuntime` for tests |
+| Real workspace runtime | First version: the Docker controller was exercised on one host; no WebSocket attach, idle suspend, capacity model or socket proxy |
 | Workspace image | Not run in Docker |
 | Rating and calibration | Not measured with live Jev; thresholds are proposals |
 | Filtering | Looks only at shape; does not recognize names/addresses |

@@ -15,7 +15,7 @@ from sqlmodel import select
 from api.audit import log_action
 from api.auth import get_current_user
 from database import get_session
-from models import CompanyMember, Personnel, User, Workspace
+from models import AgentConfig, CompanyMember, Personnel, User, Workspace
 from services.workspace_agent import ensure_workspace_agent, find_workspace_agent
 from services.workspace_runtime import (
     FileNotFound,
@@ -82,6 +82,31 @@ def _runtime_failed(ws: Workspace, session, e: Exception, *, mark: bool) -> None
     raise HTTPException(status_code=502, detail=f"Workspace runtime error: {e}")
 
 
+def _runtime_env(session, person: Personnel, company_id: str) -> dict:
+    """What the agent process needs: the gateway URL, a fresh persona token for the
+    person's own workspace agent and the model. The token is short-lived (default 24 h);
+    resume recreates the container so it always starts with a fresh one."""
+    import os
+
+    from services.gateway_auth import create_persona_token
+    from services.workspace_agent import agent_model
+
+    agent = ensure_workspace_agent(session, person)
+    session.flush()  # committed with the workspace on success, dropped on failure
+    env = {
+        "FABAGENT_TOKEN": create_persona_token(
+            agent.id,
+            company_id,
+            ttl_minutes=int(os.getenv("WORKSPACE_TOKEN_TTL_MINUTES", "1440")),
+        ),
+        "OPENCODE_MODEL": f"fabagent/{agent_model(session, company_id)}",
+    }
+    base = os.getenv("WORKSPACE_PUBLIC_BASE_URL", "").strip()
+    if base:
+        env["FABAGENT_BASE_URL"] = base
+    return env
+
+
 def _view(session, ws: Workspace, person: Personnel | None = None) -> dict:
     """Workspace dict plus the person's workspace-agent persona id.
 
@@ -136,13 +161,30 @@ def create_workspace(
             response.status_code = 200
             return _view(session, existing, person)
 
+        had_agent = find_workspace_agent(session, person.id) is not None
         try:
             runtime.create(
                 WorkspaceSpec(
-                    workspace_id=ws.id, company_id=cid, personnel_id=person.id
+                    workspace_id=ws.id,
+                    company_id=cid,
+                    personnel_id=person.id,
+                    env=_runtime_env(session, person, cid),
                 )
             )
         except WorkspaceRuntimeError as e:
+            session.rollback()
+            if not had_agent:
+                # a failed start must not leave a new agent behind (explicit, because
+                # a savepoint release is not undone by rollback on every database)
+                agent = find_workspace_agent(session, person.id)
+                if agent is not None:
+                    for cfg in session.exec(
+                        select(AgentConfig).where(AgentConfig.personnel_id == agent.id)
+                    ).all():
+                        session.delete(cfg)
+                    session.flush()
+                    session.delete(agent)
+                    session.commit()
             _runtime_failed(ws, session, e, mark=True)
 
         ws.state = "running"
@@ -242,7 +284,10 @@ def resume_workspace(
                 status_code=409, detail=f"Cannot resume a {ws.state} workspace"
             )
         try:
-            runtime.start(ws.id)
+            person = session.get(Personnel, ws.personnel_id)
+            runtime.start(
+                ws.id, _runtime_env(session, person, ws.company_id) if person else None
+            )
         except WorkspaceRuntimeError as e:
             _runtime_failed(ws, session, e, mark=False)
         ws.state = "running"
@@ -309,7 +354,10 @@ def restore_workspace(
                 status_code=409, detail="The person already has a live workspace"
             )
         try:
-            runtime.restore(ws.id)
+            person = session.get(Personnel, ws.personnel_id)
+            runtime.restore(
+                ws.id, _runtime_env(session, person, ws.company_id) if person else None
+            )
         except WorkspaceRuntimeError as e:
             _runtime_failed(ws, session, e, mark=False)
         ws.state = "running"
