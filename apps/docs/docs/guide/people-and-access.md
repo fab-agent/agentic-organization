@@ -57,4 +57,12 @@ Yukarıdaki tablo **arayüzde** görünen ve yapılabilen şeyleri anlatır. API
 
 ## Rol değiştirme
 
-Bir kişinin rolü, davet edilirken verilir. Değiştirmek için bir yönetici kişiyi aynı e-postayla yeni rolle yeniden davet eder (mevcut üyelik güncellenir) veya kurucu üyeliği düzenler.
+Bir kişinin rolü, davet edilirken verilir. Hangi rolü kimin verebileceği API'de de denetlenir (yalnızca şirket genelindeki üyelikler sayılır):
+
+| Verilecek rol | Verebilenler |
+|---|---|
+| Kurucu, yönetici | Kurucu |
+| Bölüm yöneticisi | Kurucu, yönetici |
+| Ajan sorumlusu, kullanıcı | Kurucu, yönetici, bölüm yöneticisi |
+
+Bilinmeyen bir rol `422`, yetkisiz atama `403` döner. Mevcut bir kurucu veya yönetici üyeliği davetle düşürülemez. Değiştirmek için yetkili bir kişi aynı e-postayla yeni rolle yeniden davet eder (mevcut üyelik güncellenir).

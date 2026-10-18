@@ -57,4 +57,12 @@ The table above describes what is **shown and doable in the interface**. On the 
 
 ## Changing a role
 
-A person's role is given when they are invited. To change it, a manager invites the person again with the same email and the new role (the existing membership is updated), or the founder edits the membership.
+A person's role is given when they are invited. Who may hand out which role is also enforced in the API (only company-wide memberships count):
+
+| Role to grant | Who may grant it |
+|---|---|
+| Founder, executive | Founder |
+| Department head | Founder, executive |
+| Agent owner, user | Founder, executive, department head |
+
+An unknown role returns `422`, an unauthorised grant `403`. An existing founder or executive membership cannot be lowered by an invite. To change a role, an authorised person invites the same email again with the new role (the existing membership is updated).

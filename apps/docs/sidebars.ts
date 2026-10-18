@@ -51,6 +51,7 @@ const sidebars: SidebarsConfig = {
         'workstation/sandbox',
         'workstation/injection-defense',
         'workstation/managed-config',
+        'workstation/eval',
       ],
     },
     {

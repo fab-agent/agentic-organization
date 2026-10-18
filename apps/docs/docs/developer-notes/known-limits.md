@@ -6,7 +6,7 @@ sidebar_position: 2
 
 Bu sayfa, dokümantasyonu koda karşı doğrularken bulunan **gerçek eksikleri** ve henüz yapılmamış işleri listeler. Dürüst bir "ürün bugün nerede" tablosu olması için tutulur. Bir madde çözüldüğünde buradan silinir.
 
-*Son doğrulama: 1 Ekim 2026, `main` @ `319f78b`.*
+*Son doğrulama: 18 Ekim 2026.*
 
 ## Ürünle ilgili
 
@@ -14,7 +14,7 @@ Bu sayfa, dokümantasyonu koda karşı doğrularken bulunan **gerçek eksikleri*
 |---|---|---|
 | **Uygulama içi yedekleme yalnızca SQLite** | `api/backup.py` yalnızca SQLite dosyasını yedekler. Tüm Docker kurulumları PostgreSQL kullanır | PostgreSQL'de Ayarlar → Yedekle çalışmaz; `pg_dump` ayrıca gerekir |
 | **`ENCRYPTION_KEY` kullanılmıyor** | `.env.example` ve `setup-env.sh` üretir, kod okumaz. Gerçek anahtar `data/.secret` | Yanıltıcı; yedeğe `data/.secret` dahil edilmeli |
-| **Rol kontrolü kısmen yalnızca arayüzde** | Birçok API (departman, personel, akış…) yalnızca şirket üyeliğini kontrol eder; `require_manager` herhangi bir şirketteki rolü arar | API'ye doğrudan erişimde yetki yükseltme riski |
+| **Rol kontrolü kısmen yalnızca arayüzde** | Davet/rol atama, değişiklik talebi onayı ve eval API rol ve kapsam denetler; birçok başka API (departman, personel, akış…) hâlâ yalnızca şirket üyeliğini kontrol eder. Personel/ajan ayarlarını doğrudan değiştiren uçlar değişiklik talebi onayını atlayabilir | API'ye doğrudan erişimde yetki yükseltme riski |
 | **Gelen Kutusu'na kenar çubuğunda bağlantı yok** | `/inbox` yalnızca `user` rolünde girişte açılır | Diğer roller adresi elle yazar |
 | **Yönetici şifre sıfırlama düğmesi yok** | `POST /auth/reset/{id}` var, arayüzde yok | Yalnızca API ile |
 | **Politika motoru kipi için arayüz yok** | `PUT /policies/config` ile `off/dry_run/enforce` | Zorlama için API gerekir |
@@ -23,8 +23,6 @@ Bu sayfa, dokümantasyonu koda karşı doğrularken bulunan **gerçek eksikleri*
 | **Akışlarda araç kullanımı yalnızca Anthropic protokolü** | Diğer sağlayıcılarda araçsız tek çağrı | Akışlar bazı modellerde araç kullanamaz |
 | **`function` yeteneği tam izole değil** | Kısıtlı ad alanı + zaman aşımı, süreç izolasyonu yok | Güvenilmeyen kod çalıştırılmamalı |
 | **Git: yalnızca GitHub** | Değişiklik talebi commit'i GitHub dışında hata verir; arayüz GitLab/Gitea'yı da sunar | Yerel git planlandı |
-| **Sürüm numarası** | `backend/version.py` hâlâ `1.1.2`; dokümantasyon sürümü v1.3 diyor | Panel'deki "yeni sürüm" kontrolü yanıltıcı olabilir |
-| **Lisans anlatımı tutarsız** | `LICENSE` dosyası **düz MIT** (18 Temmuz 2026'dan beri); depodaki README ve `ORG_README.md` hâlâ "MIT + Commons Clause" diyebilir | Tek bir doğru anlatım gerekir (karar sahibi: kurucu) |
 
 ## fab (departman çalışma alanı)
 
@@ -43,7 +41,5 @@ Ayrıntı: [fab → Yönetici Rehberi](/fab/enablement).
 
 | Konu | Durum |
 |---|---|
-| ADR statüleri | 0014, 0018–0021 uygulandı ama `proposed`; 0003 ve 0006 uygulandı ama `proposed` |
 | `docs/ROADMAP.md` | Güncel (30 Eylül 2026) |
 | `NOTLAR.md` (depoda) | Haziran 2026'dan kalma; SQLite, "denetim kaydı yok" gibi artık geçerli olmayan maddeler içerir. Güncel özet [Geliştirici Notları](/developer-notes/overview)'ndadır |
-| Politika-digest ilk denemesi | Eski ADR-0014–0017 taslakları ve kodu (`PolicyClause`, `CompanySchema`, `PromptFlag`) birleştirilmedi; ADR numaraları yeni ADR'lerle çakıştığı için yerel bir dalda duruyor |

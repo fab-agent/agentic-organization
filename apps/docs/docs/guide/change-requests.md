@@ -33,6 +33,14 @@ submitted ──► dept_head_approved ──► committed
 
 Sayfada durum filtreleri vardır: Tümü, Bekliyor, Bölüm Onaylandı, Commit Edildi, Reddedildi. Bir talebi açınca onay geçmişini, notları ve önerilen değişikliği görürsünüz.
 
+## Kim neyi onaylayabilir?
+
+- İlk onay: kurucu, yönetici veya bölüm yöneticisi. Bölüm yöneticisi yalnızca **kendi bölümünün** hedeflerini onaylar.
+- Son onay: yalnızca şirket genelindeki yönetici veya kurucu. Talebi açan kişi ve ilk onayı veren kişi son onayı veremez; talebi açan kişi kendi talebinin ilk onayını da veremez.
+- Hedef (ajan, yetenek, politika) talebin şirketinde bulunmalı; önerilen bölüm ve sorumlu kişi de aynı şirkete ait olmalıdır.
+- İki kişi aynı anda onaylamaya çalışırsa yalnızca biri kazanır, diğeri `409` alır.
+- Talepleri yalnızca ilgili şirketin üyeleri görür.
+
 ## Son onayda ne olur?
 
 1. Şirket için bir **Git bağlantısı** tanımlıysa, değişiklik ilgili dosyaya commit edilir:

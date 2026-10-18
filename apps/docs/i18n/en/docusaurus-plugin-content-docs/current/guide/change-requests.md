@@ -33,6 +33,14 @@ submitted ──► dept_head_approved ──► committed
 
 The page has status filters: All, Pending, Dept Approved, Committed, Rejected. When you open a request you see the approval history, notes and the proposed change.
 
+## Who may approve what?
+
+- First approval: founder, executive or department head. A department head approves only targets in **their own department**.
+- Final approval: only a company-wide executive or founder. The person who opened the request and the person who gave the first approval cannot give the final one; the requester cannot give the first approval of their own request either.
+- The target (agent, skill, policy) must exist in the request's company; the proposed department and responsible person must belong to the same company.
+- If two people approve at the same moment only one wins; the other gets `409`.
+- Only members of the company can see its requests.
+
 ## What happens at final approval?
 
 1. If a **Git connection** is defined for the company, the change is committed to the relevant file:

@@ -6,9 +6,16 @@ sidebar_position: 99
 
 The platform's changes, newest first. For technical detail see the repository's commit history and `docs/adr/` records.
 
-:::note About version numbers
-The v1.2 and v1.3 numbers are used in this documentation; in the code `backend/version.py` still shows `1.1.2`. Until the code version number is updated, the "new version" notice on the Dashboard may reflect this difference.
-:::
+## v1.4 — 18 October 2026: Authorisation hardening, evaluation, monorepo
+
+- **Change requests:** company and role checks, scope (a department head only for their own department), the same person cannot approve both stages, one winner on concurrent approval.
+- **Invites and role grants:** who may grant which role is enforced in the API; an existing founder/executive membership cannot be lowered.
+- **Evaluation (ADR-0023, stage 1):** run diagnosis from audit events and the `/eval` API. → [Evaluation](/workstation/eval)
+- **Audit chain:** workstation events are stamped `origin: client` by the server; policy decisions carry the verified `run`.
+- **ADRs:** 0003, 0006, 0014–0023 accepted; some decisions of 0014 and 0019 are narrowed/superseded by ADR-0022.
+- **Repository:** the documentation (`apps/docs`) and landing page (`apps/landing`) now live in this repository; the version number matches the code; the licence is Commons Clause + MIT in `LICENSE`.
+
+**Limits:** judges, a viewer page and replay do not exist yet. → [Known limits](/developer-notes/known-limits)
 
 ## v1.3 — 30 September 2026: Department Workspace (`fab`)
 

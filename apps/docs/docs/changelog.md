@@ -6,9 +6,16 @@ sidebar_position: 99
 
 Platformun değişiklikleri, yeniden eskiye doğru. Teknik ayrıntı için depodaki commit geçmişine ve `docs/adr/` kayıtlarına bakın.
 
-:::note Sürüm numaraları hakkında
-v1.2 ve v1.3 numaraları bu dokümantasyonda kullanılır; kodda `backend/version.py` hâlâ `1.1.2` gösterir. Kod sürüm numarası güncellenene kadar Panel'deki "yeni sürüm" bildirimi bu farkı yansıtabilir.
-:::
+## v1.4 — 18 Ekim 2026: Yetki sertleştirme, değerlendirme, monorepo
+
+- **Değişiklik talepleri:** şirket ve rol denetimi, kapsam (bölüm yöneticisi yalnızca kendi bölümü), aynı kişinin iki aşamayı onaylayamaması, eşzamanlı onayda tek kazanan.
+- **Davet ve rol atama:** hangi rolü kimin verebileceği API'de denetlenir; mevcut kurucu/yönetici üyeliği düşürülemez.
+- **Değerlendirme (ADR-0023, aşama 1):** denetim olaylarından çalışma teşhisi ve `/eval` API'si. → [Değerlendirme](/workstation/eval)
+- **Denetim zinciri:** iş istasyonu olaylarına sunucu `origin: client` damgası; politika kararları doğrulanmış `run` taşır.
+- **ADR'ler:** 0003, 0006, 0014–0023 kabul edildi; 0014 ve 0019'un bazı kararları ADR-0022 ile daraltıldı/yerine geçildi.
+- **Depo:** dokümantasyon (`apps/docs`) ve açılış sayfası (`apps/landing`) artık bu depoda; sürüm numarası kodla hizalandı; lisans Commons Clause + MIT olarak `LICENSE` dosyasında.
+
+**Sınırlar:** yargıçlar, görüntüleme sayfası ve tekrar oynatma henüz yok. → [Bilinen sınırlar](/developer-notes/known-limits)
 
 ## v1.3 — 30 Eylül 2026: Departman Çalışma Alanı (`fab`)
 
