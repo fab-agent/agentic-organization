@@ -11,6 +11,10 @@ import { signal  } from './commands/stop.js'
 import { start   } from './commands/start.js'
 import { status  } from './commands/status.js'
 
+// Injected by scripts/bundle.mjs from package.json; plain `tsx` runs have no bundle.
+declare const __CLI_VERSION__: string | undefined
+const CLI_VERSION = typeof __CLI_VERSION__ === 'string' ? __CLI_VERSION__ : 'dev'
+
 const [, , cmd, ...args] = process.argv
 
 switch (cmd) {
@@ -64,13 +68,13 @@ switch (cmd) {
 
   case '--version':
   case '-v':
-    console.log('0.1.0')
+    console.log(CLI_VERSION)
     break
 
   default: {
     const unknown = cmd ? chalk.red(`\n  Bilinmeyen komut: ${chalk.bold(cmd)}\n`) : ''
     console.log(unknown)
-    console.log(chalk.bold('  3rdParty Agent CLI') + chalk.dim(' v0.1.0'))
+    console.log(chalk.bold('  3rdParty Agent CLI') + chalk.dim(` v${CLI_VERSION}`))
     console.log()
     console.log('  ' + chalk.bold('Kullanım:') + '  3pa <komut>')
     console.log()

@@ -17,7 +17,7 @@ be settled on the main server before people start working:
 4. **Company systems** — ERP, CRM, databases, file shares: agents need access
    through MCP, and the data work (mapping, cleaning, views) happens here too.
 
-> **Note (2026-10-18, acceptance review):** the model-routing problem described above (prefix guessing) is pre-decision history; follow-up 1 records the `custom:<slug>` routing that replaced it. Installer setup, OIDC and the ERP template remain follow-ups.
+> **Note (2026-10-18, acceptance review):** the model-routing problem described under Decision 3 below (prefix guessing) is pre-decision history; follow-up 1 records the `custom:<slug>` routing that replaced it. Installer setup, OIDC and the ERP template remain follow-ups.
 
 ## Options considered
 

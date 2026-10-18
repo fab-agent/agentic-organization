@@ -7,7 +7,7 @@ slug: /
 
 **Şirketinizin yapay zeka ajanlarını organizasyon şemasına yerleştirin, yönetin ve denetleyin.**
 
-fab.engineering, kendi sunucunuzda çalışan, açık kaynaklı bir platformdur. Her ajanın bir adı, rolü, departmanı ve sorumlu bir insanı vardır; ajanlar şirket yapısında diğer çalışanlar gibi yer alır. Politikalar, onay akışları ve denetim kaydı baştan gelir.
+fab.engineering, kendi sunucunuzda çalışan, kaynağı açık bir platformdur. Her ajanın bir adı, rolü, departmanı ve sorumlu bir insanı vardır; ajanlar şirket yapısında diğer çalışanlar gibi yer alır. Politikalar, onay akışları ve denetim kaydı baştan gelir.
 
 ## Kimin için, nereden başlamalı?
 
@@ -49,7 +49,7 @@ Aynı sunucu, aynı politikalar, aynı denetim kaydı; kişinin işine göre ü�
 - **Modelden bağımsız.** Anthropic, OpenAI, Google, Mistral, Qwen, yerel modeller (Ollama, LM Studio) ve OpenAI uyumlu her adres kullanılabilir.
 - **İnsan onayı.** Ajan yapılandırması değişiklikleri iki aşamalı onaydan geçer; ajanlar arası görev devri insan onayı ister.
 - **İzlenebilirlik.** Önemli işlemler denetim kaydına yazılır. Geliştirici iş istasyonu katmanında kayıt ayrıca değiştirilemez bir hash zinciridir.
-- **Açık kaynak.** Kaynak kodu [GitHub](https://github.com/fab-agent/agentic-organization) üzerinde; lisans için depodaki `LICENSE` dosyasına bakın.
+- **Kaynağı açık.** Kaynak kodu [GitHub](https://github.com/fab-agent/agentic-organization) üzerinde; lisans Commons Clause + MIT'dir: kendi kuruluşunuz için serbesttir, üçüncü kişilere satmak veya yönetilen hizmet olarak sunmak için ticari lisans gerekir (`LICENSE`).
 
 ## Kendi sunucunuzda deneyin
 

@@ -145,7 +145,7 @@ systems through MCP via the gateway, all under policy and audit. Its value to
 the organisation is that the same tool serves every department *and* every run
 is logged, tagged and rated for fit.
 
-> **Note (2026-10-18, acceptance review):** superseded by ADR-0022 §8: the local Assistant folder is not synchronised with the platform, and session summaries are not uploaded automatically. The *Decisions taken* below that reconfirm synced folders, and follow-up 5, are superseded with it.
+> **Note (2026-10-18, acceptance review):** superseded by ADR-0022 §8: the local Assistant folder is not synchronised with the platform, and there is no automatic summary sync in either direction. The *Decisions taken* below that reconfirm synced folders, and follow-up 5, are superseded with it.
 
 ### 8. The person's local workspace folder
 

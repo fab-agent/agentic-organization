@@ -7,7 +7,7 @@ slug: /
 
 **Place your company's AI agents on the org chart, manage them, and audit them.**
 
-fab.engineering is an open-source platform that runs on your own server. Every agent has a name, a role, a department and a responsible human; agents sit in the company structure like any other employee. Policies, approval flows and an audit trail come built in.
+fab.engineering is a source-available platform that runs on your own server. Every agent has a name, a role, a department and a responsible human; agents sit in the company structure like any other employee. Policies, approval flows and an audit trail come built in.
 
 ## Who is it for, and where to start
 
@@ -49,7 +49,7 @@ Same server, same policies, same audit trail; three doors depending on the job:
 - **Model independent.** Anthropic, OpenAI, Google, Mistral, Qwen, local models (Ollama, LM Studio) and any OpenAI-compatible address can be used.
 - **Human approval.** Agent configuration changes go through two-stage approval; handing a task from one agent to another needs human approval.
 - **Traceability.** Important actions are written to an audit log. In the developer workstation layer the log is additionally a tamper-evident hash chain.
-- **Open source.** Source code is on [GitHub](https://github.com/fab-agent/agentic-organization); see the `LICENSE` file in the repository for the license.
+- **Source-available.** Source code is on [GitHub](https://github.com/fab-agent/agentic-organization); the license is Commons Clause + MIT: free for your own organization, while selling it or offering it as a hosted service to third parties needs a commercial license (see `LICENSE`).
 
 ## Try it on your own server
 

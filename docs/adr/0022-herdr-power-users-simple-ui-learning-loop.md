@@ -212,4 +212,4 @@ optimisation in the loop.
   3. Typed `harness` artifact and target model (decision 2).
   4. `assistant_user` role, the scoped context endpoint, and the status-event stream.
   5. Plugin spec for herdr and the Assistant-folder helper; licence and version pin.
-  6. Mark ADR-0014 decisions 2 and 4 and ADR-0019 §5/§8 as superseded once accepted.
+  6. ~~Mark ADR-0014 decisions 2 and 4 and ADR-0019 §5/§8 as superseded once accepted.~~ Done 2026-10-18 (status lines and local notes in both ADRs).

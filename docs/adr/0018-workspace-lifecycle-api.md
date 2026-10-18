@@ -49,7 +49,7 @@ the owning person's scope.
 
 State machine: `creating → running ⇄ suspended`, plus `failed` and `deleted`.
 `suspended` keeps the home volume and stops the container; `resume` starts it and
-re-attaches to the still-running multiplexer session (see 4).
+opens a new multiplexer session (a stopped container keeps files, not running processes; a mere disconnect leaves the container running and the session re-attachable, see 4).
 
 Container profile = `sandbox/compose.yaml` hardening (non-root, `cap_drop: ALL`,
 `no-new-privileges`, pid/mem/cpu limits, **internal network only, egress through

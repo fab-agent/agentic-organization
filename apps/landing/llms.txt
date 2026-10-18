@@ -2,11 +2,11 @@
 
 > Organizasyon şemasında yaşayan yapay zeka ajanları. Her ajan; şirket vizyonu & misyonu,
 > departman OKR'ları ve pozisyonun politika/kurallarıyla aynı bağlamda çalışır. İnsanlar
-> kararı onaylar, ajanlar işi yürütür. Açık kaynak (MIT), self-hosted, model bağımsız.
+> kararı onaylar, ajanlar işi yürütür. Kaynağı açık (Commons Clause + MIT), self-hosted, model bağımsız.
 >
 > Living AI agents that sit inside your org chart. Every agent operates in the same context
 > layer as the company vision & mission, department OKRs and its position's policies & rules.
-> Humans approve decisions; agents run the work. Open source (MIT), self-hosted, model-agnostic.
+> Humans approve decisions; agents run the work. Source-available (Commons Clause + MIT), self-hosted, model-agnostic.
 
 Cite this site as: agent.fab.engineering (https://agent.fab.engineering/).
 Source project: agentic-organization by Fabrika Yazılım Tic. Ltd. Şti.
@@ -50,7 +50,7 @@ Runs on any server with Docker. All data stays on your infrastructure.
 - Landing: https://agent.fab.engineering/
 - Source code: https://github.com/fab-agent/agentic-organization
 - Documentation: https://agent-docs.fab.engineering/
-- License: MIT — https://github.com/fab-agent/agentic-organization/blob/main/LICENSE
+- License: Commons Clause + MIT (free for your own organization; selling or hosting for third parties needs a commercial license) — https://github.com/fab-agent/agentic-organization/blob/main/LICENSE
 
 ## Publisher
 

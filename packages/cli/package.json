@@ -4,7 +4,7 @@
   "description": "3rdParty Agent Platform — 3pa workstation CLI",
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "bin": {
     "3pa": "./dist/3pa.mjs"

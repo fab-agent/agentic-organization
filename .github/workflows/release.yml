@@ -40,6 +40,11 @@ jobs:
       publish: ${{ steps.v.outputs.publish }}
       latest: ${{ steps.v.outputs.latest }}
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: true
       - id: v
         env:
           REF_TYPE: ${{ github.ref_type }}
@@ -48,30 +53,37 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -eu
+          num='(0|[1-9][0-9]*)'
+          ident='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+          semver="^v${num}\.${num}\.${num}(-${ident}(\.${ident})*)?\$"
           publish=false
           latest=false
           version="0.0.0-dev.$(date +%s)"
           if [ "$REF_TYPE" = "tag" ]; then
-            if ! printf '%s' "$REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
-              echo "Tag '$REF_NAME' is not a SemVer version tag" >&2
+            if ! printf '%s' "$REF_NAME" | grep -Eq "$semver"; then
+              echo "Tag '$REF_NAME' is not a SemVer version tag (vMAJOR.MINOR.PATCH[-prerelease])" >&2
               exit 1
             fi
             version="${REF_NAME#v}"
             if [ "$EVENT" = "push" ] || [ "$DRY_RUN" = "false" ]; then
               publish=true
-              case "$version" in *-*) ;; *) latest=true ;; esac
+              case "$version" in
+                *-*) ;;
+                *)
+                  # `latest` only moves forward: this tag must be the highest stable one.
+                  top=$(git tag -l 'v*' | grep -E "^v${num}\.${num}\.${num}\$" | sort -V | tail -n1)
+                  if [ "$top" = "$REF_NAME" ]; then latest=true; fi
+                  ;;
+              esac
             fi
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
 
-  images:
+  images-check:
     needs: version
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     strategy:
       matrix:
         include:
@@ -86,23 +98,15 @@ jobs:
         with:
           persist-credentials: false
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-      - name: Log in to GHCR
-        if: needs.version.outputs.publish == 'true'
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build + push ${{ matrix.name }}
+      - name: Build ${{ matrix.name }} (no push)
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
-          push: ${{ needs.version.outputs.publish == 'true' }}
-          tags: |
-            ${{ env.IMAGE_NS }}/agentic-org-${{ matrix.name }}:${{ needs.version.outputs.version }}
-            ${{ needs.version.outputs.latest == 'true' && format('{0}/agentic-org-{1}:latest', env.IMAGE_NS, matrix.name) || '' }}
+          push: false
           provenance: false
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+          cache-from: type=gha,scope=${{ matrix.name }}
 
   cli-bundle:
     needs: version
@@ -146,13 +150,9 @@ jobs:
           npm run typecheck
           npm test
 
-  npm-publish:
-    needs: [version, images, cli-bundle, plugin-check]
-    if: needs.version.outputs.publish == 'true'
+  pack:
+    needs: [version, plugin-check, cli-bundle, images-check]
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
     strategy:
       matrix:
         pkg: [agent-plugin, cli]
@@ -163,25 +163,92 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-          registry-url: "https://npm.pkg.github.com"
-      - name: Install (no registry credentials)
-        working-directory: packages/${{ matrix.pkg }}
-        run: npm ci --no-audit --no-fund
-        env:
-          NODE_AUTH_TOKEN: ""
-      - name: Set version + publish ${{ matrix.pkg }}
+      - name: Version, build and pack ${{ matrix.pkg }} (no registry credentials)
         working-directory: packages/${{ matrix.pkg }}
         env:
           VERSION: ${{ needs.version.outputs.version }}
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_ARGS: ${{ needs.version.outputs.latest == 'true' && '--tag latest' || '--tag next' }}
         run: |
+          npm ci --no-audit --no-fund
           npm version "$VERSION" --no-git-tag-version --allow-same-version
-          # shellcheck disable=SC2086
-          npm publish $TAG_ARGS
+          mkdir -p ../../out
+          npm pack --pack-destination ../../out
+      - name: Smoke-install the tarball
+        env:
+          PKG: ${{ matrix.pkg }}
+        run: |
+          mkdir smoke && cd smoke && npm init -y >/dev/null
+          npm install --no-audit --no-fund ../out/*.tgz
+          if [ "$PKG" = "cli" ]; then ./node_modules/.bin/3pa --version; fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: npm-${{ matrix.pkg }}
+          path: out/*.tgz
+
+  images-publish:
+    needs: [version, pack]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - name: sandbox
+            context: .
+            file: sandbox/Dockerfile
+          - name: egress
+            context: sandbox/egress
+            file: sandbox/egress/Dockerfile
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push ${{ matrix.name }}
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: true
+          provenance: false
+          cache-from: type=gha,scope=${{ matrix.name }}
+          tags: |
+            ${{ env.IMAGE_NS }}/agentic-org-${{ matrix.name }}:${{ needs.version.outputs.version }}
+            ${{ needs.version.outputs.latest == 'true' && format('{0}/agentic-org-{1}:latest', env.IMAGE_NS, matrix.name) || '' }}
+
+  npm-publish:
+    needs: [version, pack]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        pkg: [agent-plugin, cli]
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: npm-${{ matrix.pkg }}
+          path: out
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          registry-url: "https://npm.pkg.github.com"
+      - name: Publish the exact tarball (scripts disabled)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DIST_TAG: ${{ needs.version.outputs.latest == 'true' && 'latest' || 'next' }}
+        run: npm publish out/*.tgz --ignore-scripts --tag "$DIST_TAG"
 
   release:
-    needs: [version, npm-publish, cli-bundle]
+    needs: [version, npm-publish, images-publish, cli-bundle]
     if: needs.version.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:

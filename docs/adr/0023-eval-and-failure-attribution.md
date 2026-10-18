@@ -60,7 +60,7 @@ suspected cause (replay).
    - the caller selects the events (one company, one verified persona, one run).
      Policy decisions now carry the server-verified run (`payload.run`), and
      runs are joined on chain + actor + run id, never on a client session reference;
-   - malformed or duplicate events are counted and skipped, never fatal; input is
+   - malformed events are counted and skipped, never fatal (a duplicate chain row is skipped without being counted); input is
      capped.
 2. **Judges (success measure).** A run or task gets an outcome from, in order:
    deterministic checks (did the expected output exist, did a required tool run);

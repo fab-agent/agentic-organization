@@ -4,6 +4,9 @@
  * ESM banner shims `require` / `__dirname` / `__filename`.
  */
 import * as esbuild from 'esbuild'
+import { readFileSync } from 'node:fs'
+
+const { version } = JSON.parse(readFileSync('package.json', 'utf8'))
 
 await esbuild.build({
   entryPoints: ['src/index.ts'],
@@ -12,6 +15,7 @@ await esbuild.build({
   format: 'esm',
   target: 'node20',
   outfile: 'dist/3pa.mjs',
+  define: { __CLI_VERSION__: JSON.stringify(version) },
   banner: {
     js: [
       '#!/usr/bin/env node',
