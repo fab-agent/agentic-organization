@@ -67,9 +67,10 @@ def _can_see(
     db, user: User, sess: AgentSession, person: Personnel | None = None
 ) -> bool:
     """The session's owner, or anyone who manages the agent."""
-    if sess.user_id == user.id:
-        return True
     person = person or db.get(Personnel, sess.personnel_id)
+    if sess.user_id == user.id:
+        # The owner keeps access only while still in the company.
+        return bool(person and authz.is_member(db, user.id, person.company_id))
     return bool(
         person
         and authz.is_member(db, user.id, person.company_id)

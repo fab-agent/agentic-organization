@@ -536,3 +536,345 @@ def test_cr_visibility_does_not_mix_roles_and_scopes(auth_client, tenants, db_se
     assert (
         auth_client.get(f"/change-requests/{cr_id}", headers=_h(u)).status_code == 404
     )
+
+
+# ═══ second pass (Codex review #2): legacy routes and the rest of the surface ═══
+
+
+def _anon(client):
+    """A request without credentials: auth_client carries a default header."""
+    return {"Authorization": ""}
+
+
+def test_legacy_auth_invite_cannot_graft_an_account_into_another_company(
+    auth_client, tenants, db_session
+):
+    from models import User
+
+    t = tenants
+    # the attacker founds company B and tries to make themselves founder of A
+    body = {
+        "email": "atk@b.com",
+        "name": "Atk",
+        "company_id": t["a"],
+        "role": "founder",
+    }
+    r = auth_client.post("/auth/invite", json=body, headers=t["atk"])
+    assert r.status_code == 404
+    # a company-wide founder of A inviting an account that lives in B keeps its password
+    before = db_session.get(User, t["attacker"].id).password_hash
+    r = auth_client.post(
+        "/auth/invite",
+        json={
+            "email": "atk@b.com",
+            "name": "Atk",
+            "company_id": t["a"],
+            "role": "user",
+        },
+    )
+    assert r.status_code == 201 and "temp_password" not in r.json()
+    db_session.expire_all()
+    assert db_session.get(User, t["attacker"].id).password_hash == before
+
+
+def test_legacy_auth_invite_obeys_grant_ceilings(auth_client, tenants, db_session):
+    t = tenants
+    head = make_user(db_session, email="head@a.com", name="Head")
+    make_member(db_session, head.id, t["a"], role="dept_head")
+    db_session.commit()
+    body = {"email": "n@a.com", "name": "N", "company_id": t["a"], "role": "executive"}
+    assert (
+        auth_client.post("/auth/invite", json=body, headers=_h(head)).status_code == 403
+    )
+    body["role"] = "boss"
+    assert (
+        auth_client.post("/auth/invite", json=body, headers=_h(head)).status_code == 422
+    )
+
+
+def test_admin_reset_only_for_accounts_the_caller_fully_controls(auth_client, tenants):
+    t = tenants
+    # attacker (founder of B) vs a member of A
+    r = auth_client.post(f"/auth/reset/{t['plain_user'].id}", headers=t["atk"])
+    assert r.status_code == 404
+    # founder of A vs the attacker's account (lives in B only)
+    assert auth_client.post(f"/auth/reset/{t['attacker'].id}").status_code == 404
+    # founder of A may reset a member of A only
+    r = auth_client.post(f"/auth/reset/{t['plain_user'].id}")
+    assert r.status_code == 200 and "temp_password" in r.json()
+    # a plain member may not
+    assert (
+        auth_client.post(
+            f"/auth/reset/{t['attacker'].id}", headers=t["plain"]
+        ).status_code
+        == 404
+    )
+
+
+def test_git_endpoints_require_login_and_company_authority(
+    client, auth_client, tenants
+):
+    t = tenants
+    plain = {"company_id": t["a"]}
+    for method, path in (
+        ("get", "/git/config"),
+        ("post", "/git/pull"),
+        ("get", "/git/diff"),
+        ("get", "/git/logs"),
+        ("delete", "/git/config"),
+    ):
+        r = getattr(client, method)(path, params=plain, headers={"Authorization": ""})
+        assert r.status_code in (401, 403, 422), (path, r.status_code)
+        r = getattr(auth_client, method)(path, params=plain, headers=t["atk"])
+        assert r.status_code == 404, (path, r.status_code)
+    # no company at all is not "the first config"
+    assert auth_client.get("/git/config").status_code == 422
+    body = {"provider": "github", "repo_url": "https://github.com/o/r", "token": "x"}
+    r = auth_client.post("/git/config", params=plain, json=body, headers=t["plain"])
+    assert r.status_code == 403
+
+
+def test_audit_log_needs_login_and_final_authority(client, auth_client, tenants):
+    t = tenants
+    p = {"company_id": t["a"]}
+    assert client.get(
+        "/audit", params=p, headers={"Authorization": ""}
+    ).status_code in (401, 403)
+    assert auth_client.get("/audit", params=p, headers=t["atk"]).status_code == 404
+    assert auth_client.get("/audit", params=p, headers=t["plain"]).status_code == 403
+    assert auth_client.get("/audit", params=p).status_code == 200
+    assert auth_client.get("/audit").status_code == 422  # a filter is not authority
+
+
+def test_a2a_is_scoped_and_the_approver_is_the_authenticated_user(
+    auth_client, tenants, db_session
+):
+    t = tenants
+    other_agent = make_personnel(db_session, t["a"], name="B2", slug="b2", type="agent")
+    make_agent_config(db_session, other_agent.id)
+    db_session.commit()
+    body = {"from_agent_id": t["agent"], "to_agent_id": other_agent.id, "task": "do"}
+    # outsiders cannot create, list or read
+    assert (
+        auth_client.post("/a2a/requests", json=body, headers=t["atk"]).status_code
+        == 404
+    )
+    # a plain member cannot act for an agent they do not manage
+    assert (
+        auth_client.post("/a2a/requests", json=body, headers=t["plain"]).status_code
+        == 403
+    )
+    r = auth_client.post("/a2a/requests", json=body)  # founder
+    assert r.status_code == 201
+    rid = r.json()["id"]
+    assert auth_client.get(f"/a2a/requests/{rid}", headers=t["atk"]).status_code == 404
+    assert (
+        auth_client.get(f"/a2a/requests/{rid}", headers=t["plain"]).status_code == 404
+    )
+    assert auth_client.get("/a2a/requests", headers=t["atk"]).json() == []
+    # spoofing the approver id in the body does not help a non-approver
+    spoof = {"approver_id": r.json()["approver_id"] or "x"}
+    assert (
+        auth_client.post(
+            f"/a2a/requests/{rid}/approve", json=spoof, headers=t["atk"]
+        ).status_code
+        == 404
+    )
+    assert (
+        auth_client.post(
+            f"/a2a/requests/{rid}/reject", json={"approver_id": "x"}, headers=t["plain"]
+        ).status_code
+        == 404
+    )
+    # cross-company agents are refused
+    foreign = make_personnel(db_session, t["b"], name="F", slug="f", type="agent")
+    make_agent_config(db_session, foreign.id)
+    db_session.commit()
+    r = auth_client.post("/a2a/requests", json={**body, "to_agent_id": foreign.id})
+    assert r.status_code == 404
+
+
+def test_task_stream_is_limited_to_requester_and_responsible(auth_client, tenants):
+    t = tenants
+    r = auth_client.post(
+        "/task-requests", json={"company_id": t["a"], "title": "T", "body": "b"}
+    )
+    assert r.status_code == 201
+    tid = r.json()["id"]
+    from api import task_requests as tr
+
+    for h in (t["atk"], t["plain"]):
+        assert (
+            auth_client.get(f"/task-requests/{tid}/stream", headers=h).status_code
+            == 404
+        )
+    assert tid not in tr._task_queues  # a denied connection registers nothing
+    # and a foreign company cannot receive tasks
+    r = auth_client.post(
+        "/task-requests",
+        json={"company_id": t["a"], "title": "T", "body": "b"},
+        headers=t["atk"],
+    )
+    assert r.status_code == 404
+
+
+def test_journal_belongs_to_the_agents_managers(auth_client, tenants):
+    t = tenants
+    body = {"personnel_id": t["agent"], "content": "note"}
+    for h in (t["atk"], t["plain"]):
+        assert auth_client.get(f"/journal/{t['agent']}", headers=h).status_code == 404
+        assert auth_client.post("/journal/", json=body, headers=h).status_code == 404
+    r = auth_client.post("/journal/", json=body)
+    assert r.status_code == 201
+    eid = r.json()["id"]
+    assert auth_client.delete(f"/journal/{eid}", headers=t["atk"]).status_code == 404
+    assert auth_client.delete(f"/journal/{eid}", headers=t["plain"]).status_code == 404
+    bad = {**body, "session_id": "nope"}
+    assert auth_client.post("/journal/", json=bad).status_code == 404
+    assert (
+        auth_client.post("/journal/", json={**body, "author": "root"}).status_code
+        == 422
+    )
+
+
+def test_dashboard_requires_membership_and_does_not_fall_back_to_all_agents(
+    auth_client, tenants, db_session
+):
+    t = tenants
+    assert auth_client.get(
+        f"/dashboard/stats?company_id={t['a']}", headers=t["atk"]
+    ).status_code in (403, 404)
+    assert (
+        auth_client.get(
+            f"/dashboard/agent-sla?company_id={t['a']}", headers=t["plain"]
+        ).status_code
+        == 403
+    )
+    assert auth_client.get(
+        f"/dashboard/agent-sla?company_id={t['a']}", headers=t["atk"]
+    ).status_code in (403, 404)
+    # a founder chatted with the agent; a plain member with no agents sees none of it
+    auth_client.post("/sessions", json={"personnel_id": t["agent"]})
+    p = make_personnel(db_session, t["a"], name="Plain", slug="plain-h", type="human")
+    p.user_id = t["plain_user"].id
+    db_session.add(p)
+    db_session.commit()
+    me = auth_client.get(
+        f"/dashboard/me?company_id={t['a']}", headers=t["plain"]
+    ).json()
+    assert me.get("sessions_total", me.get("total_sessions", 0)) == 0
+
+
+def test_telegram_config_is_scoped_to_the_company_the_caller_founds(
+    auth_client, tenants
+):
+    t = tenants
+    # the attacker founds only B; asking for A's bot is a 404, and so is A's read
+    assert (
+        auth_client.get(
+            f"/telegram/config?company_id={t['a']}", headers=t["atk"]
+        ).status_code
+        == 404
+    )
+    assert (
+        auth_client.delete(
+            f"/telegram/config?company_id={t['a']}", headers=t["atk"]
+        ).status_code
+        == 404
+    )
+    assert (
+        auth_client.post(
+            f"/telegram/test?company_id={t['a']}", headers=t["atk"]
+        ).status_code
+        == 404
+    )
+    # a plain member of A is not a founder
+    assert (
+        auth_client.delete(
+            f"/telegram/config?company_id={t['a']}", headers=t["plain"]
+        ).status_code
+        == 403
+    )
+    assert (
+        auth_client.get("/telegram/bot-status", headers=t["plain"]).status_code == 403
+    )
+
+
+def test_company_metadata_needs_company_wide_authority(
+    auth_client, tenants, db_session
+):
+    t = tenants
+    scoped = make_user(db_session, email="sc@a.com", name="SC")
+    m = make_member(db_session, scoped.id, t["a"], role="executive")
+    m.scope_id = t["dept"]
+    db_session.add(m)
+    db_session.commit()
+    h = _h(scoped)
+    assert (
+        auth_client.patch(
+            f"/companies/{t['a']}", json={"name": "Hijack"}, headers=h
+        ).status_code
+        == 403
+    )
+    assert auth_client.delete(f"/companies/{t['a']}", headers=h).status_code == 403
+
+
+def test_session_owner_loses_access_when_removed_from_the_company(
+    auth_client, tenants, db_session
+):
+    t = tenants
+    sid = auth_client.post(
+        "/sessions", json={"personnel_id": t["agent"]}, headers=t["plain"]
+    ).json()["id"]
+    assert auth_client.get(f"/sessions/{sid}", headers=t["plain"]).status_code == 200
+    db_session.query(CompanyMember).filter_by(user_id=t["plain_user"].id).delete()
+    db_session.commit()
+    assert auth_client.get(f"/sessions/{sid}", headers=t["plain"]).status_code == 404
+
+
+def test_last_active_founder_cannot_be_orphaned(auth_client, tenants, db_session):
+    from models import User
+
+    t = tenants
+    # a second founder who is deactivated does not count as a safety net
+    ghost = make_user(db_session, email="ghost@a.com", name="Ghost")
+    make_member(db_session, ghost.id, t["a"], role="founder")
+    ghost.is_active = False
+    db_session.add(ghost)
+    db_session.commit()
+    founder = (
+        db_session.query(CompanyMember)
+        .filter_by(
+            company_id=t["a"],
+            role="founder",
+            user_id=db_session.query(User).filter_by(email="admin@test.com").first().id,
+        )
+        .first()
+    )
+    assert (
+        auth_client.patch(
+            f"/users/memberships/{founder.id}", json={"role": "user"}
+        ).status_code
+        == 409
+    )
+    me = db_session.query(User).filter_by(email="admin@test.com").first()
+    assert auth_client.patch(
+        f"/users/{me.id}", json={"is_active": False}
+    ).status_code in (400, 409)
+
+
+def test_a_minted_gateway_token_stops_working_when_the_agent_is_deactivated(
+    auth_client, tenants, db_session
+):
+    from models import AgentConfig
+    from services.gateway_auth import create_persona_token
+
+    t = tenants
+    token = create_persona_token(t["agent"], t["a"])
+    h = {"Authorization": f"Bearer {token}"}
+    assert auth_client.get("/v1/models", headers=h).status_code != 403
+    cfg = db_session.get(AgentConfig, t["cfg"])
+    cfg.status = "inactive"
+    db_session.add(cfg)
+    db_session.commit()
+    assert auth_client.get("/v1/models", headers=h).status_code == 403

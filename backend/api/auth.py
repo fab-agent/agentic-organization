@@ -11,6 +11,7 @@ from database import get_session
 from models import Company, CompanyMember, Personnel, User
 from models import TelegramConfig as _TelegramConfig
 from schemas import ChangePasswordRequest, InviteRequest, LoginRequest, SetupRequest
+from services import authz
 from services import telegram as _tg
 from services.auth import (
     create_access_token,
@@ -217,7 +218,7 @@ def me(user: User = Depends(get_current_user)):
 
 
 @router.post("/invite", status_code=201)
-def invite_user(body: InviteRequest, caller: User = Depends(require_manager)):
+def invite_user(body: InviteRequest, caller: User = Depends(get_current_user)):
     email: str = body.email
     name: str = body.name.strip()
     company_id: str = body.company_id
@@ -226,11 +227,15 @@ def invite_user(body: InviteRequest, caller: User = Depends(require_manager)):
 
     if not name:
         raise HTTPException(status_code=422, detail="name boş olamaz")
+    if role not in authz.ASSIGNABLE_ROLES:
+        raise HTTPException(status_code=422, detail="Bilinmeyen rol")
 
     with get_session() as session:
         company = session.get(Company, company_id)
-        if not company:
+        if not company or not authz.is_member(session, caller.id, company_id):
             raise HTTPException(status_code=404, detail="Şirket bulunamadı")
+        # Same ceilings as the personnel invite: who may hand out which role/scope.
+        authz.require_may_grant(session, caller.id, company_id, role, scope_id=scope_id)
 
         existing = session.exec(select(User).where(User.email == email)).first()
         if existing:
@@ -240,17 +245,28 @@ def invite_user(body: InviteRequest, caller: User = Depends(require_manager)):
             session.add(user)
             session.flush()
 
-        temp_pw = generate_temp_password()
-        user.password_hash = hash_password(temp_pw)
-        user.must_change_password = True
-        user.invite_expires_at = datetime.utcnow() + timedelta(
-            minutes=TEMP_PASSWORD_TTL_MINUTES
+        # An account that belongs to other companies keeps its credentials.
+        elsewhere = existing is not None and bool(
+            session.exec(
+                select(CompanyMember).where(
+                    CompanyMember.user_id == user.id,
+                    CompanyMember.company_id != company_id,
+                )
+            ).first()
         )
-        # Clear any stale invite/reset tokens
-        user.invite_token = None
-        user.reset_token = None
-        user.reset_expires_at = None
-        session.add(user)
+        temp_pw = None
+        if not elsewhere:
+            temp_pw = generate_temp_password()
+            user.password_hash = hash_password(temp_pw)
+            user.must_change_password = True
+            user.invite_expires_at = datetime.utcnow() + timedelta(
+                minutes=TEMP_PASSWORD_TTL_MINUTES
+            )
+            # Clear any stale invite/reset tokens
+            user.invite_token = None
+            user.reset_token = None
+            user.reset_expires_at = None
+            session.add(user)
 
         existing_member = session.exec(
             select(CompanyMember).where(
@@ -259,6 +275,19 @@ def invite_user(body: InviteRequest, caller: User = Depends(require_manager)):
             )
         ).first()
         if existing_member:
+            # Nobody below founder may rewrite a founder's or executive's membership.
+            if existing_member.role in ("founder", "executive"):
+                authz.require_may_grant(
+                    session,
+                    caller.id,
+                    company_id,
+                    existing_member.role,
+                    scope_id=existing_member.scope_id,
+                )
+            if authz.would_orphan_founders(
+                session, existing_member, keep=(role == "founder" and scope_id is None)
+            ):
+                raise HTTPException(status_code=409, detail="Son kurucu değiştirilemez")
             existing_member.role = role
             existing_member.scope_id = scope_id
             session.add(existing_member)
@@ -274,6 +303,11 @@ def invite_user(body: InviteRequest, caller: User = Depends(require_manager)):
         session.commit()
         user_id = user.id
 
+    if temp_pw is None:
+        return {
+            "user_id": user_id,
+            "message": "Mevcut hesap şirkete eklendi (şifre değişmedi)",
+        }
     with get_session() as session:
         _tg_notify(
             session,
@@ -377,10 +411,12 @@ def setup(body: SetupRequest):
 
 
 @router.post("/reset/{user_id}")
-def admin_reset(user_id: str, caller: User = Depends(require_manager)):
+def admin_reset(user_id: str, caller: User = Depends(get_current_user)):
     with get_session() as session:
         user = session.get(User, user_id)
-        if not user:
+        # Only a founder/executive who is company-wide in *every* company the account
+        # belongs to may reset it; anyone else sees "not found".
+        if not user or not authz.controls_account(session, caller.id, user_id):
             raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
         temp_pw = generate_temp_password()
         user.password_hash = hash_password(temp_pw)

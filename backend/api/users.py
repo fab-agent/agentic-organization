@@ -6,11 +6,18 @@ every company the account belongs to is theirs.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import select
+from sqlmodel import select, update
 
 from api.auth import get_current_user
 from database import get_session
-from models import Company, CompanyMember, Department, Personnel, User
+from models import (
+    AgentSession,
+    Company,
+    CompanyMember,
+    Department,
+    Personnel,
+    User,
+)
 from services import authz
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -44,19 +51,6 @@ def _controls_account(session, caller: User, target_id: str) -> bool:
         ).all()
     }
     return bool(theirs) and theirs <= mine
-
-
-def _last_founder(session, member: CompanyMember) -> bool:
-    if member.role != "founder":
-        return False
-    others = session.exec(
-        select(CompanyMember).where(
-            CompanyMember.company_id == member.company_id,
-            CompanyMember.role == "founder",
-            CompanyMember.id != member.id,
-        )
-    ).all()
-    return not others
 
 
 def _user_to_dict(user: User, session, only: set[str] | None = None) -> dict:
@@ -141,6 +135,15 @@ def update_user(user_id: str, body: dict, caller: User = Depends(_require_any_fo
         if "is_active" in body:
             if user.id == caller.id and body["is_active"] is False:
                 raise HTTPException(status_code=400, detail="Kendinizi kapatamazsınız")
+            if body["is_active"] is False:
+                mine = session.exec(
+                    select(CompanyMember).where(CompanyMember.user_id == user_id)
+                ).all()
+                # deactivating the account must not leave a company without a founder
+                if any(authz.would_orphan_founders(session, m) for m in mine):
+                    raise HTTPException(
+                        status_code=409, detail="Son aktif kurucu kapatılamaz"
+                    )
             user.is_active = bool(body["is_active"])
         session.add(user)
         session.commit()
@@ -159,10 +162,16 @@ def delete_user(user_id: str, caller: User = Depends(_require_any_founder)):
         members = session.exec(
             select(CompanyMember).where(CompanyMember.user_id == user_id)
         ).all()
-        if any(_last_founder(session, m) for m in members):
+        if any(authz.would_orphan_founders(session, m) for m in members):
             raise HTTPException(status_code=409, detail="Son kurucu silinemez")
         for m in members:
             session.delete(m)
+        # Chats the account owned stay (for the agent's managers), without an owner.
+        session.exec(
+            update(AgentSession)
+            .where(AgentSession.user_id == user_id)
+            .values(user_id=None)
+        )
         session.delete(user)
         session.commit()
 
@@ -200,7 +209,9 @@ def update_membership(
             raise HTTPException(status_code=422, detail="Bilinmeyen rol")
         if not authz.scope_valid(session, member.company_id, role, scope_id):
             raise HTTPException(status_code=422, detail="Rol için kapsam geçersiz")
-        if _last_founder(session, member) and (role != "founder" or scope_id):
+        if authz.would_orphan_founders(
+            session, member, keep=(role == "founder" and scope_id is None)
+        ):
             raise HTTPException(status_code=409, detail="Son kurucu değiştirilemez")
         member.role, member.scope_id = role, scope_id
         session.add(member)
@@ -213,7 +224,7 @@ def update_membership(
 def delete_membership(member_id: str, caller: User = Depends(_require_any_founder)):
     with get_session() as session:
         member = _my_membership(session, caller, member_id)
-        if _last_founder(session, member):
+        if authz.would_orphan_founders(session, member):
             raise HTTPException(status_code=409, detail="Son kurucu silinemez")
         session.delete(member)
 

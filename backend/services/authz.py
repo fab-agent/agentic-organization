@@ -166,3 +166,89 @@ def scope_valid(session, company_id: str, role: str, scope_id: str | None) -> bo
         return bool(p and p.company_id == company_id and p.type == "agent")
     d = session.get(Department, scope_id)
     return bool(d and d.company_id == company_id)
+
+
+ASSIGNABLE_ROLES = {"founder", "executive", "dept_head", "agent_owner", "user"}
+# Which membership roles may hand out which roles (company-wide memberships only,
+# except that a dept_head may hand out the non-managing roles).
+_GRANTORS = {
+    "founder": {"founder"},
+    "executive": {"founder"},
+    "dept_head": {"founder", "executive"},
+    "agent_owner": {"founder", "executive", "dept_head"},
+    "user": {"founder", "executive", "dept_head"},
+}
+
+
+def require_may_grant(
+    session,
+    user_id: str,
+    company_id: str | None,
+    role: str,
+    *,
+    scope_id: str | None = None,
+    person=None,
+):
+    """Only a sufficiently senior member may assign `role` (with `scope_id`).
+
+    Company-wide roles (scope None for founder/executive/dept_head) need a
+    company-wide grantor. A grant scoped to one department may also come from a
+    grantor scoped to that department; agent_owner/user grants for a person of a
+    department may come from that department's head.
+    """
+    if not company_id:
+        raise HTTPException(status_code=404, detail="Şirket bulunamadı")
+    if not scope_valid(session, company_id, role, scope_id):
+        raise HTTPException(status_code=422, detail="Rol için kapsam geçersiz")
+    allowed_roles = _GRANTORS.get(role, {"founder"})
+    dept = scope_id if role in ("executive", "dept_head") else None
+    if role in ("agent_owner", "user") and person is not None:
+        dept = person.department_id
+    if not has_role(session, user_id, company_id, allowed_roles, department_id=dept):
+        raise HTTPException(status_code=403, detail="Bu rolü atama yetkiniz yok")
+
+
+def lock_company(session, company_id: str) -> None:
+    """Serialise membership changes of one company (row lock on PostgreSQL)."""
+    from models import Company
+
+    session.exec(select(Company).where(Company.id == company_id).with_for_update())
+
+
+def would_orphan_founders(
+    session, member: CompanyMember, *, keep: bool = False
+) -> bool:
+    """True if removing / changing `member` leaves no active company-wide founder.
+
+    `keep=True` means the member stays a company-wide founder (nothing to protect).
+    """
+    from models import User
+
+    if keep or member.role != "founder" or member.scope_id is not None:
+        return False
+    lock_company(session, member.company_id)
+    others = session.exec(
+        select(CompanyMember).where(
+            CompanyMember.company_id == member.company_id,
+            CompanyMember.role == "founder",
+            CompanyMember.scope_id.is_(None),
+            CompanyMember.id != member.id,
+        )
+    ).all()
+    for o in others:
+        u = session.get(User, o.user_id)
+        if u is not None and u.is_active:
+            return False
+    return True
+
+
+def controls_account(session, caller_id: str, target_id: str, roles=FINAL) -> bool:
+    """The caller holds a company-wide `roles` membership in *every* company the
+    target account belongs to (so changing the account cannot touch a tenant the
+    caller has no authority over). An account with no company is nobody's."""
+    theirs = {m.company_id for m in memberships_all(session, target_id)}
+    if not theirs:
+        return False
+    return all(
+        has_role(session, caller_id, c, roles, company_wide=True) for c in theirs
+    )

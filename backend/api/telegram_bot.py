@@ -21,21 +21,23 @@ import json
 from datetime import datetime
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
 
+from api.auth import get_current_user
 from core.security import decrypt
 from database import get_session
 from models import (
     A2ARequest,
     AgentConfig,
     AgentSession,
-    CompanyMember,
     Personnel,
     TaskRequest,
     TelegramBotState,
     TelegramConfig,
+    User,
 )
+from services import authz
 
 router = APIRouter(tags=["telegram-bot"])
 
@@ -116,29 +118,53 @@ def _get_bot_token(company_id: str | None = None) -> str | None:
             q = q.where(TelegramConfig.company_id == company_id)
         cfg = db.exec(q).first()
         if not cfg:
-            cfg = db.exec(
-                select(TelegramConfig).where(TelegramConfig.is_active == True)
-            ).first()
-        if not cfg:
             return None
         return decrypt(cfg.encrypted_token)
 
 
-def _get_or_create_state(chat_id: str) -> TelegramBotState:
+def _get_or_create_state(chat_id: str) -> TelegramBotState | None:
+    """The state of an *authorised* chat, else None.
+
+    A chat is authorised only when it is a company's configured admin chat; it is
+    bound to that company. Knowing the bot's name is not an authorisation, and an
+    unknown chat is never linked to "the first company".
+    """
     with get_session() as db:
+        cfg = db.exec(
+            select(TelegramConfig).where(
+                TelegramConfig.admin_chat_id == chat_id,
+                TelegramConfig.is_active == True,  # noqa: E712
+            )
+        ).first()
+        if not cfg:
+            return None
         state = db.get(TelegramBotState, chat_id)
         if not state:
-            # Auto-link to first company
-            member = db.exec(select(CompanyMember)).first()
             state = TelegramBotState(
                 chat_id=chat_id,
-                company_id=member.company_id if member else None,
+                company_id=cfg.company_id,
                 updated_at=datetime.utcnow(),
             )
             db.add(state)
             db.commit()
             db.refresh(state)
+        elif state.company_id != cfg.company_id:
+            state.company_id = cfg.company_id
+            state.selected_agent_id = None
+            state.selected_agent_name = None
+            state.active_session_id = None
+            db.add(state)
+            db.commit()
+            db.refresh(state)
         return state
+
+
+def _a2a_company(db, req: A2ARequest) -> str | None:
+    src = db.get(Personnel, req.from_agent_id)
+    dst = db.get(Personnel, req.to_agent_id)
+    if not src or not dst or src.company_id != dst.company_id:
+        return None
+    return dst.company_id
 
 
 def _save_state(state: TelegramBotState) -> None:
@@ -291,12 +317,19 @@ async def _process_async(data: dict) -> None:
         _answer_callback(token, cq_id)
 
         state = _get_or_create_state(chat_id)
+        if state is None:
+            return  # not an authorised chat: ignore silently
 
         if cb_data.startswith("select_agent:"):
             agent_id = cb_data.split(":", 1)[1]
             with get_session() as db:
                 agent = db.get(Personnel, agent_id)
-            if agent:
+                usable = bool(
+                    agent
+                    and agent.company_id == state.company_id
+                    and authz.agent_is_active(db, agent.id)
+                )
+            if agent and usable:
                 state.selected_agent_id = agent_id
                 state.selected_agent_name = agent.name
                 state.active_session_id = None  # fresh session for new agent
@@ -314,7 +347,11 @@ async def _process_async(data: dict) -> None:
             task_id = cb_data.split(":", 1)[1]
             with get_session() as db:
                 task = db.get(TaskRequest, task_id)
-                if task and task.status == "assigned":
+                if (
+                    task
+                    and task.company_id == state.company_id
+                    and task.status == "assigned"
+                ):
                     task.status = "running"
                     task.updated_at = datetime.utcnow()
                     db.add(task)
@@ -326,7 +363,7 @@ async def _process_async(data: dict) -> None:
             task_id = cb_data.split(":", 1)[1]
             with get_session() as db:
                 task = db.get(TaskRequest, task_id)
-                if task:
+                if task and task.company_id == state.company_id:
                     task.status = "rejected"
                     task.updated_at = datetime.utcnow()
                     db.add(task)
@@ -338,7 +375,11 @@ async def _process_async(data: dict) -> None:
             a2a_id = cb_data.split(":", 1)[1]
             with get_session() as db:
                 a2a = db.get(A2ARequest, a2a_id)
-                if a2a and a2a.status == "pending_approval":
+                if (
+                    a2a
+                    and _a2a_company(db, a2a) == state.company_id
+                    and a2a.status == "pending_approval"
+                ):
                     a2a.status = "approved"
                     a2a.updated_at = datetime.utcnow()
                     db.add(a2a)
@@ -350,7 +391,7 @@ async def _process_async(data: dict) -> None:
             a2a_id = cb_data.split(":", 1)[1]
             with get_session() as db:
                 a2a = db.get(A2ARequest, a2a_id)
-                if a2a:
+                if a2a and _a2a_company(db, a2a) == state.company_id:
                     a2a.status = "rejected"
                     a2a.updated_at = datetime.utcnow()
                     db.add(a2a)
@@ -371,6 +412,9 @@ async def _process_async(data: dict) -> None:
         return
 
     state = _get_or_create_state(chat_id)
+    if state is None:
+        _send(token, chat_id, "⛔ Bu sohbet yetkili değil.")
+        return
 
     # Commands
     if text in ("/start", "/ajanlar"):
@@ -515,8 +559,13 @@ def stop_polling() -> None:
 
 
 @router.get("/telegram/bot-status")
-async def bot_status():
-    """Check bot polling status and bot info."""
+async def bot_status(user: User = Depends(get_current_user)):
+    """Check bot polling status and bot info (managers of some company)."""
+    with get_session() as db:
+        if not any(
+            m.role in authz.MANAGERS for m in authz.memberships_all(db, user.id)
+        ):
+            raise HTTPException(status_code=403, detail="Yönetici yetkisi gerekli")
     token = _get_bot_token()
     if not token:
         return {"ok": False, "error": "No bot token configured"}

@@ -13,7 +13,7 @@ import asyncio
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from sqlmodel import select
+from sqlmodel import select, update
 
 from api.auth import get_current_user
 from database import get_session
@@ -26,6 +26,7 @@ from models import (
     User,
 )
 from schemas import A2AApprove, A2AReject, A2ARequestCreate, A2AResultApprove
+from services import authz
 
 router = APIRouter(prefix="/a2a", tags=["a2a"])
 
@@ -70,6 +71,67 @@ def _auto_set_approver(req: A2ARequest, session) -> None:
         req.approver_id = cfg.responsible_id
 
 
+def _agent(session, pid: str) -> Personnel | None:
+    return session.get(Personnel, pid)
+
+
+def _can_see_req(session, user: User, req: A2ARequest) -> bool:
+    """Both agents belong to one company the caller is in, and the caller manages
+    one of them, is the designated approver, or started the originating session."""
+    src = _agent(session, req.from_agent_id)
+    dst = _agent(session, req.to_agent_id)
+    if not src or not dst or src.company_id != dst.company_id:
+        return False
+    if not authz.is_member(session, user.id, dst.company_id):
+        return False
+    if req.approver_id:
+        ap = session.get(Personnel, req.approver_id)
+        if ap and ap.user_id == user.id:
+            return True
+    if req.from_session_id:
+        sess = session.get(AgentSession, req.from_session_id)
+        if sess and sess.user_id == user.id:
+            return True
+    return authz.can_manage_agent(session, user.id, src) or authz.can_manage_agent(
+        session, user.id, dst
+    )
+
+
+def _may_decide(session, user: User, req: A2ARequest) -> bool:
+    """Only the designated approver (the responsible human, matched to the
+    authenticated user), or a company-wide founder/executive, decides a request."""
+    dst = _agent(session, req.to_agent_id)
+    if not dst or not authz.is_member(session, user.id, dst.company_id):
+        return False
+    if req.approver_id:
+        ap = session.get(Personnel, req.approver_id)
+        if ap and ap.user_id == user.id:
+            return True
+    elif authz.can_manage_agent(session, user.id, dst):
+        return True
+    return authz.has_role(
+        session, user.id, dst.company_id, authz.FINAL, company_wide=True
+    )
+
+
+def _own_request(session, user: User, req_id: str) -> A2ARequest:
+    req = session.get(A2ARequest, req_id)
+    if not req or not _can_see_req(session, user, req):
+        raise HTTPException(status_code=404, detail="Request not found")
+    return req
+
+
+def _claim(session, req: A2ARequest, expected: tuple[str, ...], new: str) -> None:
+    """Compare-and-swap the status; the loser of a race gets 409."""
+    res = session.exec(
+        update(A2ARequest)
+        .where(A2ARequest.id == req.id, A2ARequest.status.in_(expected))
+        .values(status=new)
+    )
+    if res.rowcount != 1:
+        raise HTTPException(status_code=409, detail="Request already decided")
+
+
 # ── CRUD ──────────────────────────────────────────────────────────────────────
 
 
@@ -80,69 +142,96 @@ def list_requests(
     status: str | None = None,
     from_agent_id: str | None = None,
     to_agent_id: str | None = None,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
-    from sqlalchemy import or_
-
     with get_session() as session:
-        q = select(A2ARequest).order_by(A2ARequest.created_at.desc())
-        if company_id:
-            agent_ids = list(
-                session.exec(
-                    select(Personnel.id).where(Personnel.company_id == company_id)
-                ).all()
-            )
-            q = q.where(
-                or_(
-                    A2ARequest.from_agent_id.in_(agent_ids),
-                    A2ARequest.to_agent_id.in_(agent_ids),
-                )
-            )
-        if approver_id:
-            q = q.where(A2ARequest.approver_id == approver_id)
-        if status:
-            q = q.where(A2ARequest.status == status)
-        if from_agent_id:
-            q = q.where(A2ARequest.from_agent_id == from_agent_id)
-        if to_agent_id:
-            q = q.where(A2ARequest.to_agent_id == to_agent_id)
-        rows = session.exec(q).all()
+        rows = _visible_requests(
+            session, user, company_id, approver_id, status, from_agent_id, to_agent_id
+        )
         return [_req_to_dict(r, session) for r in rows]
 
 
-@router.get("/requests/pending-count")
-def pending_count(company_id: str | None = None, _: User = Depends(get_current_user)):
-    """Returns count of requests awaiting approval (for notification badge)."""
+def _visible_requests(
+    session,
+    user: User,
+    company_id: str | None = None,
+    approver_id: str | None = None,
+    status: str | None = None,
+    from_agent_id: str | None = None,
+    to_agent_id: str | None = None,
+) -> list[A2ARequest]:
     from sqlalchemy import or_
 
-    with get_session() as session:
-        q = select(A2ARequest).where(
-            A2ARequest.status.in_(["pending_approval", "pending_result_approval"])
+    q = select(A2ARequest).order_by(A2ARequest.created_at.desc())
+    cids = [company_id] if company_id else authz.company_ids(session, user.id)
+    if company_id:
+        authz.require_member(session, user.id, company_id)
+    agent_ids = list(
+        session.exec(select(Personnel.id).where(Personnel.company_id.in_(cids))).all()
+    )
+    q = q.where(
+        or_(
+            A2ARequest.from_agent_id.in_(agent_ids),
+            A2ARequest.to_agent_id.in_(agent_ids),
         )
-        if company_id:
-            agent_ids = list(
-                session.exec(
-                    select(Personnel.id).where(Personnel.company_id == company_id)
-                ).all()
+    )
+    if approver_id:
+        q = q.where(A2ARequest.approver_id == approver_id)
+    if status:
+        q = q.where(A2ARequest.status == status)
+    if from_agent_id:
+        q = q.where(A2ARequest.from_agent_id == from_agent_id)
+    if to_agent_id:
+        q = q.where(A2ARequest.to_agent_id == to_agent_id)
+    return [r for r in session.exec(q).all() if _can_see_req(session, user, r)]
+
+
+@router.get("/requests/pending-count")
+def pending_count(
+    company_id: str | None = None, user: User = Depends(get_current_user)
+):
+    """Returns count of requests awaiting approval (for notification badge)."""
+    with get_session() as session:
+        rows = _visible_requests(session, user, company_id)
+        return {
+            "count": sum(
+                1
+                for r in rows
+                if r.status in ("pending_approval", "pending_result_approval")
             )
-            q = q.where(
-                or_(
-                    A2ARequest.from_agent_id.in_(agent_ids),
-                    A2ARequest.to_agent_id.in_(agent_ids),
-                )
-            )
-        return {"count": len(session.exec(q).all())}
+        }
 
 
 @router.post("/requests", status_code=201)
-def create_request(body: A2ARequestCreate, _: User = Depends(get_current_user)):
+def create_request(body: A2ARequestCreate, user: User = Depends(get_current_user)):
     with get_session() as session:
-        # Validate agents exist
-        for pid in [body.from_agent_id, body.to_agent_id]:
-            if not session.get(Personnel, pid):
-                raise HTTPException(
-                    status_code=404, detail=f"Personnel {pid} not found"
-                )
+        src = _agent(session, body.from_agent_id)
+        dst = _agent(session, body.to_agent_id)
+        if (
+            not src
+            or not dst
+            or src.company_id != dst.company_id
+            or not authz.is_member(session, user.id, src.company_id)
+        ):
+            raise HTTPException(status_code=404, detail="Personnel not found")
+        sess = (
+            session.get(AgentSession, body.from_session_id)
+            if body.from_session_id
+            else None
+        )
+        if body.from_session_id and (not sess or sess.personnel_id != src.id):
+            raise HTTPException(status_code=404, detail="Session not found")
+        # Delegating on behalf of an agent: its manager, or the owner of the chat
+        # the delegation comes from.
+        if not (
+            authz.can_manage_agent(session, user.id, src)
+            or (sess is not None and sess.user_id == user.id)
+        ):
+            raise HTTPException(
+                status_code=403, detail="Bu ajan adına talep açamazsınız"
+            )
+        if not authz.agent_is_active(session, dst.id):
+            raise HTTPException(status_code=409, detail="Hedef ajan etkin değil")
 
         req = A2ARequest(
             from_session_id=body.from_session_id,
@@ -160,12 +249,9 @@ def create_request(body: A2ARequestCreate, _: User = Depends(get_current_user)):
 
 
 @router.get("/requests/{req_id}")
-def get_request(req_id: str, _: User = Depends(get_current_user)):
+def get_request(req_id: str, user: User = Depends(get_current_user)):
     with get_session() as session:
-        req = session.get(A2ARequest, req_id)
-        if not req:
-            raise HTTPException(status_code=404, detail="Request not found")
-        return _req_to_dict(req, session)
+        return _req_to_dict(_own_request(session, user, req_id), session)
 
 
 @router.post("/requests/{req_id}/approve")
@@ -177,22 +263,30 @@ def approve_request(
 ):
     """Approve the task. Triggers execution in background."""
     with get_session() as session:
-        req = session.get(A2ARequest, req_id)
-        if not req:
-            raise HTTPException(status_code=404, detail="Request not found")
+        req = _own_request(session, caller, req_id)
         if req.status != "pending_approval":
             raise HTTPException(
                 status_code=409,
                 detail=f"Request is not pending approval (status: {req.status})",
             )
-        # Verify the approver matches the designated responsible person
-        if req.approver_id and req.approver_id != body.approver_id:
+        # The approver is the authenticated user, never a caller-supplied id.
+        if not _may_decide(session, caller, req):
             raise HTTPException(
                 status_code=403,
                 detail="Yetkisiz: bu talebi onaylayacak kişi siz değilsiniz",
             )
+        if not authz.agent_is_active(session, req.to_agent_id):
+            raise HTTPException(status_code=409, detail="Hedef ajan etkin değil")
+        _claim(session, req, ("pending_approval",), "running")
+        mine = session.exec(
+            select(Personnel).where(
+                Personnel.user_id == caller.id,
+                Personnel.company_id == _agent(session, req.to_agent_id).company_id,
+            )
+        ).first()
         req.status = "running"
-        req.approver_id = body.approver_id
+        if mine:
+            req.approver_id = mine.id
         req.approved_at = datetime.utcnow()
         req.updated_at = datetime.utcnow()
         session.add(req)
@@ -205,18 +299,19 @@ def approve_request(
 
 @router.post("/requests/{req_id}/approve-result")
 def approve_result(
-    req_id: str, body: A2AResultApprove, _: User = Depends(get_current_user)
+    req_id: str, body: A2AResultApprove, user: User = Depends(get_current_user)
 ):
     """Approve the result and mark the request as completed."""
     with get_session() as session:
-        req = session.get(A2ARequest, req_id)
-        if not req:
-            raise HTTPException(status_code=404, detail="Request not found")
+        req = _own_request(session, user, req_id)
         if req.status != "pending_result_approval":
             raise HTTPException(
                 status_code=409,
                 detail=f"Request is not pending result approval (status: {req.status})",
             )
+        if not _may_decide(session, user, req):
+            raise HTTPException(status_code=403, detail="Yetkisiz")
+        _claim(session, req, ("pending_result_approval",), "completed")
         req.status = "completed"
         req.result_approved_at = datetime.utcnow()
         req.updated_at = datetime.utcnow()
@@ -227,18 +322,30 @@ def approve_result(
 
 
 @router.post("/requests/{req_id}/reject")
-def reject_request(req_id: str, body: A2AReject, _: User = Depends(get_current_user)):
+def reject_request(
+    req_id: str, body: A2AReject, user: User = Depends(get_current_user)
+):
     with get_session() as session:
-        req = session.get(A2ARequest, req_id)
-        if not req:
-            raise HTTPException(status_code=404, detail="Request not found")
+        req = _own_request(session, user, req_id)
         if req.status not in ("pending_approval", "pending_result_approval"):
             raise HTTPException(
                 status_code=409, detail="Request cannot be rejected at this stage"
             )
+        if not _may_decide(session, user, req):
+            raise HTTPException(status_code=403, detail="Yetkisiz")
+        _claim(
+            session, req, ("pending_approval", "pending_result_approval"), "rejected"
+        )
         req.status = "rejected"
         req.rejection_reason = body.reason
-        req.approver_id = body.approver_id
+        mine = session.exec(
+            select(Personnel).where(
+                Personnel.user_id == user.id,
+                Personnel.company_id == _agent(session, req.to_agent_id).company_id,
+            )
+        ).first()
+        if mine:
+            req.approver_id = mine.id
         req.updated_at = datetime.utcnow()
         session.add(req)
         session.commit()
@@ -378,9 +485,21 @@ def _execute_a2a_task(req_id: str) -> None:
 
 
 @router.get("/sessions/{session_id}/delegation-status")
-def session_delegation_status(session_id: str, _: User = Depends(get_current_user)):
+def session_delegation_status(session_id: str, user: User = Depends(get_current_user)):
     """Return counts of A2A requests originating from a session."""
     with get_session() as session:
+        sess = session.get(AgentSession, session_id)
+        person = session.get(Personnel, sess.personnel_id) if sess else None
+        if (
+            not sess
+            or not person
+            or not authz.is_member(session, user.id, person.company_id)
+            or not (
+                sess.user_id == user.id
+                or authz.can_manage_agent(session, user.id, person)
+            )
+        ):
+            raise HTTPException(status_code=404, detail="Session not found")
         reqs = session.exec(
             select(A2ARequest).where(A2ARequest.from_session_id == session_id)
         ).all()

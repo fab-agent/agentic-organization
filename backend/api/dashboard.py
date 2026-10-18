@@ -17,6 +17,7 @@ from models import (
     TaskRequest,
     User,
 )
+from services import authz
 
 router = APIRouter(tags=["dashboard"])
 
@@ -39,6 +40,7 @@ def company_stats(
             company_id = first_mem.company_id if first_mem else None
         if not company_id:
             return {}
+        authz.require_member(session, user.id, company_id)
 
         # All personnel in company
         people = session.exec(
@@ -125,6 +127,8 @@ def my_dashboard(company_id: str | None = None, user: User = Depends(get_current
                 select(CompanyMember).where(CompanyMember.user_id == user.id)
             ).first()
             company_id = first_mem.company_id if first_mem else None
+        if company_id:
+            authz.require_member(session, user.id, company_id)
 
         # Find personnel record linked to this user
         person = None
@@ -146,24 +150,13 @@ def my_dashboard(company_id: str | None = None, user: User = Depends(get_current
         ).all()
         agent_personnel_ids = [a.personnel_id for a in responsible_agent_cfgs]
 
-        # If user has no responsible agents, fall back to all company agents
-        if not agent_personnel_ids and company_id:
-            all_company_people = session.exec(
-                select(Personnel)
-                .where(Personnel.company_id == company_id)
-                .where(Personnel.type == "agent")
-            ).all()
-            agent_personnel_ids = [p.id for p in all_company_people]
-
-        # Sessions for those agents
+        # Own chats, plus chats with agents this user is responsible for.
+        cond = AgentSession.user_id == user.id
         if agent_personnel_ids:
-            sessions_q = session.exec(
-                select(AgentSession)
-                .where(AgentSession.personnel_id.in_(agent_personnel_ids))
-                .order_by(AgentSession.updated_at.desc())
-            ).all()
-        else:
-            sessions_q = []
+            cond = cond | AgentSession.personnel_id.in_(agent_personnel_ids)
+        sessions_q = session.exec(
+            select(AgentSession).where(cond).order_by(AgentSession.updated_at.desc())
+        ).all()
 
         total_tokens = 0
         today_tokens = 0
@@ -234,6 +227,7 @@ def agent_sla(company_id: str | None = None, user: User = Depends(get_current_us
             company_id = first_mem.company_id if first_mem else None
         if not company_id:
             return {"agents": []}
+        authz.require_role(session, user.id, company_id, authz.MANAGERS)
 
         agents = session.exec(
             select(Personnel)

@@ -94,6 +94,10 @@ Security: only `SELECT` (and `WITH … SELECT`) queries are allowed; commands su
 
 The bot needs no webhook (the server polls Telegram regularly).
 
+:::caution Configured admin chat only
+The interactive bot answers only the **chat id** entered for the company and shows only that company's agents and approvals. Any other chat gets "not authorised". There is no per-person Telegram pairing yet; the chat id should be an administrators' chat or a trusted group.
+:::
+
 ## Audit Log
 
 The record of important actions (who did what to which record, and when). → [Dashboard → Audit log](/guide/dashboard#audit-log)

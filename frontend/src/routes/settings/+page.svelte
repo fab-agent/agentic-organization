@@ -259,7 +259,7 @@
 	async function loadGit() {
 		gitLoading = true;
 		try {
-			const [cfg, logs] = await Promise.all([gitApi.config(activeCompanyId), gitApi.logs(10)]);
+			const [cfg, logs] = await Promise.all([gitApi.config(activeCompanyId), gitApi.logs(10, activeCompanyId)]);
 			gitConfig = cfg;
 			gitLogs = logs;
 		} finally {
@@ -326,8 +326,7 @@
 			const params = new URLSearchParams({ limit: '100' });
 			if (company?.id) params.set('company_id', company.id);
 			if (auditEntityFilter) params.set('entity_type', auditEntityFilter);
-			const resp = await fetch(`${import.meta.env.VITE_API_URL}/audit?${params}`);
-			auditLogs = await resp.json();
+			auditLogs = await api.get<any[]>(`/audit?${params}`);
 		} finally {
 			auditLoading = false;
 		}
@@ -509,7 +508,7 @@
 		tgLoading = true;
 		tgError = '';
 		try {
-			tgConfig = await telegramApi.getConfig();
+			tgConfig = await telegramApi.getConfig(activeCompanyId);
 		} catch (e: any) {
 			tgError = e?.message ?? 'Yüklenemedi';
 		} finally {
@@ -522,7 +521,7 @@
 		tgError = '';
 		tgSuccess = '';
 		try {
-			const res = await telegramApi.saveConfig(tgForm.bot_token.trim(), tgForm.admin_chat_id.trim());
+			const res = await telegramApi.saveConfig(tgForm.bot_token.trim(), tgForm.admin_chat_id.trim(), activeCompanyId);
 			tgConfig = res;
 			tgForm = { bot_token: '', admin_chat_id: '' };
 			tgEditMode = false;
@@ -539,7 +538,7 @@
 		tgError = '';
 		tgSuccess = '';
 		try {
-			await telegramApi.test();
+			await telegramApi.test(activeCompanyId);
 			tgSuccess = 'Test mesajı gönderildi ✓';
 		} catch (e: any) {
 			tgError = e?.message ?? 'Test başarısız';
@@ -552,7 +551,7 @@
 		tgDeleting = true;
 		tgError = '';
 		try {
-			await telegramApi.deleteConfig();
+			await telegramApi.deleteConfig(activeCompanyId);
 			tgConfig = { configured: false };
 			tgSuccess = '';
 		} catch (e: any) {

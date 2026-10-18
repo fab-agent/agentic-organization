@@ -33,7 +33,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    cols = {c["name"] for c in sa.inspect(op.get_bind()).get_columns("agentsession")}
+    if "user_id" not in cols:
+        return
+    # Dropping the column drops its index and foreign key with it, whatever they
+    # are named in this database (fresh create_all names differ from migrated ones).
     with op.batch_alter_table("agentsession", schema=None) as batch_op:
-        batch_op.drop_constraint("fk_agentsession_user_id", type_="foreignkey")
-        batch_op.drop_index("ix_agentsession_user_id")
         batch_op.drop_column("user_id")

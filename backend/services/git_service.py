@@ -255,7 +255,7 @@ class GitSyncService:
     # ── Pull (repo → DB) ──────────────────────────────────────────────────────
 
     def pull(self, session: Session, config: GitConfig) -> SyncLog:
-        log = SyncLog(direction="pull", status="error")
+        log = SyncLog(direction="pull", status="error", company_id=config.company_id)
         try:
             repo = self._get_repo(config)
             repo.remotes.origin.pull(config.branch)
@@ -288,7 +288,7 @@ class GitSyncService:
     def push(
         self, session: Session, config: GitConfig, commit_message: str = ""
     ) -> SyncLog:
-        log = SyncLog(direction="push", status="error")
+        log = SyncLog(direction="push", status="error", company_id=config.company_id)
         try:
             repo = self._get_repo(config)
             repo.remotes.origin.pull(config.branch)

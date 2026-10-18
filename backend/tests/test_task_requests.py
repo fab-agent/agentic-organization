@@ -283,7 +283,7 @@ async def test_emit_delivers_to_queue():
 
     task_id = "emit-unit-test"
     q: asyncio.Queue = asyncio.Queue()
-    _task_queues[task_id] = q
+    _task_queues[task_id] = [q]
 
     try:
         await _emit(task_id, {"type": "step", "step": "starting"})

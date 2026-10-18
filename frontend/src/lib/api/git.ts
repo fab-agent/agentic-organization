@@ -38,5 +38,5 @@ export const git = {
   disconnect: (company_id?: string) => api.delete(`/git/config${qs(company_id)}`),
   pull:       (company_id?: string) => api.post<SyncLog>(`/git/pull${qs(company_id)}`, {}),
   push:       (message?: string, company_id?: string) => api.post<SyncLog>(`/git/push${qs(company_id)}`, { message: message ?? '' }),
-  logs:       (limit = 20)          => api.get<SyncLog[]>(`/git/logs?limit=${limit}`),
+  logs:       (limit = 20, company_id?: string) => api.get<SyncLog[]>(`/git/logs?limit=${limit}${company_id ? `&company_id=${company_id}` : ''}`),
 };

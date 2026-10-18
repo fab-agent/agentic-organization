@@ -8,6 +8,7 @@ from api.auth import check_company_membership, get_current_user
 from database import get_session
 from models import AgentConfig, Company, CompanyMember, Department, Personnel, User
 from schemas import CompanyCreate, CompanyUpdate
+from services import authz
 
 router = APIRouter(prefix="/companies", tags=["companies"])
 
@@ -115,11 +116,15 @@ def update_company(
     company_id: str, body: CompanyUpdate, current_user: User = Depends(get_current_user)
 ):
     with get_session() as session:
-        member = check_company_membership(current_user.id, company_id, session)
-        if _ROLE_WEIGHT.get(member.role, 0) < _ROLE_WEIGHT["executive"]:
-            raise HTTPException(
-                status_code=403, detail="Bu işlem için yönetici yetkisi gerekli"
-            )
+        # Company-wide founder/executive; a department-scoped executive is not enough.
+        authz.require_role(
+            session,
+            current_user.id,
+            company_id,
+            authz.FINAL,
+            company_wide=True,
+            detail="Bu işlem için yönetici yetkisi gerekli",
+        )
         company = session.get(Company, company_id)
         if not company:
             raise HTTPException(status_code=404, detail="Company not found")
@@ -157,11 +162,14 @@ def update_company(
 @router.delete("/{company_id}", status_code=204)
 def delete_company(company_id: str, current_user: User = Depends(get_current_user)):
     with get_session() as session:
-        member = check_company_membership(current_user.id, company_id, session)
-        if member.role != "founder":
-            raise HTTPException(
-                status_code=403, detail="Sadece kurucu şirketi silebilir"
-            )
+        authz.require_role(
+            session,
+            current_user.id,
+            company_id,
+            {"founder"},
+            company_wide=True,
+            detail="Sadece kurucu şirketi silebilir",
+        )
         company = session.get(Company, company_id)
         if not company:
             raise HTTPException(status_code=404, detail="Company not found")

@@ -32,6 +32,7 @@ from schemas import (
 )
 from services import authz
 from services.auth import generate_temp_password, hash_password
+from services.authz import ASSIGNABLE_ROLES
 from services.email import send_invite
 
 TEMP_PASSWORD_TTL_MINUTES = 30
@@ -123,48 +124,6 @@ def _personnel_to_dict(p: Personnel, session) -> dict:
         }
 
     return result
-
-
-ASSIGNABLE_ROLES = {"founder", "executive", "dept_head", "agent_owner", "user"}
-# Which membership roles may hand out which roles (company-wide memberships only,
-# except that a dept_head may hand out the non-managing roles).
-_GRANTORS = {
-    "founder": {"founder"},
-    "executive": {"founder"},
-    "dept_head": {"founder", "executive"},
-    "agent_owner": {"founder", "executive", "dept_head"},
-    "user": {"founder", "executive", "dept_head"},
-}
-
-
-def _require_may_grant(
-    session,
-    user_id: str,
-    company_id: str | None,
-    role: str,
-    *,
-    scope_id: str | None = None,
-    person: Personnel | None = None,
-):
-    """Only a sufficiently senior member may assign `role` (with `scope_id`).
-
-    Company-wide roles (scope None for founder/executive/dept_head) need a
-    company-wide grantor. A grant scoped to one department may also come from a
-    grantor scoped to that department; agent_owner/user grants for a person of a
-    department may come from that department's head.
-    """
-    if not company_id:
-        raise HTTPException(status_code=404, detail="Şirket bulunamadı")
-    if not authz.scope_valid(session, company_id, role, scope_id):
-        raise HTTPException(status_code=422, detail="Rol için kapsam geçersiz")
-    allowed_roles = _GRANTORS.get(role, {"founder"})
-    dept = scope_id if role in ("executive", "dept_head") else None
-    if role in ("agent_owner", "user") and person is not None:
-        dept = person.department_id
-    if not authz.has_role(
-        session, user_id, company_id, allowed_roles, department_id=dept
-    ):
-        raise HTTPException(status_code=403, detail="Bu rolü atama yetkiniz yok")
 
 
 def _get_person_and_check_membership(
@@ -430,7 +389,7 @@ def invite_personnel(
 
     with get_session() as session:
         person = _get_person_and_check_membership(person_id, current_user.id, session)
-        _require_may_grant(
+        authz.require_may_grant(
             session,
             current_user.id,
             person.company_id,
@@ -489,13 +448,17 @@ def invite_personnel(
         if existing_member:
             # Nobody below founder may rewrite a founder's or executive's membership.
             if existing_member.role in ("founder", "executive"):
-                _require_may_grant(
+                authz.require_may_grant(
                     session,
                     current_user.id,
                     company.id,
                     existing_member.role,
                     scope_id=existing_member.scope_id,
                 )
+            if authz.would_orphan_founders(
+                session, existing_member, keep=(role == "founder" and scope_id is None)
+            ):
+                raise HTTPException(status_code=409, detail="Son kurucu değiştirilemez")
             existing_member.role = role
             existing_member.scope_id = scope_id
             session.add(existing_member)

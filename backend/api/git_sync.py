@@ -1,11 +1,13 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
 
 from api.audit import log_action
+from api.auth import get_current_user
 from core.security import encrypt
 from database import get_session
-from models import GitConfig, SyncLog
+from models import GitConfig, SyncLog, User
 from schemas import GitConfigCreate, GitConfigUpdate, PushRequest
+from services import authz
 from services.git_service import git_service
 
 router = APIRouter(prefix="/git", tags=["git"])
@@ -40,11 +42,17 @@ def _log_to_dict(log: SyncLog) -> dict:
     }
 
 
-def _get_config_or_404(session, company_id: str | None = None) -> GitConfig:
-    q = select(GitConfig)
-    if company_id:
-        q = q.where(GitConfig.company_id == company_id)
-    cfg = session.exec(q).first()
+def _require_git_admin(session, user: User, company_id: str) -> None:
+    """Git connection and sync act with the company's stored credentials and import
+    configuration: company-wide founder/executive only (404 for outsiders)."""
+    authz.require_role(session, user.id, company_id, authz.FINAL, company_wide=True)
+
+
+def _get_config_or_404(session, user: User, company_id: str) -> GitConfig:
+    _require_git_admin(session, user, company_id)
+    cfg = session.exec(
+        select(GitConfig).where(GitConfig.company_id == company_id)
+    ).first()
     if not cfg:
         raise HTTPException(status_code=404, detail="Git bağlantısı yapılandırılmamış")
     return cfg
@@ -54,24 +62,26 @@ def _get_config_or_404(session, company_id: str | None = None) -> GitConfig:
 
 
 @router.get("/config")
-def get_git_config(company_id: str | None = None):
+def get_git_config(company_id: str, user: User = Depends(get_current_user)):
     with get_session() as session:
-        q = select(GitConfig)
-        if company_id:
-            q = q.where(GitConfig.company_id == company_id)
-        cfg = session.exec(q).first()
+        authz.require_role(session, user.id, company_id, authz.MANAGERS)
+        cfg = session.exec(
+            select(GitConfig).where(GitConfig.company_id == company_id)
+        ).first()
         if not cfg:
             return None
         return _config_to_dict(cfg)
 
 
 @router.post("/config", status_code=201)
-def create_git_config(body: GitConfigCreate, company_id: str | None = None):
+def create_git_config(
+    body: GitConfigCreate, company_id: str, user: User = Depends(get_current_user)
+):
     with get_session() as session:
-        q = select(GitConfig)
-        if company_id:
-            q = q.where(GitConfig.company_id == company_id)
-        existing = session.exec(q).first()
+        _require_git_admin(session, user, company_id)
+        existing = session.exec(
+            select(GitConfig).where(GitConfig.company_id == company_id)
+        ).first()
         if existing:
             raise HTTPException(
                 status_code=409,
@@ -102,9 +112,11 @@ def create_git_config(body: GitConfigCreate, company_id: str | None = None):
 
 
 @router.patch("/config")
-def update_git_config(body: GitConfigUpdate, company_id: str | None = None):
+def update_git_config(
+    body: GitConfigUpdate, company_id: str, user: User = Depends(get_current_user)
+):
     with get_session() as session:
-        cfg = _get_config_or_404(session, company_id)
+        cfg = _get_config_or_404(session, user, company_id)
         if body.branch is not None:
             cfg.branch = body.branch
         if body.token is not None:
@@ -128,9 +140,9 @@ def update_git_config(body: GitConfigUpdate, company_id: str | None = None):
 
 
 @router.delete("/config", status_code=204)
-def delete_git_config(company_id: str | None = None):
+def delete_git_config(company_id: str, user: User = Depends(get_current_user)):
     with get_session() as session:
-        cfg = _get_config_or_404(session, company_id)
+        cfg = _get_config_or_404(session, user, company_id)
         log_action(
             session,
             "delete",
@@ -147,9 +159,9 @@ def delete_git_config(company_id: str | None = None):
 
 
 @router.post("/pull")
-def git_pull(company_id: str | None = None):
+def git_pull(company_id: str, user: User = Depends(get_current_user)):
     with get_session() as session:
-        cfg = _get_config_or_404(session, company_id)
+        cfg = _get_config_or_404(session, user, company_id)
         log = git_service.pull(session, cfg)
         log_action(
             session,
@@ -165,9 +177,11 @@ def git_pull(company_id: str | None = None):
 
 
 @router.post("/push")
-def git_push(body: PushRequest, company_id: str | None = None):
+def git_push(
+    body: PushRequest, company_id: str, user: User = Depends(get_current_user)
+):
     with get_session() as session:
-        cfg = _get_config_or_404(session, company_id)
+        cfg = _get_config_or_404(session, user, company_id)
         log = git_service.push(session, cfg, body.message)
         log_action(
             session,
@@ -183,9 +197,9 @@ def git_push(body: PushRequest, company_id: str | None = None):
 
 
 @router.get("/diff")
-def git_diff(company_id: str | None = None):
+def git_diff(company_id: str, user: User = Depends(get_current_user)):
     with get_session() as session:
-        cfg = _get_config_or_404(session, company_id)
+        cfg = _get_config_or_404(session, user, company_id)
         return git_service.diff(session, cfg)
 
 
@@ -193,9 +207,15 @@ def git_diff(company_id: str | None = None):
 
 
 @router.get("/logs")
-def list_sync_logs(limit: int = 20):
+def list_sync_logs(
+    company_id: str, limit: int = 20, user: User = Depends(get_current_user)
+):
     with get_session() as session:
+        authz.require_role(session, user.id, company_id, authz.MANAGERS)
         logs = session.exec(
-            select(SyncLog).order_by(SyncLog.created_at.desc()).limit(limit)
+            select(SyncLog)
+            .where(SyncLog.company_id == company_id)
+            .order_by(SyncLog.created_at.desc())
+            .limit(max(1, min(limit, 200)))
         ).all()
         return [_log_to_dict(l) for l in logs]

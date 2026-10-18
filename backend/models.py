@@ -147,6 +147,7 @@ class SyncLog(SQLModel, table=True):
     """Record of every pull/push sync operation."""
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    company_id: str | None = Field(default=None, foreign_key="company.id", index=True)
     direction: str  # "pull" | "push"
     files_changed: int = Field(default=0)
     commit_sha: str | None = None

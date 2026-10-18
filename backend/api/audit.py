@@ -1,13 +1,15 @@
-"""Audit log API — read-only, admin/executive only in production."""
+"""Audit log API — read-only; company-wide founder/executive of that company."""
 
 import json
 from datetime import datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from sqlmodel import select
 
+from api.auth import get_current_user
 from database import get_session
-from models import AuditLog
+from models import AuditLog, User
+from services import authz
 
 router = APIRouter(prefix="/audit", tags=["audit"])
 
@@ -38,16 +40,22 @@ def log_action(
 
 @router.get("")
 def list_audit_logs(
-    company_id: str | None = None,
+    company_id: str,
     entity_type: str | None = None,
     action: str | None = None,
     user_id: str | None = None,
     limit: int = 100,
+    user: User = Depends(get_current_user),
 ):
     with get_session() as session:
-        q = select(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit)
-        if company_id:
-            q = q.where(AuditLog.company_id == company_id)
+        # The audit log is final-approver reading (404 for outsiders), per company.
+        authz.require_role(session, user.id, company_id, authz.FINAL, company_wide=True)
+        q = (
+            select(AuditLog)
+            .order_by(AuditLog.created_at.desc())
+            .limit(max(1, min(limit, 500)))
+            .where(AuditLog.company_id == company_id)
+        )
         if entity_type:
             q = q.where(AuditLog.entity_type == entity_type)
         if action:

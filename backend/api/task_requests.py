@@ -29,19 +29,20 @@ from models import (
     TaskRequest,
     User,
 )
+from services import authz
 from services.flow_runner import _build_system_prompt, _call_llm_streaming
 
 router = APIRouter(prefix="/task-requests", tags=["task-requests"])
 
 # Per-task SSE queues: task_id → asyncio.Queue
 # Populated when a client opens /task-requests/{id}/stream before or during run.
-_task_queues: dict[str, asyncio.Queue] = {}
+# One queue per open subscriber: independent fan-out, cleanup removes only its own.
+_task_queues: dict[str, list[asyncio.Queue]] = {}
 
 
 async def _emit(task_id: str, event: dict) -> None:
     """Push an event to the task's SSE queue if a client is listening."""
-    q = _task_queues.get(task_id)
-    if q:
+    for q in list(_task_queues.get(task_id, [])):
         await q.put(event)
 
 
@@ -163,6 +164,13 @@ def create_task_request(
     body: TaskRequestCreate, current_user: User = Depends(get_current_user)
 ):
     with get_session() as session:
+        authz.require_member(session, current_user.id, body.company_id)
+        if body.department_id:
+            dept = session.get(Department, body.department_id)
+            if not dept or dept.company_id != body.company_id:
+                raise HTTPException(
+                    status_code=422, detail="Bölüm bu şirkete ait değil"
+                )
         agent_cfg = _route_agent(
             session, body.company_id, body.department_id, body.skill_filter
         )
@@ -336,9 +344,20 @@ async def run_task(
 
 @router.get("/{task_id}/stream")
 async def stream_task(task_id: str, current_user: User = Depends(get_current_user)):
-    """SSE stream for task execution events. Open before or right after calling /run."""
+    """SSE stream for task execution events. Open before or right after calling /run.
+
+    Only the requester and the responsible human may listen; a denied connection
+    registers nothing.
+    """
+    with get_session() as session:
+        task = session.get(TaskRequest, task_id)
+        if not task or current_user.id not in (
+            task.requester_user_id,
+            task.responsible_user_id,
+        ):
+            raise HTTPException(status_code=404, detail="Task not found")
     q: asyncio.Queue = asyncio.Queue()
-    _task_queues[task_id] = q
+    _task_queues.setdefault(task_id, []).append(q)
 
     async def event_gen():
         try:
@@ -352,7 +371,11 @@ async def stream_task(task_id: str, current_user: User = Depends(get_current_use
                 if event.get("type") in ("done", "error", "timeout"):
                     break
         finally:
-            _task_queues.pop(task_id, None)
+            queues = _task_queues.get(task_id, [])
+            if q in queues:
+                queues.remove(q)
+            if not queues:
+                _task_queues.pop(task_id, None)
 
     return StreamingResponse(event_gen(), media_type="text/event-stream")
 

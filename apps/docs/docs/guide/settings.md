@@ -94,6 +94,10 @@ Güvenlik: yalnızca `SELECT` (ve `WITH … SELECT`) sorgularına izin verilir; 
 
 Bot, webhook gerektirmez (sunucu Telegram'ı düzenli sorgular).
 
+:::caution Yalnızca tanımlı yönetici sohbeti
+Etkileşimli bot yalnızca şirket için girilen **sohbet kimliğine** yanıt verir ve yalnızca o şirketin ajanlarını ve onaylarını gösterir. Başka bir sohbet "yetkili değil" yanıtı alır. Kişi başına Telegram eşleştirmesi henüz yok; sohbet kimliği bir yönetici sohbeti ya da güvenilen bir grup olmalıdır.
+:::
+
 ## Audit Log
 
 Önemli işlemlerin kaydı (kim, ne zaman, hangi kayıt, ne yaptı). → [Panel → Denetim kaydı](/guide/dashboard#denetim-kaydı)
