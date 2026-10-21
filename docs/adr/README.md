@@ -41,6 +41,7 @@ Format: a [MADR](https://adr.github.io/madr/) derivative — see [`0000-template
 | [0022](0022-herdr-power-users-simple-ui-learning-loop.md) | Herdr for power users, a minimal web view for departments, and an approved learning loop | accepted |
 | [0023](0023-eval-and-failure-attribution.md) | Evaluation and failure attribution on the audit trail | accepted |
 | [0024](0024-workspace-controller-hardening.md) | Workspace controller hardening follow-ups | accepted |
+| [0025](0025-odoo-discuss-agent-addon.md) | Odoo add-on — agents in Discuss, acting as the requesting user | proposed |
 
 ## Adding a new ADR
 
