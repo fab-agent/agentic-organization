@@ -505,7 +505,7 @@
         <label class="f" for="c-email"><span data-i18n="ct.email">E-posta</span><input id="c-email" name="email" type="email" autocomplete="email" required maxlength="200"></label>
         <label class="f" for="c-org"><span data-i18n="ct.org">Şirket / kurum (isteğe bağlı)</span><input id="c-org" name="org" autocomplete="organization" maxlength="160"></label>
         <label class="f" for="c-topic"><span id="topicLabel">Ekip büyüklüğü</span><select id="c-topic" name="topic"></select></label>
-        <label class="f full" for="c-msg"><span data-i18n="ct.msg">Mesajın</span><textarea id="c-msg" name="message" required maxlength="4000"></textarea></label>
+        <label class="f full" for="c-msg"><span data-i18n="ct.msg">Mesajın</span><textarea id="c-msg" name="message" maxlength="4000"></textarea></label>
         <div class="hp" aria-hidden="true"><label>Website<input id="c-web" name="website" tabindex="-1" autocomplete="off"></label></div>
         <label class="consent full" for="c-consent"><input id="c-consent" type="checkbox" required><span data-i18n="ct.consent">Bilgilerimin bu talebe yanıt vermek için saklanmasını kabul ediyorum.</span></label>
       </div>
@@ -768,14 +768,14 @@ const NEW = {
     'inst.title':'Tek komutla, <span class="human">kendi</span> sunucunda.','inst.desc':'Docker çalışan her sunucuda kurulur. SSL, Nginx ve anahtar üretimini sihirbaz yapar. Verilerin sunucundan çıkmaz.',
     'ct.k':'İletişim','ct.title':'Konuşalım<span style="color:var(--signal-ink)">.</span>','ct.desc':'Demo görmek, bir şey sormak ya da projeye sponsor olmak için yaz. Mesajın doğrudan kuruluşa ulaşır.',
     'ct.intent':'Ne istiyorsun?','ct.i.demo':'Demo istiyorum','ct.i.contact':'İletişime geçmek istiyorum','ct.i.sponsor':'Sponsor olmak istiyorum',
-    'ct.name':'Adın','ct.email':'E-posta','ct.org':'Şirket / kurum (isteğe bağlı)','ct.msg':'Mesajın',
+    'ct.name':'Adın','ct.email':'E-posta','ct.org':'Şirket / kurum (isteğe bağlı)','ct.msg':'Mesajın (isteğe bağlı)',
     'ct.x.demo':'Ekip büyüklüğü','ct.x.contact':'Konu','ct.x.sponsor':'Sponsorluk türü',
     'ct.o.demo':['1–10 kişi','11–50 kişi','51–250 kişi','250+ kişi'],
     'ct.o.contact':['Ürün sorusu','Kurulum desteği','Ortaklık','Basın','Diğer'],
     'ct.o.sponsor':['Geliştirme fonu','Hackathon / etkinlik','Topluluk','Diğer'],
     'ct.consent':'Bilgilerimin bu talebe yanıt vermek için saklanmasını kabul ediyorum.','ct.send':'Gönder','ct.sending':'Gönderiliyor…',
     'ct.ok':'Teşekkürler, mesajın ulaştı. Referans: {id}','ct.err':'Gönderilemedi. Biraz sonra tekrar dene ya da bilgi@kuntaykunt.com adresine yaz.',
-    'ct.invalid':'İşaretli alanları kontrol et.','ct.rate':'Kısa sürede çok fazla mesaj gönderildi. Biraz sonra tekrar dene.',
+    'ct.invalid':'İşaretli alanları kontrol et.','ct.e.name':'Lütfen adını yaz (en az 2 karakter).','ct.e.email':'Geçerli bir e-posta adresi yaz.','ct.e.consent':'Devam etmek için onay kutusunu işaretle.','ct.rate':'Kısa sürede çok fazla mesaj gönderildi. Biraz sonra tekrar dene.',
     'ft.h':'İnsanlar karar verir, <span class="human">ajanlar</span> yürütür.','ft.links':'Bağlantılar'
   },
   en: {
@@ -797,14 +797,14 @@ const NEW = {
     'inst.title':'One command, on <span class="human">your</span> server.','inst.desc':'Installs on any server running Docker. The wizard sets up SSL, Nginx and key generation. Your data never leaves your server.',
     'ct.k':'Contact','ct.title':'Let\'s talk<span style="color:var(--signal-ink)">.</span>','ct.desc':'Write to us to see a demo, ask something or sponsor the project. Your message goes straight to the team.',
     'ct.intent':'What do you need?','ct.i.demo':'I want a demo','ct.i.contact':'I want to get in touch','ct.i.sponsor':'I want to sponsor',
-    'ct.name':'Your name','ct.email':'Email','ct.org':'Company / organization (optional)','ct.msg':'Your message',
+    'ct.name':'Your name','ct.email':'Email','ct.org':'Company / organization (optional)','ct.msg':'Your message (optional)',
     'ct.x.demo':'Team size','ct.x.contact':'Topic','ct.x.sponsor':'Type of sponsorship',
     'ct.o.demo':['1–10 people','11–50 people','51–250 people','250+ people'],
     'ct.o.contact':['Product question','Setup help','Partnership','Press','Other'],
     'ct.o.sponsor':['Development fund','Hackathon / event','Community','Other'],
     'ct.consent':'I agree that my details are stored to answer this request.','ct.send':'Send','ct.sending':'Sending…',
     'ct.ok':'Thank you, your message arrived. Reference: {id}','ct.err':'Could not send. Try again shortly or write to bilgi@kuntaykunt.com.',
-    'ct.invalid':'Check the highlighted fields.','ct.rate':'Too many messages in a short time. Try again later.',
+    'ct.invalid':'Check the highlighted fields.','ct.e.name':'Please enter your name (at least 2 characters).','ct.e.email':'Enter a valid email address.','ct.e.consent':'Tick the consent box to continue.','ct.rate':'Too many messages in a short time. Try again later.',
     'ft.h':'People decide, <span class="human">agents</span> run the work.','ft.links':'Links'
   },
   de: {
@@ -826,14 +826,14 @@ const NEW = {
     'inst.title':'Ein Befehl, auf <span class="human">Ihrem</span> Server.','inst.desc':'Läuft auf jedem Server mit Docker. Der Assistent richtet SSL, Nginx und die Schlüsselerzeugung ein. Ihre Daten verlassen Ihren Server nicht.',
     'ct.k':'Kontakt','ct.title':'Lassen Sie uns reden<span style="color:var(--signal-ink)">.</span>','ct.desc':'Schreiben Sie uns für eine Demo, eine Frage oder um das Projekt zu sponsern. Ihre Nachricht geht direkt ans Team.',
     'ct.intent':'Was brauchen Sie?','ct.i.demo':'Ich möchte eine Demo','ct.i.contact':'Ich möchte Kontakt aufnehmen','ct.i.sponsor':'Ich möchte sponsern',
-    'ct.name':'Ihr Name','ct.email':'E-Mail','ct.org':'Firma / Organisation (optional)','ct.msg':'Ihre Nachricht',
+    'ct.name':'Ihr Name','ct.email':'E-Mail','ct.org':'Firma / Organisation (optional)','ct.msg':'Ihre Nachricht (optional)',
     'ct.x.demo':'Teamgröße','ct.x.contact':'Thema','ct.x.sponsor':'Art der Förderung',
     'ct.o.demo':['1–10 Personen','11–50 Personen','51–250 Personen','250+ Personen'],
     'ct.o.contact':['Produktfrage','Installationshilfe','Partnerschaft','Presse','Sonstiges'],
     'ct.o.sponsor':['Entwicklungsfonds','Hackathon / Event','Community','Sonstiges'],
     'ct.consent':'Ich stimme zu, dass meine Angaben zur Beantwortung dieser Anfrage gespeichert werden.','ct.send':'Senden','ct.sending':'Wird gesendet…',
     'ct.ok':'Danke, Ihre Nachricht ist angekommen. Referenz: {id}','ct.err':'Senden fehlgeschlagen. Versuchen Sie es gleich noch einmal oder schreiben Sie an bilgi@kuntaykunt.com.',
-    'ct.invalid':'Bitte markierte Felder prüfen.','ct.rate':'Zu viele Nachrichten in kurzer Zeit. Bitte später erneut versuchen.',
+    'ct.invalid':'Bitte markierte Felder prüfen.','ct.e.name':'Bitte geben Sie Ihren Namen ein (mind. 2 Zeichen).','ct.e.email':'Bitte eine gültige E-Mail-Adresse eingeben.','ct.e.consent':'Bitte das Einverständnis ankreuzen, um fortzufahren.','ct.rate':'Zu viele Nachrichten in kurzer Zeit. Bitte später erneut versuchen.',
     'ft.h':'Menschen entscheiden, <span class="human">Agenten</span> erledigen die Arbeit.','ft.links':'Links'
   },
   es: {
@@ -855,14 +855,14 @@ const NEW = {
     'inst.title':'Un comando, en <span class="human">tu</span> servidor.','inst.desc':'Se instala en cualquier servidor con Docker. El asistente configura SSL, Nginx y las claves. Tus datos no salen de tu servidor.',
     'ct.k':'Contacto','ct.title':'Hablemos<span style="color:var(--signal-ink)">.</span>','ct.desc':'Escríbenos para ver una demo, preguntar algo o patrocinar el proyecto. Tu mensaje llega directo al equipo.',
     'ct.intent':'¿Qué necesitas?','ct.i.demo':'Quiero una demo','ct.i.contact':'Quiero ponerme en contacto','ct.i.sponsor':'Quiero patrocinar',
-    'ct.name':'Tu nombre','ct.email':'Correo electrónico','ct.org':'Empresa / organización (opcional)','ct.msg':'Tu mensaje',
+    'ct.name':'Tu nombre','ct.email':'Correo electrónico','ct.org':'Empresa / organización (opcional)','ct.msg':'Tu mensaje (opcional)',
     'ct.x.demo':'Tamaño del equipo','ct.x.contact':'Tema','ct.x.sponsor':'Tipo de patrocinio',
     'ct.o.demo':['1–10 personas','11–50 personas','51–250 personas','250+ personas'],
     'ct.o.contact':['Pregunta de producto','Ayuda con la instalación','Alianza','Prensa','Otro'],
     'ct.o.sponsor':['Fondo de desarrollo','Hackathon / evento','Comunidad','Otro'],
     'ct.consent':'Acepto que se guarden mis datos para responder a esta solicitud.','ct.send':'Enviar','ct.sending':'Enviando…',
     'ct.ok':'Gracias, tu mensaje llegó. Referencia: {id}','ct.err':'No se pudo enviar. Inténtalo de nuevo en un momento o escribe a bilgi@kuntaykunt.com.',
-    'ct.invalid':'Revisa los campos marcados.','ct.rate':'Demasiados mensajes en poco tiempo. Inténtalo más tarde.',
+    'ct.invalid':'Revisa los campos marcados.','ct.e.name':'Escribe tu nombre (mínimo 2 caracteres).','ct.e.email':'Escribe un correo electrónico válido.','ct.e.consent':'Marca la casilla de consentimiento para continuar.','ct.rate':'Demasiados mensajes en poco tiempo. Inténtalo más tarde.',
     'ft.h':'Las personas deciden, <span class="human">los agentes</span> ejecutan.','ft.links':'Enlaces'
   }
 };
@@ -957,9 +957,12 @@ form.addEventListener('submit', async e => {
   const mark = (el, ok) => { el.setAttribute('aria-invalid', String(!ok)); if (!ok) bad.push(el); };
   mark(f.name, f.name.value.trim().length >= 2);
   mark(f.email, /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.email.value.trim()));
-  mark(f.message, f.message.value.trim().length >= 5);
   const consent = document.getElementById('c-consent'); if (!consent.checked) bad.push(consent);
-  if (bad.length) { say(t('ct.invalid'), 'err'); bad[0].focus(); return; }
+  if (bad.length) {
+    const first = bad[0];
+    say(t(first === f.name ? 'ct.e.name' : first === f.email ? 'ct.e.email' : first === consent ? 'ct.e.consent' : 'ct.invalid'), 'err');
+    first.focus(); return;
+  }
   const btn = document.getElementById('sendBtn'), label = btn.querySelector('span');
   btn.disabled = true; label.textContent = t('ct.sending'); say('');
   try {

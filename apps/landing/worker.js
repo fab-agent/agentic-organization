@@ -34,7 +34,7 @@ async function handleContact(request, env) {
   const name = clean(b.name, 120);
   const email = clean(b.email, 200).toLowerCase();
   const message = clean(b.message, 4000);
-  if (!INTENTS.has(intent) || name.length < 2 || message.length < 5 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+  if (!INTENTS.has(intent) || name.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
     return json({ ok: false, error: 'invalid' }, 422);
   }
   const org = clean(b.org, 160);
