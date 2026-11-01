@@ -133,3 +133,24 @@ least-disclosure, personal-rights and status-filtering rules, and §8's file-tra
   spike results. Until then the status stays *proposed*.
 - Installer matrix must list Linux desktop/Vulkan, Windows curl/tar and minimum OS
   versions, third-party notices, and the pinned app+core pair.
+
+## Progress (2026-11-01)
+
+Decision 2 (enforcement prerequisite) is partly implemented on branch
+`fix/policy-fail-closed`, reviewed over seven Codex rounds (`CODEX-ADR0026`,
+`CODEX-FAILCLOSED` 1-7, last verdict GO):
+
+- one gate (`agent_runtime.policy_gate`) for backend tool calls, flow tools, MCP
+  `org_policies` and `/policy/decide`; an engine error, an unreadable policy, an
+  unknown persona or a failed audit write each deny, in every mode except `off`;
+- strict policy-block contract (`docs/architecture/policy-block-contract.md`),
+  refused at save time, fail-closed at runtime, `scripts/policy_inventory.py` for rollout;
+- `PolicyResolutionError` maps to `503 policy_unavailable`.
+
+Still open for acceptance of this ADR (each was kept out of scope on purpose):
+heartbeat "alive" vs "policy ready" (`api/workstation.py`); policy change requests are
+validated but not applied to the Policy table; backend chat paths that call provider
+SDKs outside the shared gateway layer; the signed-manifest protocol (decision 3),
+non-developer credential (decision 5), update chain (decision 7), and the chat/SSE
+spike. Upgrade note: a stored policy that no longer parses, or an audit chain that
+cannot be written, now blocks tool calls - run `policy_inventory.py` before upgrading.

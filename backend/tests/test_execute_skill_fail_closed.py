@@ -704,10 +704,10 @@ def test_literal_and_escaped_feff_in_a_string_give_the_same_verdict(fence):
 
 def test_mid_block_bom_never_becomes_a_silent_allow():
     for body in ("# note\n\ufeff  \n" + _YAML_RULE, "x: 1\n\ufeff" + _YAML_RULE):
-        v = _verdict(_fenced("yaml", body))
-        assert (v.effect == "deny") or pe.validate_policy_content(
-            _fenced("yaml", body)
-        ) == []
+        fenced = _fenced("yaml", body)
+        assert pe.validate_policy_content(fenced), "must be a visible problem"
+        v = _verdict(fenced)
+        assert v.effect == "deny" and v.fail_closed
 
 
 def test_numeric_yaml_args_key_is_rejected_at_save_and_denied_at_runtime():
