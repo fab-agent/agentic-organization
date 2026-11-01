@@ -1,0 +1,97 @@
+{
+  "canonical": [
+    {
+      "bytes": "{\"a\":\"\\u00e9\",\"b\":1,\"c\":[true,null]}",
+      "input": {
+        "a": "\u00e9",
+        "b": 1,
+        "c": [
+          true,
+          null
+        ]
+      }
+    }
+  ],
+  "cert": {
+    "payload": {
+      "issuer_kid": "34750f98bd59fcfc946da45aaabe933b",
+      "kid": "6a3803d5f059902a1c6dafbc9ba47292",
+      "not_after": 1802592000,
+      "not_before": 1799996400,
+      "pub": "gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=",
+      "serial": 1,
+      "typ": "fab-signing-cert",
+      "v": 1
+    },
+    "sig": "tQ7/Owf6mCfmwyB4yp3TaMwFhec6jV64GigK+HlZeYrpcIiRphy0eAiSw6CcMha3ybXrHwUqsVpwOmlav30rAQ=="
+  },
+  "crl": {
+    "payload": {
+      "issued_at": 1800000000,
+      "number": 3,
+      "revoked_kids": [
+        "aa",
+        "bb"
+      ],
+      "typ": "fab-crl",
+      "v": 1
+    },
+    "sig": "QndeyUiWEgOwWGiw83idMD5+uv3QkGYKR8N+Jqoh4XkMjuOyogjYeM8JjXD15cdY1LMSuHyCdTP8MTTplQk+Dw=="
+  },
+  "expected": {
+    "aud": "herdr-provisioner",
+    "client_version": "1.0.0",
+    "company_id": "co1",
+    "person_id": "p1"
+  },
+  "manifest": {
+    "cert": {
+      "payload": {
+        "issuer_kid": "34750f98bd59fcfc946da45aaabe933b",
+        "kid": "6a3803d5f059902a1c6dafbc9ba47292",
+        "not_after": 1802592000,
+        "not_before": 1799996400,
+        "pub": "gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=",
+        "serial": 1,
+        "typ": "fab-signing-cert",
+        "v": 1
+      },
+      "sig": "tQ7/Owf6mCfmwyB4yp3TaMwFhec6jV64GigK+HlZeYrpcIiRphy0eAiSw6CcMha3ybXrHwUqsVpwOmlav30rAQ=="
+    },
+    "payload": {
+      "aud": "herdr-provisioner",
+      "company_id": "co1",
+      "expires_at": 1800003600,
+      "gateway_url": "https://gw.example.test",
+      "generation": 5,
+      "issued_at": 1799999940,
+      "layout": {
+        "id": "finance-v2",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "min_client_version": "1.0.0",
+      "mods": [
+        {
+          "files": [
+            {
+              "path": "main.js",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "size": 10
+            }
+          ],
+          "name": "finance-dashboard",
+          "version": "1.2.0"
+        }
+      ],
+      "person_id": "p1",
+      "typ": "fab-workspace-manifest",
+      "v": 1
+    },
+    "sig": "ptCI4FnEmd6SNyv0WoEE3wdyVslKyYAVUQ6R2FOPPK3855s8lPmTu7H5xLEg6+rgZtSdxCBVMwtMO59FJxxUCg=="
+  },
+  "manifest_digest": "5c229f897083763c0017da11187784b03df4de9983c7d54954bf1b63a7b74d71",
+  "note": "Ed25519 is deterministic; keys are fixed-seed test keys. A second implementation must verify these.",
+  "now": 1800000000,
+  "root_pub": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w=",
+  "signing_pub": "gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q="
+}
