@@ -1077,3 +1077,19 @@ def test_vectors_file_matches_the_implementation():
     for text in REJECT_WIRE:
         with pytest.raises(ManifestError):
             wm.parse_wire(text)
+
+
+def test_vectors_verify_in_an_independent_javascript_implementation():
+    """Canonical bytes and every signature must also check out in Node, written from the
+    spec rather than ported from the Python code. Skipped when node is not installed."""
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not installed")
+    script = pathlib.Path(__file__).parent / "vectors" / "verify_vectors.mjs"
+    r = subprocess.run(
+        [node, str(script), str(VECTORS)], capture_output=True, text=True, timeout=60
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
