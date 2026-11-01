@@ -101,6 +101,20 @@ async def _handle(msg: dict, principal: PersonaPrincipal) -> dict | None:
         args = params.get("arguments") or {}
 
         if name == "org_policies":
+            from services.agent_runtime import policy_gate
+
+            blocked = policy_gate(
+                "org_policies",
+                {},
+                agent_id=principal.persona_id,
+                session_id=None,
+                source="mcp",
+            )
+            if blocked:
+                return _rpc_result(
+                    req_id,
+                    {"isError": True, "content": [{"type": "text", "text": blocked}]},
+                )
             try:
                 c, d, a = resolve_scope(principal.persona_id)
                 bodies = applicable_policy_contents(c, d, a)

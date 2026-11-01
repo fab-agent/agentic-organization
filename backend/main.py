@@ -23,8 +23,9 @@ from core.logging import setup_logging
 setup_logging()
 logger = logging.getLogger("app")
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlmodel import select
 
 from api.a2a import router as a2a_router
@@ -72,12 +73,29 @@ from core.runtime import (
 )
 from database import get_session, init_db
 from seed import run_seed, seed_company_skills
+from services.policy_engine import PolicyResolutionError
 
 app = FastAPI(
     title="3rdParty Agent Organization API",
     version=VERSION,
     description="Self-hosted agentic organization management platform",
 )
+
+
+@app.exception_handler(PolicyResolutionError)
+async def _policy_unresolved(request: Request, exc: PolicyResolutionError):
+    """The policy could not be read: fail closed with a retryable 503 and an id
+    for the log, never a 500 stack trace or an empty-policy answer (ADR-0026)."""
+    import uuid
+
+    err_id = uuid.uuid4().hex[:12]
+    logging.getLogger(__name__).error("policy unresolved [%s]: %s", err_id, exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "policy_unavailable", "error_id": err_id},
+        headers={"Retry-After": "5"},
+    )
+
 
 # The web UI authenticates with a Bearer header, never cookies, so credentialed
 # CORS is not needed. Non-browser clients (3pa, opencode, MCP) ignore CORS.

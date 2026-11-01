@@ -451,36 +451,62 @@ def _malformed_block_rule(why: str) -> dict:
 # ── Ruleset loading ──────────────────────────────────────────────────────────
 
 
+_RULE_HINT = ("effect",)
+
+
+def _looks_like_rule(block: str) -> bool:
+    """Unparseable ```json/```yaml text that mentions a rule's `effect` key is
+    treated as a broken rule, not as prose (ADR-0026)."""
+    import re
+
+    return bool(re.search(r"""["']?effect["']?\s*[:=]""", block))
+
+
 def _parse_rules_from_markdown(content: str) -> list[dict]:
     """
     Extract rules from fenced ```policy / ```yaml / ```json blocks in a Policy
     body. A block must be a JSON (or trivially-parsed) list of rule objects.
 
-    A ```policy fence is *executable by declaration*: if it does not parse, is not a
-    list, or holds a non-object element, a fail-closed rule is added instead of
-    silently dropping it (ADR-0026). ```json / ```yaml fences may be illustrative
-    prose, so an unparseable one is still ignored; but a list that parses and holds
-    a non-object element is malformed.
+    A ```policy fence is *executable by declaration*: a missing closing fence,
+    unparseable text, a non-list, or a non-object element adds a fail-closed rule
+    instead of being dropped (ADR-0026). ```json / ```yaml fences may be
+    illustrative prose, so unparseable text is ignored unless it looks like a rule
+    (mentions an `effect` key); a parsed list with a non-object element is malformed.
     """
     import re
 
     rules: list[dict] = []
-    for m in re.finditer(
-        r"```(policy|json|yaml)\s*\n(.*?)```", content or "", re.DOTALL
-    ):
-        fence, block = m.group(1), m.group(2).strip()
+    text = content or ""
+    pos = 0
+    opener = re.compile(r"```(policy|json|yaml)[ \t]*\r?\n")
+    while True:
+        m = opener.search(text, pos)
+        if not m:
+            break
+        fence = m.group(1)
+        end = text.find("```", m.end())
+        if end == -1:
+            # No closing fence: the block is unterminated.
+            if fence == "policy" or _looks_like_rule(text[m.end() :]):
+                rules.append(_malformed_block_rule("unterminated block"))
+            break
+        block = text[m.end() : end].strip()
+        pos = end + 3
         try:
             parsed = json.loads(block)
         except json.JSONDecodeError:
             parsed = _loose_yaml_list(block)
         if isinstance(parsed, list):
             for r in parsed:
-                if isinstance(r, dict):
-                    rules.append(r)
-                else:
-                    rules.append(_malformed_block_rule("non-object rule"))
+                rules.append(
+                    r
+                    if isinstance(r, dict)
+                    else _malformed_block_rule("non-object rule")
+                )
         elif fence == "policy":
             rules.append(_malformed_block_rule("not a list of rules"))
+        elif parsed is None and _looks_like_rule(block):
+            rules.append(_malformed_block_rule("unparseable rule block"))
     return rules
 
 
@@ -540,7 +566,9 @@ def resolve_scope(persona_id: str | None) -> tuple[str | None, str | None, str |
         with get_session() as session:
             person = session.get(Personnel, persona_id)
             if not person:
-                return None, None, None
+                # A persona was named but does not exist: not "no scope" — never
+                # fall back to global defaults for an unknown/stale principal.
+                raise PolicyResolutionError("persona not found")
             cfg = session.exec(
                 select(AgentConfig).where(AgentConfig.personnel_id == persona_id)
             ).first()

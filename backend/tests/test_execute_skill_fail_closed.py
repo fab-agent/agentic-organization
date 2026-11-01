@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import api.mcp_server as mcp
 import services.agent_runtime as rt
 import services.policy_engine as pe
 
@@ -98,17 +99,33 @@ def test_audit_decision_false_when_record_returns_none(monkeypatch):
     assert pe.audit_decision(req, _decision()) is False
 
 
-def test_real_append_failure_blocks_tool(monkeypatch, ran):
-    """Real decide -> real audit_decision -> real record; only append fails."""
+def test_real_append_failure_blocks_tool(monkeypatch, ran, db_session):
+    """Real decide -> real audit_decision -> real record; only the append fails."""
     import services.audit_chain as ac
+    from tests.conftest import make_company, make_personnel
+
+    co = make_company(db_session)
+    persona = make_personnel(db_session, co.id)
+    db_session.commit()
 
     def disk_full(**kw):
         raise OSError("disk full")
 
     monkeypatch.setattr(ac, "append", disk_full)
-    monkeypatch.setattr(pe, "decide", lambda r: _decision(mode="enforce"))
-    assert "audit unavailable" in _run()
+    out = asyncio.run(rt.execute_skill("probe", {}, [_skill()], agent_id=persona.id))
+    assert "audit unavailable" in out
     assert ran == []
+
+
+def test_real_chain_healthy_runs_tool_once(ran, db_session):
+    from tests.conftest import make_company, make_personnel
+
+    co = make_company(db_session)
+    persona = make_personnel(db_session, co.id)
+    db_session.commit()
+    out = asyncio.run(rt.execute_skill("probe", {}, [_skill()], agent_id=persona.id))
+    assert out == "ran"
+    assert ran == ["probe_fn"]
 
 
 # ── policy resolution failures are not "no policy" ───────────────────────────
@@ -207,3 +224,156 @@ def test_flow_tool_blocked_when_audit_down(monkeypatch):
     monkeypatch.setattr(pe, "audit_decision", lambda r, d: False)
     assert "audit unavailable" in fr._execute_flow_tool("web_search", {"q": "x"}, "p1")
     assert called == []
+
+
+# ── persona not found / stale principal ──────────────────────────────────────
+
+
+def test_unknown_persona_is_resolution_error():
+    with pytest.raises(pe.PolicyResolutionError):
+        pe.resolve_scope("does-not-exist")
+
+
+def test_no_persona_means_no_scope_not_an_error():
+    assert pe.resolve_scope(None) == (None, None, None)
+
+
+def test_decide_denies_unknown_persona(ran):
+    d = pe.decide(pe.PolicyDecisionRequest(tool="probe", persona_id="ghost"))
+    assert (d.effect, d.enforced, d.fail_closed) == ("deny", True, True)
+
+
+def test_tool_blocked_for_unknown_persona(ran):
+    out = asyncio.run(rt.execute_skill("probe", {}, [_skill()], agent_id="ghost"))
+    assert "Policy denied" in out
+    assert ran == []
+
+
+def test_persona_without_department_still_resolves(db_session):
+    from tests.conftest import make_company, make_personnel
+
+    co = make_company(db_session)
+    p = make_personnel(db_session, co.id)
+    db_session.commit()
+    c, d, a = pe.resolve_scope(p.id)
+    assert c == co.id and d is None and a is None
+
+
+# ── each resolver stage fails independently ──────────────────────────────────
+
+
+def test_mode_read_failure_alone_denies(monkeypatch):
+    monkeypatch.setattr(pe, "resolve_scope", lambda pid: ("c", "d", "a"))
+
+    def boom(*a, **k):
+        raise pe.PolicyResolutionError("config down")
+
+    monkeypatch.setattr(pe, "resolve_mode", boom)
+    d = pe.decide(pe.PolicyDecisionRequest(tool="probe", persona_id="p1"))
+    assert d.enforced and d.fail_closed and d.mode == "unresolved"
+
+
+def test_policy_read_failure_alone_denies_even_in_enforce(monkeypatch):
+    monkeypatch.setattr(pe, "resolve_scope", lambda pid: ("c", "d", "a"))
+    monkeypatch.setattr(pe, "resolve_mode", lambda c, d, a: ("enforce", "allow"))
+
+    def boom(*a, **k):
+        raise pe.PolicyResolutionError("policies down")
+
+    monkeypatch.setattr(pe, "applicable_policy_contents", boom)
+    d = pe.decide(pe.PolicyDecisionRequest(tool="probe", persona_id="p1"))
+    assert d.enforced and d.fail_closed
+
+
+# ── unterminated / rule-like fences ──────────────────────────────────────────
+
+
+def _verdict(body):
+    rules = pe.load_ruleset([body])
+    return pe.evaluate(
+        pe.PolicyDecisionRequest(tool="probe"), rules, default_effect="allow"
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "```policy\n[{broken",
+        '```policy\n[{"match": {"tool": "probe"}, "effect": "deny"}]',
+        '```json\n[{"match": {"tool": "probe"}, "effect": "deny"}',
+        '```json\n[{broken, "effect": "deny"\n```',
+        "```yaml\n- match: [broken\n  effect: deny\n```",
+        "intro\n```policy\n[]\n```\nlater\n```policy\n[{x",
+    ],
+)
+def test_unterminated_or_broken_rule_blocks_fail_closed(body):
+    v = _verdict(body)
+    assert v.effect == "deny" and v.fail_closed
+
+
+def test_well_formed_blocks_still_work():
+    body = (
+        'text\n```policy\n[{"id": "r", "match": {"tool": "probe"}, '
+        '"effect": "deny", "reason": "no"}]\n```\nmore\n```json\n{"a": 1}\n```'
+    )
+    v = _verdict(body)
+    assert v.effect == "deny" and not v.fail_closed and v.matched_rule == "r"
+
+
+def test_prose_json_without_rule_shape_is_ignored():
+    assert _verdict("```json\n{oops, not json\n```").effect == "allow"
+
+
+# ── MCP org_policies passes the same gate ────────────────────────────────────
+
+
+def _mcp_org_policies():
+    principal = SimpleNamespace(persona_id="p1", company_id="c1")
+    msg = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": "org_policies", "arguments": {}},
+    }
+    return asyncio.run(mcp._handle(msg, principal))["result"]
+
+
+def test_org_policies_blocked_by_policy(monkeypatch):
+    monkeypatch.setattr(
+        pe, "decide", lambda r: _decision("deny", "enforce", enforced=True)
+    )
+    monkeypatch.setattr(pe, "audit_decision", lambda r, d: True)
+    monkeypatch.setattr(mcp, "applicable_policy_contents", lambda *a: ["SECRET"])
+    monkeypatch.setattr(mcp, "resolve_scope", lambda pid: ("c", None, None))
+    r = _mcp_org_policies()
+    assert r.get("isError") and "SECRET" not in str(r)
+
+
+def test_org_policies_blocked_when_audit_down(monkeypatch):
+    monkeypatch.setattr(pe, "decide", lambda r: _decision(mode="dry_run"))
+    monkeypatch.setattr(pe, "audit_decision", lambda r, d: False)
+    monkeypatch.setattr(mcp, "applicable_policy_contents", lambda *a: ["SECRET"])
+    monkeypatch.setattr(mcp, "resolve_scope", lambda pid: ("c", None, None))
+    r = _mcp_org_policies()
+    assert r.get("isError") and "SECRET" not in str(r)
+
+
+def test_org_policies_unknown_persona_is_error(monkeypatch):
+    monkeypatch.setattr(pe, "audit_decision", lambda r, d: True)
+    r = _mcp_org_policies()
+    assert r.get("isError")
+    assert "No policies apply" not in str(r)
+
+
+# ── API contract: 503, not 500 ───────────────────────────────────────────────
+
+
+def test_policy_resolution_error_maps_to_503():
+    import main
+
+    resp = asyncio.run(main._policy_unresolved(None, pe.PolicyResolutionError("x")))
+    assert resp.status_code == 503
+    assert resp.headers["retry-after"] == "5"
+    body = resp.body.decode()
+    assert "policy_unavailable" in body and "error_id" in body
+    assert "x" not in body.replace("policy_unavailable", "").replace("error_id", "")
