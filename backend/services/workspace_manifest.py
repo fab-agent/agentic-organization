@@ -65,7 +65,7 @@ _KID = re.compile(r"[0-9a-f]{32}")
 _NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 _ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 _VERSION = re.compile(r"[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}")
-_HOST = re.compile(r"[A-Za-z0-9.-]{1,253}")
+_LABEL = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
 _RESERVED = {"con", "prn", "aux", "nul"} | {
     f"{d}{i}" for d in ("com", "lpt") for i in range(1, 10)
 }
@@ -85,6 +85,12 @@ class ManifestError(Exception):
 
 def _is_int(x: Any) -> bool:
     return isinstance(x, int) and not isinstance(x, bool)
+
+
+def _v1(x: Any) -> bool:
+    return (
+        _is_int(x) and x == 1
+    )  # True == 1 in Python; a signed `v` must be the integer 1
 
 
 # ── canonical bytes and strict wire parsing ──────────────────────────────────
@@ -176,6 +182,8 @@ def parse_wire(data: bytes | str, max_bytes: int = MAX_WIRE_BYTES) -> Any:
     def parse_int(s):
         if s == "-0":
             raise ManifestError("negative_zero")
+        if len(s) > 17:  # beyond +/-(2^53-1) anyway; never hand it to int()
+            raise ManifestError("int_out_of_range")
         return int(s)
 
     try:
@@ -314,6 +322,8 @@ def issue_crl(
     next_update: int,
 ) -> dict:
     """A CRL is a full cumulative snapshot of every revoked key id so far."""
+    if not all(isinstance(k, str) and _KID.fullmatch(k) for k in revoked_kids):
+        raise ManifestError("bad_kid")
     payload = {
         "typ": "fab-crl",
         "v": 1,
@@ -328,7 +338,7 @@ def issue_crl(
 # ── manifest body validation ─────────────────────────────────────────────────
 
 _BODY_KEYS = {
-    "typ", "v", "company_id", "person_id", "aud", "generation", "issued_at",
+    "typ", "v", "epoch", "company_id", "person_id", "aud", "generation", "issued_at",
     "expires_at", "min_client_version", "gateway_url", "layout", "mods",
 }  # fmt: skip
 
@@ -382,7 +392,8 @@ def _check_https_url(url: Any) -> None:
     if (
         u.scheme != "https"
         or not u.hostname
-        or not _HOST.fullmatch(u.hostname)
+        or len(u.hostname) > 253
+        or not all(_LABEL.fullmatch(lbl) for lbl in u.hostname.split("."))
         or u.username is not None
         or u.password is not None
         or u.fragment
@@ -394,6 +405,8 @@ def _check_https_url(url: Any) -> None:
 def _validate_body(p: dict) -> None:
     """Shape and limits of a manifest payload. Used when building and verifying."""
     _only(p, _BODY_KEYS)
+    if not _is_int(p.get("epoch")) or p["epoch"] < 1:
+        raise ManifestError("bad_epoch")
     for k in ("company_id", "person_id"):
         if not isinstance(p.get(k), str) or not _ID.fullmatch(p[k]):
             raise ManifestError("bad_binding")
@@ -464,7 +477,12 @@ def _validate_body(p: dict) -> None:
 
 def sign_manifest(signing_private_b64: str, cert: dict, payload: dict) -> dict:
     """Server side. Refuses to sign a body that would not verify."""
-    body = {"typ": "fab-workspace-manifest", "v": 1, **payload}
+    body = {
+        "typ": "fab-workspace-manifest",
+        "v": 1,
+        "epoch": cert["payload"]["epoch"],
+        **payload,
+    }
     _validate_body(body)
     pub = base64.b64encode(_pub_raw(load_private(signing_private_b64))).decode()
     if cert["payload"]["kid"] != key_id(pub):
@@ -483,16 +501,21 @@ def sign_manifest(signing_private_b64: str, cert: dict, payload: dict) -> dict:
 class Expected:
     """What the client already knows from its own session, never from the manifest.
 
-    `min_generation` / `min_epoch` are floors from an authenticated online bootstrap
-    (the signed-in session asks the server for them). A client that has lost its
-    state MUST NOT start from zero: it bootstraps with these floors, or refuses."""
+    `min_generation`, `min_epoch` and `min_crl_number` are floors from an authenticated
+    online bootstrap (the signed-in session asks the server for them). They are
+    **required** whenever the client has no history for this person (empty state, or no
+    entry for the person): the verifier raises `bootstrap_floor_required` rather than
+    start from zero. A first-ever enrolment passes 1, 1 and 0. Floors come from the
+    session, never from the manifest. The CRL floor is a checkpoint (a revocation list
+    number), because a generation or epoch floor does not carry the revoked-key set."""
 
     company_id: str
     person_id: str
     aud: str  # e.g. "herdr-provisioner"
     client_version: str = "0.0.0"
-    min_generation: int = 0
-    min_epoch: int = 0
+    min_generation: int | None = None
+    min_epoch: int | None = None
+    min_crl_number: int | None = None
 
 
 @dataclass(frozen=True)
@@ -506,6 +529,7 @@ class ClientState:
     crl_next_update: int = 0
     revoked: frozenset[str] = frozenset()
     last_seen: int = 0  # highest clock reading accepted; the clock may not go back
+    signing_kid: str = ""  # key that signed the last accepted manifest
 
 
 def _vtuple(v: str) -> tuple[int, ...]:
@@ -531,7 +555,7 @@ def verify_crl(
     verifying any manifest, so a revocation survives a rejected manifest."""
     _only(crl, {"payload", "sig"}, "bad_crl")
     p = _only(crl.get("payload"), _CRL_KEYS, "bad_crl")
-    if p.get("typ") != "fab-crl" or p.get("v") != 1:
+    if p.get("typ") != "fab-crl" or not _v1(p.get("v")):
         raise ManifestError("bad_crl")
     _verify_sig(root_pub_b64, "crl", p, crl.get("sig", ""))
     kids = p.get("revoked_kids")
@@ -613,7 +637,7 @@ def _verify(
     cp = _only(cert.get("payload"), _CERT_KEYS, "bad_cert")
     if (
         cp.get("typ") != "fab-signing-cert"
-        or cp.get("v") != 1
+        or not _v1(cp.get("v"))
         or not isinstance(payload, dict)
     ):
         raise ManifestError("bad_cert")
@@ -638,13 +662,21 @@ def _verify(
             raise ManifestError("crl_required")
         if now - CLOCK_SKEW > state.crl_next_update:
             raise ManifestError("crl_stale")
-    if epoch < max(state.epoch, expected.min_epoch):
+    if epoch < state.epoch:
         raise ManifestError("epoch_rollback")
+    if epoch > state.epoch and state.signing_kid and cp["kid"] == state.signing_kid:
+        # Raising the epoch is recovery from a stolen key; re-certifying the same
+        # key would hand the thief a fresh start. Recovery needs a new signing key.
+        raise ManifestError("epoch_needs_new_key")
 
-    if payload.get("typ") != "fab-workspace-manifest" or payload.get("v") != 1:
+    if payload.get("typ") != "fab-workspace-manifest" or not _v1(payload.get("v")):
         raise ManifestError("malformed")
     _verify_sig(cp["pub"], "manifest", payload, envelope.get("sig", ""))
     _validate_body(payload)
+    if (
+        payload["epoch"] != epoch
+    ):  # the signed manifest is bound to its certificate's epoch
+        raise ManifestError("epoch_mismatch")
 
     if (
         payload["company_id"] != expected.company_id
@@ -661,13 +693,32 @@ def _verify(
     # The manifest must also fall inside the certificate's window.
     if payload["issued_at"] < nb or payload["expires_at"] > na:
         raise ManifestError("outside_cert_window")
-    if payload["generation"] < expected.min_generation:
+
+    key = _binding_key(payload["company_id"], payload["person_id"])
+    if state.epoch == 0 or key not in state.generations:
+        # No history for this person: never start from zero on the caller's say-so.
+        if None in (
+            expected.min_generation,
+            expected.min_epoch,
+            expected.min_crl_number,
+        ):
+            raise ManifestError("bootstrap_floor_required")
+    if expected.min_epoch is not None and epoch < expected.min_epoch:
+        raise ManifestError("epoch_rollback")
+    if (
+        expected.min_generation is not None
+        and payload["generation"] < expected.min_generation
+    ):
         raise ManifestError("below_floor")
+    if (
+        expected.min_crl_number is not None
+        and state.crl_number < expected.min_crl_number
+    ):
+        raise ManifestError("crl_below_floor")
 
     gens = state.generations
     if epoch > state.epoch:  # root-authorised recovery: the generation floor restarts
         gens = {}
-    key = _binding_key(payload["company_id"], payload["person_id"])
     d = digest(payload)
     last = gens.get(key)
     if last:
@@ -676,7 +727,9 @@ def _verify(
         if payload["generation"] == last["generation"] and d != last["digest"]:
             raise ManifestError("generation_conflict")
     gens = {**gens, key: {"generation": payload["generation"], "digest": d}}
-    return payload, replace(state, generations=gens, epoch=max(epoch, state.epoch))
+    return payload, replace(
+        state, generations=gens, epoch=max(epoch, state.epoch), signing_kid=cp["kid"]
+    )
 
 
 def verify_wire(data: bytes | str, **kwargs: Any) -> tuple[dict, ClientState]:

@@ -41,7 +41,15 @@ def _key(seed_byte: int) -> tuple[str, str]:
 ROOT_PRIV, ROOT_PUB = _key(1)
 SIGN_PRIV, SIGN_PUB = _key(2)
 EVIL_PRIV, EVIL_PUB = _key(9)
-EXPECT = Expected("co1", "p1", "herdr-provisioner", "1.0.0")
+EXPECT = Expected(
+    "co1",
+    "p1",
+    "herdr-provisioner",
+    "1.0.0",
+    min_generation=1,
+    min_epoch=1,
+    min_crl_number=0,
+)
 SHA = "a" * 64
 
 
@@ -154,7 +162,7 @@ def test_attacker_signing_key_without_a_root_cert_is_rejected():
     }
     env = {
         "cert": forged_cert,
-        "payload": {"typ": "fab-workspace-manifest", "v": 1, **_body()},
+        "payload": {"typ": "fab-workspace-manifest", "v": 1, "epoch": 1, **_body()},
     }
     env["sig"] = wm._sign(EVIL_PRIV, "manifest", env["payload"])
     assert _code(env) == "bad_signature"
@@ -164,7 +172,7 @@ def test_cert_kid_is_recomputed_not_trusted():
     cp = _cert()["payload"]
     cp["kid"] = wm.key_id(EVIL_PUB)  # kid no longer matches pub
     cert = {"payload": cp, "sig": wm._sign(ROOT_PRIV, "cert", cp)}  # root-signed lie
-    body = {"typ": "fab-workspace-manifest", "v": 1, **_body()}
+    body = {"typ": "fab-workspace-manifest", "v": 1, "epoch": 1, **_body()}
     envelope = {
         "cert": cert,
         "payload": body,
@@ -192,9 +200,33 @@ def test_wrong_root_pinned_rejects_everything():
 @pytest.mark.parametrize(
     "expected",
     [
-        Expected("co2", "p1", "herdr-provisioner", "1.0.0"),
-        Expected("co1", "p2", "herdr-provisioner", "1.0.0"),
-        Expected("co1", "p1", "other-client", "1.0.0"),
+        Expected(
+            "co2",
+            "p1",
+            "herdr-provisioner",
+            "1.0.0",
+            min_generation=1,
+            min_epoch=1,
+            min_crl_number=0,
+        ),
+        Expected(
+            "co1",
+            "p2",
+            "herdr-provisioner",
+            "1.0.0",
+            min_generation=1,
+            min_epoch=1,
+            min_crl_number=0,
+        ),
+        Expected(
+            "co1",
+            "p1",
+            "other-client",
+            "1.0.0",
+            min_generation=1,
+            min_epoch=1,
+            min_crl_number=0,
+        ),
     ],
 )
 def test_manifest_for_someone_else_is_rejected(expected):
@@ -264,7 +296,15 @@ def test_same_generation_different_content_is_a_conflict():
 
 def test_generation_is_tracked_per_person():
     _, st = _verify(_env(generation=9))
-    other_person = Expected("co1", "p2", "herdr-provisioner", "1.0.0")
+    other_person = Expected(
+        "co1",
+        "p2",
+        "herdr-provisioner",
+        "1.0.0",
+        min_generation=1,
+        min_epoch=1,
+        min_crl_number=0,
+    )
     _verify(_env(person_id="p2", generation=1), state=st, expected=other_person)
 
 
@@ -337,7 +377,7 @@ def test_duplicate_mod_names_and_non_https_gateway_are_rejected():
 
 def test_unsafe_paths_in_a_hand_made_envelope_fail_verification_too():
     """A hostile server that signs a bad body with a valid key is still refused."""
-    body = {"typ": "fab-workspace-manifest", "v": 1, **_body()}
+    body = {"typ": "fab-workspace-manifest", "v": 1, "epoch": 1, **_body()}
     body["mods"][0]["files"][0]["path"] = "../../.ssh/authorized_keys"
     env = {
         "cert": _cert(),
@@ -705,9 +745,12 @@ def test_crl_signed_by_anyone_but_root_is_rejected():
 
 
 def test_crl_shape_bool_number_and_bad_kids_and_future_issue_are_rejected():
+    bad_kids = _crl()
+    bad_kids["payload"]["revoked_kids"] = ["short"]
+    bad_kids["sig"] = wm._sign(ROOT_PRIV, "crl", bad_kids["payload"])
     for crl in (
         _crl(number=True),
-        _crl(kids=["short"]),
+        bad_kids,
         _crl(issued=NOW + 10**6, next_update=NOW + 10**6 + 10),
     ):
         with pytest.raises(ManifestError):
@@ -760,44 +803,134 @@ def test_require_crl_demands_a_fresh_list():
 # ── round 4: epochs, bootstrap floors, state keys, clock ─────────────────────
 
 
-def _cert_epoch(epoch, **kw):
+NEW_PRIV, NEW_PUB = _key(3)
+
+
+def _cert_epoch(epoch, pub=SIGN_PUB, **kw):
     args = dict(not_before=NOW - 3600, not_after=NOW + 86400, serial=epoch, epoch=epoch)
     args.update(kw)
-    return issue_signing_cert(ROOT_PRIV, SIGN_PUB, **args)
+    return issue_signing_cert(ROOT_PRIV, pub, **args)
 
 
-def test_epoch_bump_recovers_from_a_poisoned_generation_floor():
-    # A stolen signing key signed generation 2**53-1; the root issues epoch 2.
+def test_epoch_bump_with_a_new_key_recovers_from_a_poisoned_generation_floor():
+    # A stolen signing key signed generation 2**53-1; the root issues epoch 2 for a NEW key.
     poisoned = sign_manifest(SIGN_PRIV, _cert_epoch(1), _body(generation=2**53 - 1))
     _, st = _verify(poisoned)
     assert _code(_env(generation=6), state=st) == "rollback"
-    new_env = sign_manifest(SIGN_PRIV, _cert_epoch(2), _body(generation=1))
+    new_env = sign_manifest(NEW_PRIV, _cert_epoch(2, NEW_PUB), _body(generation=1))
     _, st2 = _verify(new_env, state=st)
-    assert st2.epoch == 2
+    assert st2.epoch == 2 and st2.signing_kid == wm.key_id(NEW_PUB)
     assert (
         _code(poisoned, state=st2) == "epoch_rollback"
     )  # old-epoch manifests are dead
 
 
+def test_old_signature_cannot_be_rewrapped_into_a_new_epoch_certificate():
+    """CODEX-MANIFEST2 P1: only `cert` is swapped; payload and manifest signature stay."""
+    poisoned = sign_manifest(SIGN_PRIV, _cert_epoch(1), _body(generation=2**53 - 1))
+    _, st = _verify(poisoned)
+    archived = _env(generation=1)  # an old epoch-1 manifest the thief kept
+    rewrapped = {
+        **archived,
+        "cert": _cert_epoch(2, NEW_PUB),
+    }  # root-signed epoch 2 cert
+    assert _code(rewrapped, state=st) in ("bad_signature", "epoch_mismatch")
+    same_key = {**archived, "cert": _cert_epoch(2)}  # epoch-2 cert for the SAME key
+    assert _code(same_key, state=st) in ("epoch_mismatch", "epoch_needs_new_key")
+
+
+def test_payload_epoch_must_equal_the_certificate_epoch():
+    body = {"typ": "fab-workspace-manifest", "v": 1, "epoch": 2, **_body()}
+    env = {
+        "cert": _cert_epoch(1),
+        "payload": body,
+        "sig": wm._sign(SIGN_PRIV, "manifest", body),
+    }
+    assert _code(env) == "epoch_mismatch"
+
+
+def test_raising_the_epoch_for_the_same_key_is_refused():
+    _, st = _verify(_env())
+    same_key = sign_manifest(SIGN_PRIV, _cert_epoch(2), _body(generation=1))
+    assert _code(same_key, state=st) == "epoch_needs_new_key"
+
+
 def test_lower_epoch_than_seen_or_than_the_floor_is_rejected():
-    _, st = _verify(sign_manifest(SIGN_PRIV, _cert_epoch(3), _body()))
+    _, st = _verify(
+        sign_manifest(SIGN_PRIV, _cert_epoch(3), _body()), expected=_floors(min_epoch=3)
+    )
     assert (
-        _code(sign_manifest(SIGN_PRIV, _cert_epoch(2), _body(generation=9)), state=st)
+        _code(
+            sign_manifest(NEW_PRIV, _cert_epoch(2, NEW_PUB), _body(generation=9)),
+            state=st,
+        )
         == "epoch_rollback"
     )
-    floor = Expected("co1", "p1", "herdr-provisioner", "1.0.0", min_epoch=4)
+    floor = _floors(min_epoch=4)
     assert (
         _code(sign_manifest(SIGN_PRIV, _cert_epoch(3), _body()), expected=floor)
         == "epoch_rollback"
     )
 
 
+def _floors(**kw):
+    args = dict(min_generation=1, min_epoch=1, min_crl_number=0)
+    args.update(kw)
+    return Expected("co1", "p1", "herdr-provisioner", "1.0.0", **args)
+
+
 def test_lost_state_cannot_be_replayed_past_a_bootstrap_floor():
     old = _env(generation=3)
-    _verify(old)  # accepted only because the state was empty
-    floor = Expected("co1", "p1", "herdr-provisioner", "1.0.0", min_generation=5)
-    assert _code(old, expected=floor) == "below_floor"
-    _verify(_env(generation=5), expected=floor)
+    assert _code(old, expected=_floors(min_generation=5)) == "below_floor"
+    _verify(_env(generation=5), expected=_floors(min_generation=5))
+
+
+@pytest.mark.parametrize("missing", ["min_generation", "min_epoch", "min_crl_number"])
+def test_bootstrap_without_a_floor_is_refused(missing):
+    exp = _floors(**{missing: None})
+    assert _code(_env(), expected=exp) == "bootstrap_floor_required"
+
+
+def test_a_new_person_on_an_existing_state_also_needs_floors():
+    _, st = _verify(_env())
+    other = Expected("co1", "p2", "herdr-provisioner", "1.0.0")  # no floors
+    assert (
+        _code(_env(person_id="p2"), state=st, expected=other)
+        == "bootstrap_floor_required"
+    )
+    _verify(
+        _env(generation=6),
+        state=st,
+        expected=Expected("co1", "p1", "herdr-provisioner", "1.0.0"),
+    )
+
+
+def test_floor_less_expected_is_fine_once_there_is_history():
+    _, st = _verify(_env(generation=5))
+    _verify(
+        _env(generation=6),
+        state=st,
+        expected=Expected("co1", "p1", "herdr-provisioner", "1.0.0"),
+    )
+
+
+def test_cold_start_crl_floor_closes_the_empty_late_list_gap():
+    """CODEX-MANIFEST2: a fresh client shown only a late empty list must not accept a
+    manifest signed by a key revoked in an earlier list - unless its CRL floor says so."""
+    late_empty = _crl(number=3, kids=[])
+    st = wm.verify_crl(late_empty, ROOT_PUB, ClientState(), NOW)
+    # generation/epoch floors alone do not know the revoked-key set:
+    assert verify_manifest(
+        _env(generation=5),
+        root_pub_b64=ROOT_PUB,
+        expected=_floors(min_generation=5),
+        now=NOW,
+        state=st,
+        require_crl=True,
+    )
+    # a CRL checkpoint from the authenticated bootstrap does:
+    floor = _floors(min_generation=5, min_crl_number=4)
+    assert _code(_env(generation=5), state=st, expected=floor) == "crl_below_floor"
 
 
 def test_state_keys_cannot_collide_across_company_person_pairs():
@@ -818,7 +951,7 @@ def test_the_clock_cannot_be_wound_back():
 def test_replayed_old_payload_cannot_gain_life_from_a_new_cert():
     env = _env(generation=5)
     _, st = _verify(env)
-    re_signed = sign_manifest(SIGN_PRIV, _cert_epoch(1, serial=9), env["payload"] | {})
+    re_signed = sign_manifest(SIGN_PRIV, _cert_epoch(1, serial=9), env["payload"])
     _verify(re_signed, state=st)  # same content, new cert: idempotent, not fresher
     assert _code(re_signed, state=st, now=NOW + 3600 + 400) == "expired"
 
@@ -1093,3 +1226,172 @@ def test_vectors_verify_in_an_independent_javascript_implementation():
         [node, str(script), str(VECTORS)], capture_output=True, text=True, timeout=60
     )
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+# ── round 6: strict v, hostnames, huge integers, tool --previous ─────────────
+
+
+def test_signed_v_must_be_the_integer_one_not_true():
+    body = {"typ": "fab-workspace-manifest", "v": True, "epoch": 1, **_body()}
+    env = {
+        "cert": _cert(),
+        "payload": body,
+        "sig": wm._sign(SIGN_PRIV, "manifest", body),
+    }
+    assert _code(env) == "malformed"
+    cp = {**_cert()["payload"], "v": True}
+    cert = {"payload": cp, "sig": wm._sign(ROOT_PRIV, "cert", cp)}
+    assert _code({**_env(), "cert": cert}) == "bad_cert"
+    crl = _crl()
+    crl["payload"]["v"] = True
+    with pytest.raises(ManifestError):
+        _ingest(crl)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://.",
+        "https://..",
+        "https://a..b",
+        "https://-a.example",
+        "https://a-.example",
+        "https://" + "a" * 64 + ".example",
+    ],
+)
+def test_gateway_hostnames_must_be_valid_dns_names(url):
+    with pytest.raises(ManifestError) as e:
+        _env(gateway_url=url)
+    assert e.value.code == "bad_gateway_url"
+
+
+def test_huge_integer_token_is_a_controlled_error_not_a_valueerror():
+    with pytest.raises(ManifestError) as e:
+        wm.parse_wire('{"a":' + "9" * 5000 + "}")
+    assert e.value.code == "int_out_of_range"
+    with pytest.raises(ManifestError):
+        wm.parse_wire('{"a":-' + "9" * 5000 + "}")
+
+
+def test_crl_kids_must_be_wellformed_when_issued():
+    with pytest.raises(ManifestError):
+        issue_crl(
+            ROOT_PRIV,
+            number=1,
+            revoked_kids=["short"],
+            issued_at=NOW,
+            next_update=NOW + 10,
+        )
+
+
+def test_previous_crl_must_verify_under_this_root_and_number_must_grow(
+    tmp_path, capsys
+):
+    from scripts import manifest_keys as mk
+
+    root_f, other_f = tmp_path / "root.key", tmp_path / "other.key"
+    _run(mk, "root-init", "--out", str(root_f))
+    _run(mk, "root-init", "--out", str(other_f))
+    capsys.readouterr()
+    good = tmp_path / "good.json"
+    _run(
+        mk,
+        "issue-crl",
+        "--root",
+        str(root_f),
+        "--number",
+        "5",
+        "--revoke",
+        "a" * 32,
+        "--out",
+        str(good),
+    )
+    # not growing
+    with pytest.raises(SystemExit):
+        _run(
+            mk,
+            "issue-crl",
+            "--root",
+            str(root_f),
+            "--number",
+            "5",
+            "--previous",
+            str(good),
+            "--out",
+            str(tmp_path / "x1.json"),
+        )
+    with pytest.raises(SystemExit):
+        _run(
+            mk,
+            "issue-crl",
+            "--root",
+            str(root_f),
+            "--number",
+            "1",
+            "--previous",
+            str(good),
+            "--out",
+            str(tmp_path / "x2.json"),
+        )
+    # signed by another root
+    with pytest.raises(SystemExit):
+        _run(
+            mk,
+            "issue-crl",
+            "--root",
+            str(other_f),
+            "--number",
+            "9",
+            "--previous",
+            str(good),
+            "--out",
+            str(tmp_path / "x3.json"),
+        )
+    # forged / unsigned
+    forged = tmp_path / "forged.json"
+    forged.write_text(
+        json.dumps(
+            {
+                "payload": {
+                    "typ": "fab-crl",
+                    "v": 1,
+                    "number": 50,
+                    "revoked_kids": [],
+                    "issued_at": 1,
+                    "next_update": 2,
+                },
+                "sig": "not-a-signature",
+            }
+        )
+    )
+    with pytest.raises(SystemExit):
+        _run(
+            mk,
+            "issue-crl",
+            "--root",
+            str(root_f),
+            "--number",
+            "51",
+            "--previous",
+            str(forged),
+            "--out",
+            str(tmp_path / "x4.json"),
+        )
+    for name in ("x1", "x2", "x3", "x4"):
+        assert not (tmp_path / f"{name}.json").exists()
+    # a valid, growing one carries the revocation over
+    _run(
+        mk,
+        "issue-crl",
+        "--root",
+        str(root_f),
+        "--number",
+        "6",
+        "--previous",
+        str(good),
+        "--out",
+        str(tmp_path / "ok.json"),
+    )
+    assert json.loads((tmp_path / "ok.json").read_text())["payload"][
+        "revoked_kids"
+    ] == ["a" * 32]

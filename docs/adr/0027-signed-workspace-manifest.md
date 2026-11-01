@@ -57,12 +57,24 @@ must reproduce `backend/tests/vectors/workspace_manifest_vectors.json`:
   and digest. Lower generation is rejected; the same generation with a different digest
   is a conflict; the same digest is idempotent.
 - **epoch (recovery)**: the certificate carries an `epoch` the root raises when a
-  signing key may have been stolen. A client that has seen epoch N refuses N-1, and a
-  higher epoch restarts the generation floor, so a thief who pushed `generation` to the
-  maximum cannot lock a person out for good. Only the root can raise it.
-- **bootstrap floors**: a client that has lost its state must not start from zero. It
-  asks the server, over its authenticated session, for `min_generation` and `min_epoch`
-  and verifies against them (`Expected`); with no floor it refuses to bootstrap.
+  signing key may have been stolen, and the signed manifest repeats it (`epoch` must
+  equal the certificate's, so an old signed payload cannot be re-wrapped in a newer
+  epoch's certificate). A client that has seen epoch N refuses N-1, and a higher epoch
+  restarts the generation floor, so a thief who pushed `generation` to the maximum cannot
+  lock a person out for good. Only the root can raise it, and **recovery needs a new
+  signing key**: a higher epoch certified for the same key is refused
+  (`epoch_needs_new_key`), and the old key's id should also go into the next revocation
+  list.
+- **bootstrap floors are required**: when the client has no history for this person
+  (empty state, or no entry for them) `Expected` must carry `min_generation`,
+  `min_epoch` and `min_crl_number`, obtained over the authenticated session, otherwise the
+  verifier raises `bootstrap_floor_required`; it never starts from zero by default. A
+  first-ever enrolment passes 1, 1 and 0. The floors come from the session, never from the
+  manifest. A generation or epoch floor does **not** carry the set of revoked keys, so the
+  CRL floor is a separate checkpoint (a revocation-list number): a client shown only a
+  late, empty list is refused with `crl_below_floor` when the floor says a newer list
+  exists. This is only as good as the checkpoint the server hands out, and the root must
+  keep publishing cumulative lists.
 - **clock**: the highest clock reading accepted is stored and the clock may not go
   back beyond the skew (`clock_rollback`). Setting the clock back to revive an expired
   manifest is therefore detected as long as the state survives; a deleted state file is
@@ -95,9 +107,11 @@ are rejected at every level.
 The provisioner then, for each file, downloads it, checks size and SHA-256
 (`verify_file`), stages it in a temporary directory with traversal and symlink
 rejection, and activates the whole set atomically. Verification in this module never
-installs anything. Its state file (generation per person, epoch, revocation list,
-last clock reading) is written atomically under a lock, mode 0600; the same OS user can
-still delete it, which is why the bootstrap floors exist.
+installs anything. These are requirements on the provisioner, not something this
+module does: the state it returns (generation per person, epoch, signing key id,
+revocation list, last clock reading) must be written atomically under a lock, mode 0600,
+and persisted even when a manifest is rejected (`ManifestError.state`). The same OS user
+can still delete it, which is why the bootstrap floors are mandatory.
 
 **Portable names.** Paths, mod names and layout ids must be valid on Windows, macOS and
 Linux: no `..`, absolute, backslash, drive or alternate-stream colon, control
@@ -116,8 +130,8 @@ still has to resolve real paths and refuse symlinks and reparse points when it w
   If a **signing key is stolen**, the thief can sign fresh manifests until the
   certificate expires (at most 90 days, 30 by default) unless the client has a current
   revocation list; use `require_crl` to make that bound `next_update` instead, and raise
-  the epoch to recover. A cold-start client that is shown only a late, empty list cannot
-  tell it from a clean history: the bootstrap floors close that gap.
+  the epoch (with a new key) to recover. A cold-start client that is shown only a late,
+  empty list cannot tell it from a clean history without the CRL checkpoint above.
 - A compromised root key is recovered only by re-pinning a new root on every client
   (reinstall or MDM push). Keeping the root offline is an **operating rule**, not
   something the code can enforce: `root-init` and `issue-*` will run anywhere. The

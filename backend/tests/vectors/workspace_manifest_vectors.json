@@ -104,6 +104,7 @@
     "payload": {
       "aud": "herdr-provisioner",
       "company_id": "co1",
+      "epoch": 1,
       "expires_at": 1800003600,
       "gateway_url": "https://gw.example.test",
       "generation": 5,
@@ -131,9 +132,9 @@
       "typ": "fab-workspace-manifest",
       "v": 1
     },
-    "sig": "fUgosbUCRyKVtQ1lz8Syqepuwuh5N/LUArZAKhNrHZhNSOXEhQRaFqnjavKBPK9wueBlSioBSA5EVC8jjWKUAA=="
+    "sig": "Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw=="
   },
-  "manifest_digest": "8fd6133955b9cb670777ab395a647d5ee089daa13e197626b22997ec2989d750",
+  "manifest_digest": "9f526cc26105f148cb0139045ac120da276daf2ef5ad6c98a8c6c3abbeb0fcae",
   "note": "Ed25519 is deterministic and keys are fixed-seed test keys; a second implementation must reproduce every value here.",
   "now": 1800000000,
   "reject_wire": [

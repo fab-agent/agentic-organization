@@ -25,6 +25,7 @@ Private key files are written 0600 and never printed. Only public data goes to s
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import stat
@@ -45,12 +46,41 @@ def _write_new(path: str, text: str, mode: int) -> None:
 
 
 def _read_private(path: str) -> str:
-    st = os.lstat(path)
-    if not stat.S_ISREG(st.st_mode):
-        raise SystemExit(f"{path}: not a regular file (symlinks are refused)")
-    if st.st_mode & 0o077 or st.st_uid != os.geteuid():
-        raise SystemExit(f"{path}: private key must be owner-only (0600) and yours")
-    return Path(path).read_text().strip()
+    """Open once with O_NOFOLLOW and check the very descriptor we then read, so the
+    file cannot be swapped between the check and the read."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as e:
+        raise SystemExit(
+            f"{path}: cannot open (symlinks are refused): {e.strerror}"
+        ) from e
+    with os.fdopen(fd) as f:
+        st = os.fstat(f.fileno())
+        if not stat.S_ISREG(st.st_mode):
+            raise SystemExit(f"{path}: not a regular file")
+        if st.st_mode & 0o077 or st.st_uid != os.geteuid():
+            raise SystemExit(f"{path}: private key must be owner-only (0600) and yours")
+        return f.read().strip()
+
+
+def _previous_revoked(
+    path: str, root_private_b64: str, number: int, now: int
+) -> set[str]:
+    """Carry revocations over only from a previous list that verifies under THIS root
+    key, and only to a strictly higher number."""
+    root_pub = base64.b64encode(wm._pub_raw(wm.load_private(root_private_b64))).decode()
+    try:
+        prev = json.loads(Path(path).read_text())
+        st = wm.verify_crl(prev, root_pub, wm.ClientState(), now)
+    except (OSError, ValueError, wm.ManifestError) as e:
+        raise SystemExit(
+            f"--previous is not a valid CRL signed by this root: {e}"
+        ) from e
+    if number <= st.crl_number:
+        raise SystemExit(
+            f"--number must be greater than the previous list ({st.crl_number})"
+        )
+    return set(st.revoked)
 
 
 def _check_out_is_not_input(out: str, *inputs: str) -> None:
@@ -123,13 +153,12 @@ def main(argv: list[str] | None = None) -> int:
         if not 1 <= a.valid_days <= 90:
             raise SystemExit("--valid-days must be 1..90")
         _check_out_is_not_input(a.out, a.root, *([a.previous] if a.previous else []))
+        root_priv = _read_private(a.root)
         revoked = set(a.revoke)
         if a.previous:
-            revoked |= set(
-                json.loads(Path(a.previous).read_text())["payload"]["revoked_kids"]
-            )
+            revoked |= _previous_revoked(a.previous, root_priv, a.number, now)
         crl = wm.issue_crl(
-            _read_private(a.root),
+            root_priv,
             number=a.number,
             revoked_kids=sorted(revoked),
             issued_at=now,
