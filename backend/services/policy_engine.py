@@ -688,11 +688,13 @@ def resolve_mode(
     return mode, default_effect
 
 
-def audit_decision(req: PolicyDecisionRequest, decision: PolicyDecision) -> None:
+def audit_decision(req: PolicyDecisionRequest, decision: PolicyDecision) -> bool:
     """
     Audit one policy decision into the tamper-evident chain (ADR-0005/0006).
     Recorded in every mode, so `dry_run` shows operators what *would* be blocked
-    before they flip to `enforce`. Best-effort — never crashes the caller.
+    before they flip to `enforce`. Never raises. Returns False when the record
+    could not be written, so a caller that must not act without an audit trail
+    (enforce mode, ADR-0026) can refuse instead of continuing.
     """
     try:
         from services import audit_chain
@@ -712,8 +714,9 @@ def audit_decision(req: PolicyDecisionRequest, decision: PolicyDecision) -> None
                 **({"run": req.run} if req.run else {}),
             },
         )
+        return True
     except Exception:
-        pass
+        return False
 
 
 def decide(req: PolicyDecisionRequest) -> PolicyDecision:
