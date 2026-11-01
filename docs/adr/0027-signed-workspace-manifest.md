@@ -62,9 +62,14 @@ must reproduce `backend/tests/vectors/workspace_manifest_vectors.json`:
   epoch's certificate). A client that has seen epoch N refuses N-1, and a higher epoch
   restarts the generation floor, so a thief who pushed `generation` to the maximum cannot
   lock a person out for good. Only the root can raise it, and **recovery needs a new
-  signing key**: a higher epoch certified for the same key is refused
-  (`epoch_needs_new_key`), and the old key's id should also go into the next revocation
-  list.
+  signing key**. A client that remembers the previous key id refuses a higher epoch
+  certified for that same key (`epoch_needs_new_key`); a client with no history cannot
+  know a key was used before, so "fresh key per recovery" is also a root issuance rule
+  (keep a ledger of issued signing keys). Recovery runbook, in order: generate a new
+  signing key on the server; the root issues its certificate at epoch N+1; the root
+  publishes a **cumulative** revocation list that includes the old key id; distribute the
+  new CRL number and epoch as the bootstrap checkpoint. Raising the epoch alone does not
+  revoke the old key for a client that has not yet seen the new epoch or list.
 - **bootstrap floors are required**: when the client has no history for this person
   (empty state, or no entry for them) `Expected` must carry `min_generation`,
   `min_epoch` and `min_crl_number`, obtained over the authenticated session, otherwise the
