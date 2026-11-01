@@ -1,12 +1,21 @@
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import delete as sa_delete
 from sqlmodel import func, select
 
 from api.audit import log_action
 from api.auth import check_company_membership, get_current_user
 from database import get_session
-from models import AgentConfig, Company, CompanyMember, Department, Personnel, User
+from models import (
+    AgentConfig,
+    Company,
+    CompanyMember,
+    Department,
+    Personnel,
+    User,
+    WorkspaceManifestState,
+)
 from schemas import CompanyCreate, CompanyUpdate
 from services import authz
 
@@ -178,6 +187,12 @@ def delete_company(company_id: str, current_user: User = Depends(get_current_use
             raise HTTPException(status_code=404, detail="Company not found")
         log_action(
             session, "delete", "company", entity_id=company.id, entity_name=company.name
+        )
+        # The signed-workspace counters hold a foreign key to the company (ADR-0028).
+        session.execute(
+            sa_delete(WorkspaceManifestState).where(
+                WorkspaceManifestState.company_id == company_id
+            )
         )
         session.delete(company)
         session.commit()

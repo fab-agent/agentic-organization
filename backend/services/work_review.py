@@ -50,6 +50,7 @@ from models import (
     WorkNote,
     WorkRating,
     WorkSignal,
+    WorkspaceManifestState,
     WorkTrainingShare,
 )
 from services.workspaces import MANAGER_ROLES, _in_scope
@@ -281,6 +282,16 @@ def erase_person(session, personnel_id: str) -> int:
     n += (
         session.execute(
             delete(LearningSignal).where(LearningSignal.persona_id == personnel_id)
+        ).rowcount
+        or 0
+    )
+    # The signed-workspace counter of this person (ADR-0028): a deleted person has no
+    # workspace, and a new person gets a new id.
+    n += (
+        session.execute(
+            delete(WorkspaceManifestState).where(
+                WorkspaceManifestState.person_id == personnel_id
+            )
         ).rowcount
         or 0
     )

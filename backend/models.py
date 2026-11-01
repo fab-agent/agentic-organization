@@ -2,7 +2,7 @@ import json
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Index, UniqueConstraint, text
+from sqlalchemy import BigInteger, Index, UniqueConstraint, text
 from sqlmodel import Field, SQLModel
 
 
@@ -925,6 +925,6 @@ class WorkspaceManifestState(SQLModel, table=True):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
     company_id: str = Field(foreign_key="company.id", index=True)
     person_id: str = Field(foreign_key="personnel.id", index=True)
-    epoch: int = Field(default=1)
-    generation: int = Field(default=0)
+    epoch: int = Field(default=1, sa_type=BigInteger)
+    generation: int = Field(default=0, sa_type=BigInteger)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

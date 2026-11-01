@@ -18,6 +18,11 @@ On disk, under WORKSPACE_DIR (default `data/workspace`):
     catalog/profiles.json         which role/department gets which layout and mods
     catalog/layouts/<id>.json     layout files
     catalog/mods/<name>/<ver>/..  mod files (any depth)
+
+Every file is reached by walking from the WORKSPACE_DIR descriptor one component at a
+time with O_NOFOLLOW (`openat` style), so a symlink anywhere below it, a directory swapped
+while we read, or a special file cannot lead outside the tree. The catalog must be a
+regular tree: symlinks, special files and hard-linked files are refused.
 """
 
 from __future__ import annotations
@@ -27,18 +32,33 @@ import hashlib
 import json
 import os
 import stat
+import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
-from pathlib import Path
 
 from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlmodel import select
 
-from models import CompanyMember, Department, Personnel, WorkspaceManifestState
+from models import (
+    AppConfig,
+    CompanyMember,
+    Department,
+    Personnel,
+    WorkspaceManifestState,
+)
 from services import workspace_manifest as wm
 
 DEFAULT_TTL = 6 * 3600
 MAX_FILE_BYTES = 16 * 1024 * 1024
+MAX_CATALOG_DEPTH = 8
+MAX_ENTRIES_PER_DIR = 2048
+_SAFE_MAX_GENERATION = 2**53 - 1
+_CRL_HIGHWATER_KEY = "workspace.crl_highwater"
+
+_O_DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+_O_FILE = os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_NONBLOCK", 0)
 
 
 class WorkspaceUnavailable(Exception):
@@ -49,50 +69,116 @@ class WorkspaceUnavailable(Exception):
         self.reason = reason
 
 
-def workspace_dir() -> Path:
-    return Path(os.getenv("WORKSPACE_DIR", "data/workspace"))
+def workspace_dir() -> str:
+    return os.path.realpath(os.getenv("WORKSPACE_DIR", "data/workspace"))
 
 
-# ── safe file access ─────────────────────────────────────────────────────────
+# ── confined file access ─────────────────────────────────────────────────────
 
 
-def _read_regular(
-    path: Path, *, private: bool = False, limit: int = MAX_FILE_BYTES
-) -> bytes:
-    """Open once with O_NOFOLLOW and check the descriptor we read (no swap window)."""
+def _open_dir(parent_fd: int | None, name: str) -> int:
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        return os.open(name, _O_DIR, dir_fd=parent_fd)
+    except OSError as e:
+        raise WorkspaceUnavailable("catalog_unreadable") from e
+
+
+def _walk_to(root_fd: int, parts: list[str]) -> int:
+    """Descend one component at a time; every step refuses a symlink."""
+    fd = os.dup(root_fd)
+    try:
+        for p in parts:
+            nxt = _open_dir(fd, p)
+            os.close(fd)
+            fd = nxt
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _read_fd(
+    dir_fd: int, name: str, *, private: bool = False, limit: int = MAX_FILE_BYTES
+) -> bytes:
+    """Read one regular file by name from an open directory. Never blocks on a FIFO,
+    refuses a hard-linked file, and rejects (never truncates) a file that is or grows
+    beyond `limit`."""
+    try:
+        fd = os.open(name, _O_FILE, dir_fd=dir_fd)
     except OSError as e:
         raise WorkspaceUnavailable("file_unreadable") from e
     with os.fdopen(fd, "rb") as f:
         st = os.fstat(f.fileno())
-        if not stat.S_ISREG(st.st_mode) or st.st_size > limit:
+        if not stat.S_ISREG(st.st_mode) or st.st_size > limit or st.st_nlink != 1:
             raise WorkspaceUnavailable("file_invalid")
         if private and (st.st_mode & 0o077 or st.st_uid != os.geteuid()):
             raise WorkspaceUnavailable("signing_key_permissions")
-        return f.read(limit + 1)[:limit]
+        data = f.read(limit + 1)
+    if len(data) > limit:
+        raise WorkspaceUnavailable("file_invalid")
+    return data
 
 
-def _walk_files(base: Path) -> list[tuple[str, Path]]:
-    """(relative posix path, file) under `base`; any symlink or special file refuses."""
-    out: list[tuple[str, Path]] = []
-    stack = [base]
-    while stack:
-        d = stack.pop()
-        try:
-            entries = list(os.scandir(d))
-        except OSError as e:
-            raise WorkspaceUnavailable("catalog_unreadable") from e
-        for e in entries:
-            if e.is_symlink():
-                raise WorkspaceUnavailable("catalog_symlink")
-            if e.is_dir(follow_symlinks=False):
-                stack.append(Path(e.path))
-            elif e.is_file(follow_symlinks=False):
-                out.append((Path(e.path).relative_to(base).as_posix(), Path(e.path)))
-            else:
-                raise WorkspaceUnavailable("catalog_special_file")
-    return sorted(out)
+def _read_rel(
+    root_fd: int, rel: str, *, private: bool = False, limit: int = MAX_FILE_BYTES
+) -> bytes:
+    parts = rel.split("/")
+    dfd = _walk_to(root_fd, parts[:-1])
+    try:
+        return _read_fd(dfd, parts[-1], private=private, limit=limit)
+    finally:
+        os.close(dfd)
+
+
+def _lexists(root_fd: int, name: str) -> bool:
+    try:
+        os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True  # present but not inspectable: treat as present, then fail on read
+
+
+def _scan(
+    dir_fd: int,
+    prefix: str,
+    depth: int,
+    budget: dict,
+) -> list[tuple[str, str, os.stat_result]]:
+    """(relative path, path from the catalog root, stat) for every file below an open
+    directory. Counts, depth and bytes are limited as we go, before anything is read."""
+    if depth > MAX_CATALOG_DEPTH:
+        raise WorkspaceUnavailable("catalog_too_deep")
+    out: list[tuple[str, str, os.stat_result]] = []
+    with os.scandir(dir_fd) as it:
+        entries = sorted(it, key=lambda e: e.name)
+    if len(entries) > MAX_ENTRIES_PER_DIR:
+        raise WorkspaceUnavailable("catalog_too_large")
+    for e in entries:
+        st = os.stat(e.name, dir_fd=dir_fd, follow_symlinks=False)
+        rel = f"{prefix}{e.name}"
+        if stat.S_ISLNK(st.st_mode):
+            raise WorkspaceUnavailable("catalog_symlink")
+        if stat.S_ISDIR(st.st_mode):
+            child = _open_dir(dir_fd, e.name)
+            try:
+                out += _scan(child, rel + "/", depth + 1, budget)
+            finally:
+                os.close(child)
+        elif stat.S_ISREG(st.st_mode):
+            budget["files"] += 1
+            budget["bytes"] += st.st_size
+            if (
+                budget["files"] > wm.MAX_FILES_PER_MOD
+                or budget["bytes"] > wm.MAX_TOTAL_BYTES
+                or st.st_size > MAX_FILE_BYTES
+            ):
+                raise WorkspaceUnavailable("catalog_too_large")
+            out.append((rel, rel, st))
+        else:
+            raise WorkspaceUnavailable("catalog_special_file")
+    return out
 
 
 # ── signer ───────────────────────────────────────────────────────────────────
@@ -110,42 +196,67 @@ class Signer:
 
 
 def load_signer(now: int) -> Signer:
-    base = workspace_dir()
-    root_pub = os.getenv("WORKSPACE_ROOT_PUB")
-    if not root_pub:
-        root_pub = _read_regular(base / "root.pub", limit=4096).decode().strip()
+    root_fd = _open_dir(None, workspace_dir())
     try:
-        priv = (
-            _read_regular(base / "signing.key", private=True, limit=4096)
-            .decode()
-            .strip()
-        )
-        cert = json.loads(_read_regular(base / "signing.cert.json", limit=65536))
-        cp = wm.check_certificate(cert, root_pub, now)
-        pub = base64.b64encode(wm._pub_raw(wm.load_private(priv))).decode()
-    except WorkspaceUnavailable:
-        raise
-    except (wm.ManifestError, ValueError, TypeError) as e:
-        code = e.code if isinstance(e, wm.ManifestError) else "signing_material_invalid"
-        raise WorkspaceUnavailable(f"signing_{code}") from e
-    if wm.key_id(pub) != cp["kid"]:
-        raise WorkspaceUnavailable("signing_key_cert_mismatch")
-
-    crl, crl_number = None, 0
-    crl_path = base / "crl.json"
-    if crl_path.exists():
         try:
-            crl = json.loads(_read_regular(crl_path, limit=1024 * 1024))
-            st = wm.verify_crl(crl, root_pub, wm.ClientState(), now)
-        except (wm.ManifestError, ValueError) as e:
-            raise WorkspaceUnavailable("crl_invalid") from e
-        if cp["kid"] in st.revoked:
-            raise WorkspaceUnavailable("signing_key_revoked")
-        crl_number = st.crl_number
-    return Signer(priv, cert, root_pub, cp["epoch"], cp["kid"], crl, crl_number)
+            root_pub = (
+                os.getenv("WORKSPACE_ROOT_PUB")
+                or _read_fd(root_fd, "root.pub", limit=4096).decode().strip()
+            )
+            priv = (
+                _read_fd(root_fd, "signing.key", private=True, limit=4096)
+                .decode()
+                .strip()
+            )
+            cert = json.loads(_read_fd(root_fd, "signing.cert.json", limit=65536))
+            cp = wm.check_certificate(cert, root_pub, now)
+            pub = base64.b64encode(wm._pub_raw(wm.load_private(priv))).decode()
+        except WorkspaceUnavailable:
+            raise
+        except wm.ManifestError as e:
+            raise WorkspaceUnavailable(f"signing_{e.code}") from e
+        except (ValueError, TypeError, UnicodeDecodeError) as e:
+            raise WorkspaceUnavailable("signing_material_invalid") from e
+        if wm.key_id(pub) != cp["kid"]:
+            raise WorkspaceUnavailable("signing_key_cert_mismatch")
+
+        crl, crl_number = None, 0
+        if _lexists(root_fd, "crl.json"):  # a dangling link or odd file is not "absent"
+            try:
+                crl = json.loads(_read_fd(root_fd, "crl.json", limit=1024 * 1024))
+                st = wm.verify_crl(crl, root_pub, wm.ClientState(), now)
+            except WorkspaceUnavailable:
+                raise WorkspaceUnavailable("crl_invalid") from None
+            except (wm.ManifestError, ValueError) as e:
+                raise WorkspaceUnavailable("crl_invalid") from e
+            if cp["kid"] in st.revoked:
+                raise WorkspaceUnavailable("signing_key_revoked")
+            crl_number = st.crl_number
+        return Signer(priv, cert, root_pub, cp["epoch"], cp["kid"], crl, crl_number)
+    finally:
+        os.close(root_fd)
 
 
-# ── catalog and profiles ─────────────────────────────────────────────────────
+def enforce_crl_highwater(session, signer: Signer) -> None:
+    """The newest revocation list this server has ever served never goes backwards, and
+    once one was published it cannot silently disappear (a restored old file or a
+    deleted one would otherwise lower the bootstrap checkpoint)."""
+    row = session.get(AppConfig, _CRL_HIGHWATER_KEY)
+    seen = int(row.value) if row and row.value.isdigit() else 0
+    if signer.crl_number < seen:
+        raise WorkspaceUnavailable(
+            "crl_rollback" if signer.crl is not None else "crl_missing"
+        )
+    if signer.crl_number > seen:
+        if row:
+            row.value = str(signer.crl_number)
+            session.add(row)
+        else:
+            session.add(AppConfig(key=_CRL_HIGHWATER_KEY, value=str(signer.crl_number)))
+        session.commit()
+
+
+# ── catalog and profiles (closed schema) ─────────────────────────────────────
 
 
 @dataclass(frozen=True)
@@ -156,42 +267,77 @@ class Profile:
     min_client_version: str
 
 
-def _load_profiles() -> dict:
-    raw = _read_regular(
-        workspace_dir() / "catalog" / "profiles.json", limit=1024 * 1024
-    )
-    try:
-        doc = wm.parse_wire(raw, max_bytes=1024 * 1024)
-    except wm.ManifestError as e:
-        raise WorkspaceUnavailable("profiles_invalid") from e
-    if not isinstance(doc, dict) or not wm._v1(doc.get("v")):
-        raise WorkspaceUnavailable("profiles_invalid")
-    return doc
+def _bad() -> WorkspaceUnavailable:
+    return WorkspaceUnavailable("profiles_invalid")
+
+
+def _only(d: object, allowed: set[str]) -> dict:
+    if not isinstance(d, dict) or set(d) - allowed:
+        raise _bad()
+    return d
+
+
+def _str_list(v: object) -> list[str]:
+    if not isinstance(v, list) or not all(isinstance(x, str) for x in v):
+        raise _bad()
+    return v
 
 
 def _profile_from(d: object, pid: str) -> Profile:
-    if not isinstance(d, dict) or not isinstance(d.get("layout"), str):
-        raise WorkspaceUnavailable("profiles_invalid")
+    d = _only(d, {"id", "match", "layout", "mods", "min_client_version"})
+    if not isinstance(d.get("layout"), str):
+        raise _bad()
     mods = []
-    for m in d.get("mods", []):
-        if (
-            not isinstance(m, dict)
-            or not isinstance(m.get("name"), str)
-            or not isinstance(m.get("version"), str)
-        ):
-            raise WorkspaceUnavailable("profiles_invalid")
+    raw_mods = d.get("mods", [])
+    if not isinstance(raw_mods, list):
+        raise _bad()
+    for m in raw_mods:
+        m = _only(m, {"name", "version"})
+        if not isinstance(m.get("name"), str) or not isinstance(m.get("version"), str):
+            raise _bad()
         mods.append((m["name"], m["version"]))
     mcv = d.get("min_client_version", "0.0.0")
     if not isinstance(mcv, str):
-        raise WorkspaceUnavailable("profiles_invalid")
+        raise _bad()
     return Profile(pid, d["layout"], tuple(mods), mcv)
+
+
+def _validate_profile(p: object, pid: str) -> Profile:
+    p = _only(p, {"id", "match", "layout", "mods", "min_client_version"})
+    match = _only(p.get("match", {}), {"roles", "departments", "companies"})
+    for key in match:
+        _str_list(match[key])
+    return _profile_from(p, str(p.get("id", pid)))
+
+
+def _load_profiles(root_fd: int) -> dict:
+    raw = _read_rel(root_fd, "catalog/profiles.json", limit=1024 * 1024)
+    try:
+        doc = wm.parse_wire(raw, max_bytes=1024 * 1024)
+    except wm.ManifestError as e:
+        raise _bad() from e
+    doc = _only(doc, {"v", "profiles", "defaults"})
+    if not wm._v1(doc.get("v")):
+        raise _bad()
+    if not isinstance(doc.get("profiles", []), list):
+        raise _bad()
+    # Validate the whole file, not only the entry this person happens to reach: a broken
+    # `defaults` or a later profile is a configuration error for everyone.
+    for i, p in enumerate(doc.get("profiles", [])):
+        _validate_profile(p, f"profile-{i}")
+    if "defaults" in doc:
+        _profile_from(doc["defaults"], "default")
+    return doc
 
 
 def person_context(session, user_id: str, person: Personnel, company_id: str) -> dict:
     """Who the person is for matching: membership roles, department ids and slugs
-    (the department and its ancestors), company id. Taken from the database only."""
+    (the department and its ancestors), company id. Taken from the database only. A
+    scoped membership (a department head of ANOTHER department) does not count as a
+    role of this person's profile."""
     from services.policy_engine import _department_chain
 
+    ids = _department_chain(session, person.department_id)
     roles = {
         m.role
         for m in session.exec(
@@ -199,22 +345,16 @@ def person_context(session, user_id: str, person: Personnel, company_id: str) ->
                 CompanyMember.user_id == user_id, CompanyMember.company_id == company_id
             )
         ).all()
+        if m.scope_id is None or m.scope_id in ids or m.scope_id == person.id
     } or {"user"}
-    ids = _department_chain(session, person.department_id)
     slugs = {d.slug for d in (session.get(Department, i) for i in ids) if d}
     return {"roles": roles, "departments": set(ids) | slugs, "company": company_id}
 
 
-def resolve_profile(ctx: dict) -> Profile:
-    doc = _load_profiles()
+def resolve_profile(root_fd: int, ctx: dict) -> Profile:
+    doc = _load_profiles(root_fd)
     for i, p in enumerate(doc.get("profiles", [])):
-        match = p.get("match", {}) if isinstance(p, dict) else None
-        if not isinstance(match, dict) or set(match) - {
-            "roles",
-            "departments",
-            "companies",
-        }:
-            raise WorkspaceUnavailable("profiles_invalid")
+        match = p.get("match", {})
         ok = True
         for key, have in (
             ("roles", ctx["roles"]),
@@ -222,14 +362,9 @@ def resolve_profile(ctx: dict) -> Profile:
             ("companies", {ctx["company"]}),
         ):
             if key in match:
-                want = match[key]
-                if not isinstance(want, list) or not all(
-                    isinstance(x, str) for x in want
-                ):
-                    raise WorkspaceUnavailable("profiles_invalid")
-                ok = ok and bool(have & set(want))
+                ok = ok and bool(have & set(_str_list(match[key])))
         if ok:
-            return _profile_from(p, str(p.get("id", f"profile-{i}")))
+            return _validate_profile(p, f"profile-{i}")
     if "defaults" in doc:
         return _profile_from(doc["defaults"], "default")
     raise WorkspaceUnavailable("no_profile")
@@ -240,82 +375,175 @@ class Resolved:
     profile: Profile
     layout: dict  # {"id","sha256","size"}
     mods: list[dict]  # manifest `mods` entries
-    files: dict[str, Path]  # sha256 -> file (served by the files endpoint)
+    files: dict[str, str]  # sha256 -> path below the catalog root
 
 
-def resolve_content(profile: Profile) -> Resolved:
-    base = workspace_dir() / "catalog"
-    layout_path = base / "layouts" / f"{profile.layout}.json"
+_cache: OrderedDict[tuple, Resolved] = OrderedDict()
+_cache_lock = threading.Lock()
+_CACHE_MAX = 64
+
+
+def _stat_signature(root_fd: int, profile: Profile) -> tuple:
+    """Cheap fingerprint of every file the profile uses (no reads, no hashing): changes
+    whenever one is replaced, rewritten or resized."""
+    sig: list[tuple] = []
+    cat = _walk_to(root_fd, ["catalog"])
+    try:
+        lay = _walk_to(cat, ["layouts"])
+        try:
+            st = os.stat(f"{profile.layout}.json", dir_fd=lay, follow_symlinks=False)
+            sig.append(
+                ("layout", st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+            )
+        except OSError as e:
+            raise WorkspaceUnavailable("file_unreadable") from e
+        finally:
+            os.close(lay)
+        shared = {"bytes": 0}
+        for name, version in profile.mods:
+            if not wm._NAME.fullmatch(name) or not wm._VERSION.fullmatch(version):
+                raise WorkspaceUnavailable("mod_name_invalid")
+            try:
+                mfd = _walk_to(cat, ["mods", name, version])
+            except WorkspaceUnavailable:
+                raise WorkspaceUnavailable("mod_missing") from None
+            try:
+                budget = {"files": 0, "bytes": shared["bytes"]}
+                for rel, _p, st in _scan(mfd, "", 0, budget):
+                    sig.append(
+                        (
+                            name,
+                            rel,
+                            st.st_ino,
+                            st.st_size,
+                            st.st_mtime_ns,
+                            st.st_ctime_ns,
+                        )
+                    )
+                shared["bytes"] = budget["bytes"]
+            finally:
+                os.close(mfd)
+    finally:
+        os.close(cat)
+    return (profile, tuple(sig))
+
+
+def _validate_catalog(profile: Profile, layout: dict, mods: list[dict]) -> None:
+    """The same shape and limit checks the manifest gets, so issuing and downloading
+    reject exactly the same catalogs (names, portable paths, counts, total size)."""
+    body = {
+        "typ": "fab-workspace-manifest",
+        "v": 1,
+        "epoch": 1,
+        "company_id": "c",
+        "person_id": "p",
+        "aud": "herdr-provisioner",
+        "generation": 1,
+        "issued_at": 1,
+        "expires_at": 2,
+        "min_client_version": profile.min_client_version,
+        "gateway_url": "https://example.test",
+        "layout": layout,
+        "mods": mods,
+    }
+    try:
+        wm._validate_body(body)
+    except wm.ManifestError as e:
+        raise WorkspaceUnavailable(f"manifest_{e.code}") from e
+
+
+def resolve_content(root_fd: int, profile: Profile) -> Resolved:
     if not wm._NAME.fullmatch(profile.layout):
         raise WorkspaceUnavailable("layout_name_invalid")
-    data = _read_regular(layout_path)
-    files: dict[str, Path] = {}
+    key = _stat_signature(root_fd, profile)
+    with _cache_lock:
+        hit = _cache.get(key)
+        if hit is not None:
+            _cache.move_to_end(key)
+            return hit
+
+    files: dict[str, str] = {}
+    data = _read_rel(root_fd, f"catalog/layouts/{profile.layout}.json")
     sha = hashlib.sha256(data).hexdigest()
-    files[sha] = layout_path
+    files[sha] = f"catalog/layouts/{profile.layout}.json"
     layout = {"id": profile.layout, "sha256": sha, "size": len(data)}
     mods = []
+    shared = {"bytes": len(data)}
     for name, version in profile.mods:
-        if not wm._NAME.fullmatch(name) or not wm._VERSION.fullmatch(version):
-            raise WorkspaceUnavailable("mod_name_invalid")
-        root = base / "mods" / name / version
-        if not root.is_dir() or root.is_symlink():
-            raise WorkspaceUnavailable("mod_missing")
-        entries = []
-        for rel, path in _walk_files(root):
-            blob = _read_regular(path)
-            h = hashlib.sha256(blob).hexdigest()
-            files[h] = path
-            entries.append({"path": rel, "sha256": h, "size": len(blob)})
+        mfd = _walk_to(root_fd, ["catalog", "mods", name, version])
+        try:
+            entries = []
+            budget = {"files": 0, "bytes": shared["bytes"]}
+            for rel, _p, _st in _scan(mfd, "", 0, budget):
+                blob = _read_rel(mfd, rel)
+                h = hashlib.sha256(blob).hexdigest()
+                files[h] = f"catalog/mods/{name}/{version}/{rel}"
+                entries.append({"path": rel, "sha256": h, "size": len(blob)})
+            shared["bytes"] = budget["bytes"]
+        finally:
+            os.close(mfd)
         mods.append({"name": name, "version": version, "files": entries})
-    return Resolved(profile, layout, mods, files)
+    _validate_catalog(profile, layout, mods)
+    resolved = Resolved(profile, layout, mods, files)
+    with _cache_lock:
+        _cache[key] = resolved
+        while len(_cache) > _CACHE_MAX:
+            _cache.popitem(last=False)
+    return resolved
 
 
 # ── generation and issuance ──────────────────────────────────────────────────
 
 
 def allocate_generation(session, company_id: str, person_id: str, epoch: int) -> int:
-    """Next generation for this person, never reused, safe under concurrent requests
-    (compare-and-set on the stored value; a unique key stops double creation)."""
-    from sqlalchemy.exc import IntegrityError
-
-    for _ in range(8):
-        row = session.exec(
-            select(WorkspaceManifestState).where(
-                WorkspaceManifestState.company_id == company_id,
-                WorkspaceManifestState.person_id == person_id,
-            )
-        ).first()
-        if row is None:
-            session.add(
-                WorkspaceManifestState(
-                    company_id=company_id,
-                    person_id=person_id,
-                    epoch=epoch,
-                    generation=1,
+    """Next generation for this person, never reused while the state row exists, safe
+    under concurrent requests (compare-and-set on the stored value; a unique key stops
+    double creation). Losing the row (restore, manual delete) is recovered by raising
+    the signing epoch (ADR-0027), which restarts every client's floor."""
+    try:
+        for _ in range(8):
+            row = session.exec(
+                select(WorkspaceManifestState).where(
+                    WorkspaceManifestState.company_id == company_id,
+                    WorkspaceManifestState.person_id == person_id,
                 )
+            ).first()
+            if row is None:
+                session.add(
+                    WorkspaceManifestState(
+                        company_id=company_id,
+                        person_id=person_id,
+                        epoch=epoch,
+                        generation=1,
+                    )
+                )
+                try:
+                    session.commit()
+                    return 1
+                except IntegrityError:
+                    session.rollback()
+                    continue
+            if row.epoch > epoch:
+                raise WorkspaceUnavailable("signing_epoch_behind_state")
+            new_gen = 1 if row.epoch < epoch else row.generation + 1
+            if new_gen > _SAFE_MAX_GENERATION:
+                raise WorkspaceUnavailable("generation_exhausted")
+            res = session.exec(
+                update(WorkspaceManifestState)
+                .where(
+                    WorkspaceManifestState.id == row.id,
+                    WorkspaceManifestState.epoch == row.epoch,
+                    WorkspaceManifestState.generation == row.generation,
+                )
+                .values(epoch=epoch, generation=new_gen)
             )
-            try:
-                session.commit()
-                return 1
-            except IntegrityError:
-                session.rollback()
-                continue
-        if row.epoch > epoch:
-            raise WorkspaceUnavailable("signing_epoch_behind_state")
-        new_gen = 1 if row.epoch < epoch else row.generation + 1
-        res = session.exec(
-            update(WorkspaceManifestState)
-            .where(
-                WorkspaceManifestState.id == row.id,
-                WorkspaceManifestState.epoch == row.epoch,
-                WorkspaceManifestState.generation == row.generation,
-            )
-            .values(epoch=epoch, generation=new_gen)
-        )
-        session.commit()
-        if res.rowcount == 1:
-            return new_gen
+            session.commit()
+            if res.rowcount == 1:
+                return new_gen
+            session.rollback()
+    except SQLAlchemyError as e:
         session.rollback()
+        raise WorkspaceUnavailable("state_unavailable") from e
     raise WorkspaceUnavailable("generation_contention")
 
 
@@ -326,6 +554,16 @@ def manifest_ttl() -> int:
         )
     except ValueError:
         return DEFAULT_TTL
+
+
+def _resolve_for(
+    session, root_fd: int, user_id: str, person: Personnel, company_id: str
+):
+    ctx = person_context(session, user_id, person, company_id)
+    try:
+        return resolve_content(root_fd, resolve_profile(root_fd, ctx))
+    except (TypeError, KeyError, AttributeError, ValueError) as e:
+        raise _bad() from e  # a shape error in config is a 503, never a 500
 
 
 def issue_manifest(
@@ -341,8 +579,12 @@ def issue_manifest(
     client. Raises WorkspaceUnavailable; signs nothing in that case."""
     now = int(time.time()) if now is None else now
     signer = load_signer(now)
-    ctx = person_context(session, user_id, person, company_id)
-    resolved = resolve_content(resolve_profile(ctx))
+    enforce_crl_highwater(session, signer)
+    root_fd = _open_dir(None, workspace_dir())
+    try:
+        resolved = _resolve_for(session, root_fd, user_id, person, company_id)
+    finally:
+        os.close(root_fd)
 
     cp = signer.cert["payload"]
     issued = max(now, cp["not_before"])
@@ -370,7 +612,9 @@ def issue_manifest(
     return {
         "manifest": envelope,
         # Floors a client with no history must require. They authenticate through the
-        # signed-in session, not through the signature, and they never lower anything.
+        # signed-in session, not through the signature. The generation is the one just
+        # issued, the epoch is the signing epoch, and the CRL number never goes below
+        # the highest list this server has served (enforce_crl_highwater).
         "bootstrap": {
             "min_generation": generation,
             "min_epoch": signer.epoch,
@@ -383,15 +627,19 @@ def issue_manifest(
 def file_for_person(
     session, *, user_id: str, person: Personnel, company_id: str, sha256: str
 ) -> bytes:
-    """Bytes of one catalog file, only if it belongs to this person's own profile."""
+    """Bytes of one catalog file, only if it belongs to this person's own profile.
+    Uses the cached, validated index (a stat per file, one read for the requested file)."""
     if not wm._SHA256.fullmatch(sha256):
         raise WorkspaceUnavailable("bad_hash")
-    ctx = person_context(session, user_id, person, company_id)
-    resolved = resolve_content(resolve_profile(ctx))
-    path = resolved.files.get(sha256)
-    if path is None:
-        raise KeyError(sha256)
-    data = _read_regular(path)
+    root_fd = _open_dir(None, workspace_dir())
+    try:
+        resolved = _resolve_for(session, root_fd, user_id, person, company_id)
+        rel = resolved.files.get(sha256)
+        if rel is None:
+            raise KeyError(sha256)
+        data = _read_rel(root_fd, rel)
+    finally:
+        os.close(root_fd)
     if hashlib.sha256(data).hexdigest() != sha256:  # changed since it was listed
         raise WorkspaceUnavailable("file_changed")
     return data

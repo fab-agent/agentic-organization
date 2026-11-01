@@ -138,7 +138,7 @@ def _verify(env, body, person, co, *, floors=True):
         json.dumps(body["manifest"]),
         root_pub_b64=env.root_pub,
         expected=exp,
-        now=NOW,
+        now=int(time.time()),  # NOT the import-time NOW: a long run would age it
         state=wm.ClientState(),
     )
 
@@ -395,7 +395,7 @@ def test_unconfigured_server_signs_nothing(
     monkeypatch.setenv("WORKSPACE_DIR", str(tmp_path / "nowhere"))
     monkeypatch.delenv("WORKSPACE_ROOT_PUB", raising=False)
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://app.example.test")
-    assert _reason(_get(client, people["emp_user"])) == "file_unreadable"
+    assert _reason(_get(client, people["emp_user"])) == "catalog_unreadable"
     assert _nothing_issued(db_session)
 
 
@@ -639,4 +639,358 @@ def test_database_setting_wins_over_the_environment(client, env, people, db_sess
     body = _get(client, people["emp_user"]).json()
     assert (
         body["manifest"]["payload"]["gateway_url"] == "https://configured.example.test"
+    )
+
+
+# ── CODEX-ME-WORKSPACE: confinement, budgets, schema, CRL, scope ─────────────
+
+import signal  # noqa: E402
+
+
+def _outside(tmp_path, name="secret.json", data=b"TOP SECRET"):
+    d = tmp_path / "outside"
+    d.mkdir(exist_ok=True)
+    (d / name).write_bytes(data)
+    return d
+
+
+def test_parent_directory_symlink_cannot_reach_outside_the_catalog(
+    client, env, people, db_session, tmp_path
+):
+    out = _outside(tmp_path, "finance-v2.json")
+    layouts = env.dir / "catalog" / "layouts"
+    for f in layouts.iterdir():
+        f.unlink()
+    layouts.rmdir()
+    layouts.symlink_to(out)  # the DIRECTORY is the link, not the file
+    assert _reason(_get(client, people["emp_user"])) == "catalog_unreadable"
+    assert _nothing_issued(db_session)
+    sha = _sha(b"TOP SECRET")
+    r = client.get(f"/me/workspace/files/{sha}", headers=_h(people["emp_user"]))
+    assert r.status_code in (404, 503) and b"TOP SECRET" not in r.content
+
+
+def test_mod_directory_symlink_is_refused_at_every_level(
+    client, env, people, db_session, tmp_path
+):
+    out = _outside(tmp_path, "main.js")
+    mods = env.dir / "catalog" / "mods"
+    (mods / "finance-dashboard" / "1.2.0").rename(tmp_path / "moved")
+    (mods / "finance-dashboard" / "1.2.0").symlink_to(out)
+    assert _reason(_get(client, people["emp_user"])) in (
+        "mod_missing",
+        "catalog_unreadable",
+    )
+    assert _nothing_issued(db_session)
+
+
+def test_directory_swapped_for_a_symlink_while_reading_is_not_followed(env, tmp_path):
+    """The fd-based walk: a directory replaced after it was listed is refused on open."""
+    mods = env.dir / "catalog" / "mods" / "finance-dashboard" / "1.2.0"
+    out = _outside(tmp_path, "icon.svg", b"STOLEN")
+    root_fd = ws._open_dir(None, str(env.dir))
+    try:
+        mfd = ws._walk_to(root_fd, ["catalog", "mods", "finance-dashboard", "1.2.0"])
+        try:
+            assert ws._read_rel(mfd, "assets/icon.svg") == b"<svg/>"
+            (mods / "assets" / "icon.svg").unlink()
+            (mods / "assets").rmdir()
+            (mods / "assets").symlink_to(out)
+            with pytest.raises(ws.WorkspaceUnavailable):
+                ws._read_rel(mfd, "assets/icon.svg")
+        finally:
+            os.close(mfd)
+    finally:
+        os.close(root_fd)
+
+
+def test_hard_linked_catalog_file_is_refused(client, env, people, db_session, tmp_path):
+    out = _outside(tmp_path, "linked.js", b"X")
+    os.link(
+        out / "linked.js",
+        env.dir / "catalog" / "mods" / "finance-dashboard" / "1.2.0" / "linked.js",
+    )
+    assert _reason(_get(client, people["emp_user"])) == "file_invalid"
+    assert _nothing_issued(db_session)
+
+
+def _with_alarm(seconds, fn):
+    def boom(*_):
+        raise TimeoutError("blocked on a special file")
+
+    old = signal.signal(signal.SIGALRM, boom)
+    signal.alarm(seconds)
+    try:
+        return fn()
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+
+
+def test_fifo_in_the_catalog_never_blocks(client, env, people, db_session):
+    os.mkfifo(env.dir / "catalog" / "mods" / "finance-dashboard" / "1.2.0" / "pipe")
+    r = _with_alarm(5, lambda: _get(client, people["emp_user"]))
+    assert _reason(r) == "catalog_special_file"
+    assert _nothing_issued(db_session)
+
+
+def test_fifo_as_signing_material_never_blocks(client, env, people, db_session):
+    (env.dir / "root.pub").unlink()
+    os.mkfifo(env.dir / "root.pub")
+    r = _with_alarm(5, lambda: _get(client, people["emp_user"]))
+    assert _reason(r) == "file_invalid"
+    assert _nothing_issued(db_session)
+
+
+def test_a_file_that_grows_past_the_limit_is_rejected_not_truncated(env, monkeypatch):
+    f = env.dir / "grow.txt"
+    f.write_bytes(b"12345")  # 5 bytes on disk, limit 4
+    real = os.fstat
+
+    def small(fd):  # fstat saw 1 byte; the file grew before we read it
+        r = real(fd)
+        parts = list(r)
+        parts[6] = 1
+        return os.stat_result(tuple(parts))
+
+    root_fd = ws._open_dir(None, str(env.dir))
+    try:
+        monkeypatch.setattr(ws.os, "fstat", small)
+        with pytest.raises(ws.WorkspaceUnavailable) as e:
+            ws._read_fd(root_fd, "grow.txt", limit=4)
+        assert e.value.reason == "file_invalid"
+    finally:
+        os.close(root_fd)
+
+
+def test_oversized_catalog_is_refused_before_anything_is_read(
+    client, env, people, db_session, monkeypatch
+):
+    mods = env.dir / "catalog" / "mods" / "finance-dashboard" / "1.2.0"
+    for i in range(wm.MAX_FILES_PER_MOD + 5):
+        (mods / f"f{i}.js").write_bytes(b"x")
+    reads = []
+    real = ws._read_fd
+    monkeypatch.setattr(
+        ws, "_read_fd", lambda *a, **k: (reads.append(1), real(*a, **k))[1]
+    )
+    assert _reason(_get(client, people["emp_user"])) == "catalog_too_large"
+    # only the signing material was read (root.pub, signing.key, cert), none of the 500+ files
+    assert len(reads) <= 4
+    assert _nothing_issued(db_session)
+
+
+def test_downloads_read_one_file_not_the_whole_profile(
+    client, env, people, monkeypatch
+):
+    mods = env.dir / "catalog" / "mods" / "finance-dashboard" / "1.2.0"
+    for i in range(40):
+        (mods / f"f{i}.js").write_bytes(f"// {i}".encode())
+    body = _get(client, people["emp_user"]).json()
+    entries = body["manifest"]["payload"]["mods"][0]["files"]
+    assert len(entries) == 42
+    reads = []
+    real = ws._read_fd
+    monkeypatch.setattr(
+        ws, "_read_fd", lambda *a, **k: (reads.append(1), real(*a, **k))[1]
+    )
+    for e in entries[:10]:
+        assert (
+            client.get(
+                f"/me/workspace/files/{e['sha256']}", headers=_h(people["emp_user"])
+            ).status_code
+            == 200
+        )
+    # profiles.json + the requested file per request; nothing scales with the 41 others
+    assert len(reads) == 2 * 10
+
+
+def test_a_change_to_the_catalog_is_seen_by_the_next_request(client, env, people):
+    a = _get(client, people["emp_user"]).json()["manifest"]["payload"]["mods"][0][
+        "files"
+    ]
+    mods = env.dir / "catalog" / "mods" / "finance-dashboard" / "1.2.0"
+    (mods / "main.js").write_bytes(b"export default 2;\n")
+    b = _get(client, people["emp_user"]).json()["manifest"]["payload"]["mods"][0][
+        "files"
+    ]
+    old = next(f for f in a if f["path"] == "main.js")["sha256"]
+    new = next(f for f in b if f["path"] == "main.js")["sha256"]
+    assert old != new and new == _sha(b"export default 2;\n")
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda e: e.profiles.__setitem__("extra", 1),
+        lambda e: e.profiles["defaults"].__setitem__("mods", None),
+        lambda e: e.profiles.__setitem__("profiles", None),
+        lambda e: e.profiles["profiles"][0].__setitem__("surprise", True),
+        lambda e: e.profiles["profiles"][0]["mods"][0].__setitem__("flag", 1),
+        lambda e: e.profiles["profiles"][0].__setitem__("mods", "none"),
+        lambda e: e.profiles["profiles"][0].__setitem__("match", []),
+        lambda e: e.profiles["profiles"][0].__setitem__("layout", 5),
+        lambda e: e.profiles["profiles"][0].__setitem__("min_client_version", 1),
+    ],
+)
+def test_profile_file_has_a_closed_schema_and_never_500s(
+    client, env, people, db_session, mutate
+):
+    mutate(env)
+    env.write_profiles()
+    assert _reason(_get(client, people["emp_user"])) == "profiles_invalid"
+    assert _nothing_issued(db_session)
+
+
+def test_bad_root_pub_encoding_is_a_503_not_a_500(client, env, people, db_session):
+    (env.dir / "root.pub").write_bytes(b"\xff\xfe not base64")
+    assert _reason(_get(client, people["emp_user"])).startswith("signing_")
+    assert _nothing_issued(db_session)
+
+
+def test_nonportable_file_name_is_rejected_for_issue_and_download_alike(
+    client, env, people
+):
+    good = _get(client, people["emp_user"]).json()["manifest"]["payload"]["mods"][0][
+        "files"
+    ]
+    sha = next(f for f in good if f["path"] == "main.js")["sha256"]
+    mods = env.dir / "catalog" / "mods" / "finance-dashboard" / "1.2.0"
+    (mods / "e\u0301.js").write_bytes(b"nfd")  # NFD: not allowed in a manifest
+    assert _reason(_get(client, people["emp_user"])).startswith("manifest_")
+    r = client.get(f"/me/workspace/files/{sha}", headers=_h(people["emp_user"]))
+    assert r.status_code == 503 and r.json()["detail"]["reason"].startswith("manifest_")
+
+
+def test_crl_number_never_goes_backwards_or_disappears(client, env, people):
+    def put(n):
+        c = wm.issue_crl(
+            env.root_priv,
+            number=n,
+            revoked_kids=[],
+            issued_at=NOW,
+            next_update=NOW + 86400,
+        )
+        (env.dir / "crl.json").write_text(json.dumps(c))
+
+    put(7)
+    assert _get(client, people["emp_user"]).json()["bootstrap"]["min_crl_number"] == 7
+    put(2)  # an old file restored
+    assert _reason(_get(client, people["emp_user"])) == "crl_rollback"
+    (env.dir / "crl.json").unlink()  # or removed
+    assert _reason(_get(client, people["emp_user"])) == "crl_missing"
+    put(9)
+    assert _get(client, people["emp_user"]).json()["bootstrap"]["min_crl_number"] == 9
+
+
+def test_dangling_crl_symlink_is_not_treated_as_absent(client, env, people, db_session):
+    (env.dir / "crl.json").symlink_to(env.dir / "nowhere.json")
+    assert _reason(_get(client, people["emp_user"])) == "crl_invalid"
+    assert _nothing_issued(db_session)
+
+
+def test_scoped_membership_of_another_department_does_not_grant_the_profile(
+    client, env, people, db_session
+):
+    env.profiles["profiles"].insert(
+        0,
+        {
+            "id": "fin-heads",
+            "match": {"roles": ["dept_head"], "departments": ["finance"]},
+            "layout": "terminals",
+            "mods": [],
+        },
+    )
+    env.write_profiles()
+    eng = Department(company_id=people["co"].id, name="Eng", slug="eng")
+    db_session.add(eng)
+    db_session.flush()
+    db_session.add(
+        CompanyMember(
+            user_id=people["emp_user"].id,
+            company_id=people["co"].id,
+            role="dept_head",
+            scope_id=eng.id,
+        )
+    )
+    db_session.commit()
+    body = _get(client, people["emp_user"]).json()
+    assert (
+        body["manifest"]["payload"]["layout"]["id"] == "finance-v2"
+    )  # not the dept-head profile
+    # the same role scoped to the person's OWN department does match
+    db_session.add(
+        CompanyMember(
+            user_id=people["emp_user"].id,
+            company_id=people["co"].id,
+            role="dept_head",
+            scope_id=people["fin"].id,
+        )
+    )
+    db_session.commit()
+    body = _get(client, people["emp_user"]).json()
+    assert body["manifest"]["payload"]["layout"]["id"] == "terminals"
+
+
+def test_generation_counter_exhaustion_is_a_503(client, env, people, db_session):
+    _get(client, people["emp_user"])
+    db_session.execute(
+        WorkspaceManifestState.__table__.update().values(generation=2**53 - 1)
+    )
+    db_session.commit()
+    assert _reason(_get(client, people["emp_user"])) == "generation_exhausted"
+
+
+def test_counter_columns_are_64_bit():
+    from sqlalchemy import BigInteger
+
+    cols = WorkspaceManifestState.__table__.c
+    assert isinstance(cols.epoch.type, BigInteger) and isinstance(
+        cols.generation.type, BigInteger
+    )
+
+
+def test_database_error_while_allocating_is_a_503(client, env, people, monkeypatch):
+    from sqlalchemy.exc import OperationalError
+
+    def boom(*a, **k):
+        raise OperationalError("stmt", {}, Exception("db down"))
+
+    monkeypatch.setattr(ws, "allocate_generation", ws.allocate_generation)  # keep real
+    import sqlmodel.orm.session as sm
+
+    real = sm.Session.exec
+
+    def failing(self, stmt, *a, **k):
+        if "workspacemanifeststate" in str(stmt).lower():
+            raise OperationalError("stmt", {}, Exception("db down"))
+        return real(self, stmt, *a, **k)
+
+    monkeypatch.setattr(sm.Session, "exec", failing)
+    assert _reason(_get(client, people["emp_user"])) == "state_unavailable"
+
+
+def test_erasing_a_person_removes_their_manifest_counter(
+    client, env, people, db_session
+):
+    from services.work_review import erase_person
+
+    _get(client, people["emp_user"])
+    assert (
+        db_session.exec(WorkspaceManifestState.__table__.select()).first() is not None
+    )
+    erase_person(db_session, people["emp"].id)
+    db_session.commit()
+    assert db_session.exec(WorkspaceManifestState.__table__.select()).first() is None
+
+
+def test_crl_endpoint_needs_a_session_but_no_company(client, env, people):
+    # the shared test client keeps the founder's header from the fixture: blank it
+    assert (
+        client.get("/me/workspace/crl", headers={"Authorization": ""}).status_code
+        == 401
+    )
+    assert (
+        client.get("/me/workspace/crl", headers=_h(people["emp_user"])).status_code
+        == 404
     )
