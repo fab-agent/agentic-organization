@@ -179,14 +179,6 @@ def test_malformed_policy_block_fails_closed(body):
     assert d.effect == "deny" and d.fail_closed
 
 
-def test_illustrative_unparseable_json_fence_is_still_ignored():
-    rules = pe.load_ruleset(["```json\n{not json at all\n```"])
-    d = pe.evaluate(
-        pe.PolicyDecisionRequest(tool="probe"), rules, default_effect="allow"
-    )
-    assert d.effect == "allow"
-
-
 # ── flow runner goes through the same gate ───────────────────────────────────
 
 
@@ -320,10 +312,6 @@ def test_well_formed_blocks_still_work():
     assert v.effect == "deny" and not v.fail_closed and v.matched_rule == "r"
 
 
-def test_prose_json_without_rule_shape_is_ignored():
-    assert _verdict("```json\n{oops, not json\n```").effect == "allow"
-
-
 # ── MCP org_policies passes the same gate ────────────────────────────────────
 
 
@@ -453,12 +441,6 @@ def test_oversized_block_is_malformed():
     assert v.effect == "deny" and v.fail_closed
 
 
-def test_prose_with_effect_word_is_not_a_rule():
-    assert (
-        _verdict("```json\n{note: the sideeffect: is documented\n```").effect == "allow"
-    )
-
-
 def test_validate_policy_content_reports_problems():
     assert pe.validate_policy_content(_fenced("policy", _DENY)) == []
     assert pe.validate_policy_content("```policy\n[{broken\n```")
@@ -569,3 +551,135 @@ def test_change_request_rejects_malformed_policy_content():
     with pytest.raises(HTTPException) as e:
         _validate_proposed(None, "c", {"content": "```policy\n[{broken\n```"}, "policy")
     assert e.value.status_code == 422
+
+
+# ── round 5: unparseable executable block is always a problem ────────────────
+
+
+def test_prose_belongs_in_text_fence_and_is_ignored():
+    assert _verdict("```text\n{oops, not json, effect: deny\n```").effect == "allow"
+    assert pe.validate_policy_content("```text\n{oops\n```") == []
+
+
+@pytest.mark.parametrize("fence", ["json", "yaml", "policy"])
+def test_unparseable_executable_block_is_a_problem_whatever_it_looks_like(fence):
+    for body in ["{oops, not json", "just words: [", "{note: sideeffect: x"]:
+        v = _verdict(_fenced(fence, body))
+        assert v.effect == "deny" and v.fail_closed, (fence, body)
+        assert pe.validate_policy_content(_fenced(fence, body)), (fence, body)
+
+
+def test_parsed_prose_object_scalar_and_empty_blocks_are_fine():
+    for fence, body in [
+        ("json", '{"note": "hello"}'),
+        ("yaml", "note: hello"),
+        ("json", "3"),
+        ("yaml", ""),
+    ]:
+        assert pe.validate_policy_content(_fenced(fence, body)) == [], (fence, body)
+        assert _verdict(_fenced(fence, body)).effect == "allow"
+    assert pe.validate_policy_content("```policy\n\n```") == []
+
+
+_YAML_RULE = "- id: r\n  match: {tool: probe}\n  effect: deny\n  reason: no"
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "%YAML 1.1\n---\n",
+        "---\n",
+        "# note\n---\n",
+        "\ufeff# note\n   \n",
+        "# note\n\ufeff  \n",
+        "%YAML 1.1\n%TAG ! tag:example.com,2026:\n---\n",
+    ],
+)
+def test_yaml_preambles_valid_broken_and_unterminated(prefix):
+    assert _is_rule_deny(_fenced("yaml", prefix + _YAML_RULE)), "valid"
+    broken = prefix + _YAML_RULE.replace("{tool: probe}", "[broken")
+    for body in (f"```yaml\n{broken}\n```", f"```yaml\n{prefix}{_YAML_RULE}"):
+        v = _verdict(body)
+        assert v.effect == "deny" and v.fail_closed, (prefix, body)
+        assert pe.validate_policy_content(body)
+
+
+@pytest.mark.parametrize(
+    "match",
+    [
+        {"tool": 1},
+        {"tool": "probe", "args": "x"},
+        {"tool": "probe", "args": {"x": 1}},
+        {"tool": "probe", "command": "x"},
+        {"tool": "probe", "command": {"program": 1}},
+        {"tool": "probe", "command": {"any_program": {"a": 1}}},
+        {"tool": "probe", "command": {"program": "ls", "args_all_of": 5}},
+    ],
+)
+def test_save_time_schema_covers_nested_matchers(match):
+    import json as _json
+
+    body = _json.dumps([{"id": "r", "match": match, "effect": "deny"}])
+    assert pe.validate_policy_content(_fenced("policy", body)), match
+
+
+def test_save_time_schema_accepts_what_runtime_accepts():
+    import json as _json
+
+    good = [
+        {"match": {"tool": ["a*", "b"]}, "effect": "allow"},
+        {"match": {"tool": "probe", "args": {"*": "x*"}}, "effect": "deny"},
+        {
+            "match": {
+                "tool": "bash",
+                "command": {"program": "rm", "args_all_of": ["-r*"]},
+            },
+            "effect": "deny",
+        },
+        {"match": {"tool": "probe", "args": {}}, "effect": "ask"},
+        {"match": {"tool": "probe", "command": {"args_all_of": 5}}, "effect": "deny"},
+    ]
+    assert pe.validate_policy_content(_fenced("policy", _json.dumps(good))) == []
+
+
+def test_change_request_rejects_non_text_policy_content():
+    from fastapi import HTTPException
+
+    from api.change_requests import _validate_proposed
+
+    with pytest.raises(HTTPException) as e:
+        _validate_proposed(None, "c", {"content": 12}, "policy")
+    assert e.value.status_code == 422
+
+
+def test_policy_inventory_reports_malformed_without_printing_text(db_session, capsys):
+    import models
+    from scripts import policy_inventory
+    from tests.conftest import make_company
+
+    co = make_company(db_session)
+    db_session.add(
+        models.Policy(
+            company_id=co.id,
+            scope="company",
+            name="bad",
+            slug="bad",
+            content="```policy\n[{broken\n```",
+        )
+    )
+    db_session.add(
+        models.Policy(
+            company_id=co.id,
+            scope="company",
+            name="good",
+            slug="good",
+            content=_fenced("policy", _DENY),
+        )
+    )
+    db_session.commit()
+    import sys
+
+    sys.argv = ["policy_inventory.py"]
+    assert policy_inventory.main() == 1
+    out = capsys.readouterr().out
+    assert "bad" in out and "good" not in out and "broken" not in out

@@ -78,9 +78,11 @@ def _validate_proposed(
         p = harness.parse_proposal(proposed)
         harness.check_target(session, company_id, p, personnel_id)
         return
-    if change_type == "policy" and isinstance(proposed.get("content"), str):
+    if change_type == "policy" and "content" in proposed:
         from services.policy_engine import validate_policy_content
 
+        if not isinstance(proposed["content"], str):
+            raise HTTPException(status_code=422, detail="Policy content must be text")
         problems = validate_policy_content(proposed["content"])
         if problems:
             raise HTTPException(

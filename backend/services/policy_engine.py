@@ -499,47 +499,68 @@ def _tokenize_fences(text: str):
         i = j + 1
 
 
-def _significant_start(body: str) -> str:
-    """First meaningful character: BOM, blank lines and `#` comment lines skipped."""
-    body = body.lstrip("\ufeff")
-    for line in body.splitlines():
-        t = line.strip().lstrip("\ufeff")
-        if t and not t.startswith("#"):
-            return t[0]
-    return ""
-
-
-def _block_is_rule_attempt(fence: str, body: str) -> bool:
-    """For ```json / ```yaml: a block that *starts like a rule list* is a rule
-    attempt. Prose objects (`{...}`) that do not parse are documentation."""
-    first = _significant_start(body)
-    return first == "[" or (fence == "yaml" and first == "-")
-
-
 def _rule_schema_problem(rule: dict) -> str | None:
-    """Static check equal to what `_match_rule` raises on, so a policy that would
-    fail closed at runtime is caught when it is saved."""
-    if "match" not in rule or "effect" not in rule:
-        return "rule needs 'match' and 'effect'"
-    if rule["effect"] not in VALID_EFFECTS:
-        return f"invalid effect: {rule['effect']!r}"
-    if not isinstance(rule["match"], dict):
-        return "'match' must be an object"
+    """Static check of everything `_match_rule` can raise on, independent of any
+    request (so a short-circuit cannot hide a bad field). Mirrors its semantics:
+    `args_*_of` are only evaluated, hence only checked, when `program` is present."""
+    try:
+        if "match" not in rule or "effect" not in rule:
+            raise _RuleError("rule needs 'match' and 'effect'")
+        if rule["effect"] not in VALID_EFFECTS:
+            raise _RuleError(f"invalid effect: {rule['effect']!r}")
+        match = rule["match"]
+        if not isinstance(match, dict):
+            raise _RuleError("'match' must be an object")
+        if "tool" in match:
+            _as_patterns(match["tool"])
+        arg_spec = match.get("args")
+        if arg_spec:
+            if not isinstance(arg_spec, dict):
+                raise _RuleError("'match.args' must be an object")
+            for pat in arg_spec.values():
+                _as_patterns(pat)
+        if "command" in match:
+            spec = match["command"]
+            if not isinstance(spec, dict):
+                raise _RuleError("'match.command' must be an object")
+            keys = ["any_program", "pipes_into", "program"]
+            if "program" in spec:
+                keys += ["args_all_of", "args_any_of"]
+            for k in keys:
+                if k in spec:
+                    _as_patterns(spec[k])
+    except _RuleError as e:
+        return str(e)
     return None
+
+
+def _parse_block(body: str) -> tuple[bool, Any]:
+    """`(ok, value)`: JSON first, then YAML. ok=False means neither parses."""
+    try:
+        return True, json.loads(body)
+    except json.JSONDecodeError:
+        pass
+    try:
+        import yaml  # PyYAML is already a backend dependency
+
+        return True, yaml.safe_load(body)
+    except Exception:
+        return False, None
 
 
 def parse_policy_content(content: str) -> tuple[list[dict], list[str]]:
     """
     `(rules, problems)` from a Policy body. Contract (ADR-0026):
 
-    - ```policy is executable by declaration. Anything but a closed block holding a
-      JSON/YAML *list of rule objects* is a problem.
-    - ```json / ```yaml are executable when they parse to a list (same checks), and
-      a problem when they start like a rule list (BOM, blank and `#` lines skipped)
-      but do not parse/terminate, or parse to a rule-shaped object (has
-      `match`/`effect`) outside a list. Other JSON/YAML (prose) is ignored. The
-      decision uses the parsed structure, never raw text.
-    - Info strings are case-insensitive; other info strings are documentation.
+    - Fences ```policy, ```json and ```yaml are executable (info string is
+      case-insensitive). Prose and examples belong in ```text (or any other info
+      string), which is never executed.
+    - An executable block must be closed and must parse (JSON, else YAML). It is a
+      problem when unterminated, unparseable, a non-object rule in a list, or a
+      rule-shaped object (has `match`/`effect`) outside a list; a ```policy block
+      must also be a list. Parsed JSON/YAML that is not rule-shaped (a prose
+      object, a scalar, an empty block) contributes no rules and no problem.
+    - There is no "does it look like a rule" guess: unparseable means problem.
     - Limits: document, block and rule count (bounds evaluation cost).
     Problems are typed separately from user rules, so a user rule id can never
     be mistaken for a parse error.
@@ -552,30 +573,28 @@ def parse_policy_content(content: str) -> tuple[list[dict], list[str]]:
     for fence, body, terminated in _tokenize_fences(text):
         if fence not in _EXECUTABLE_FENCES:
             continue
-        body = body.lstrip("\ufeff").strip()
+        body = body.replace("\ufeff", "").strip()
         if len(body.encode("utf-8", "ignore")) > MAX_POLICY_BLOCK_BYTES:
             problems.append("block too large")
             continue
         if not terminated:
-            if fence == "policy" or _block_is_rule_attempt(fence, body):
-                problems.append("unterminated block")
+            problems.append("unterminated block")
             continue
-        try:
-            parsed = json.loads(body)
-        except json.JSONDecodeError:
-            parsed = _loose_yaml_list(body)
-        if isinstance(parsed, list):
+        ok, parsed = _parse_block(body)
+        if not ok:
+            problems.append("unparseable block")
+        elif isinstance(parsed, list):
             for r in parsed:
-                if not isinstance(r, dict):
-                    problems.append("non-object rule")
-                else:
+                if isinstance(r, dict):
                     rules.append(r)
-        elif fence == "policy":
+                else:
+                    problems.append("non-object rule")
+        elif fence == "policy" and parsed is not None:
             problems.append("not a list of rules")
+        elif fence == "policy":
+            pass  # empty ```policy block: no rules
         elif isinstance(parsed, dict) and ("match" in parsed or "effect" in parsed):
             problems.append("rule object outside a list")
-        elif parsed is None and _block_is_rule_attempt(fence, body):
-            problems.append("unparseable rule list")
     if len(rules) > MAX_POLICY_RULES:
         problems.append("too many rules")
     return rules, problems
@@ -597,16 +616,6 @@ def validate_policy_content(content: str) -> list[str]:
         if why:
             problems.append(f"rule {str(r.get('id', '?'))[:60]}: {why}")
     return problems
-
-
-def _loose_yaml_list(block: str) -> Any:
-    """Best-effort: use PyYAML if available, else give up (return None)."""
-    try:
-        import yaml  # PyYAML is already a backend dependency
-
-        return yaml.safe_load(block)
-    except Exception:
-        return None
 
 
 def load_ruleset(policy_contents: list[str]) -> list[dict]:
