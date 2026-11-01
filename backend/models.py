@@ -908,3 +908,23 @@ class LearningSignal(SQLModel, table=True):
     withdrawn_at: datetime | None = None
     revisions: int = Field(default=0)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkspaceManifestState(SQLModel, table=True):
+    """Last signed-manifest generation handed to one person (ADR-0028).
+
+    The client refuses a lower generation and treats the same generation with other
+    content as a conflict (ADR-0027), so the server allocates generations atomically
+    and never reuses one. A higher signing epoch restarts the count.
+    """
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "person_id", name="uq_workspace_state"),
+    )
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    company_id: str = Field(foreign_key="company.id", index=True)
+    person_id: str = Field(foreign_key="personnel.id", index=True)
+    epoch: int = Field(default=1)
+    generation: int = Field(default=0)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

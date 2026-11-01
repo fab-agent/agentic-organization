@@ -623,23 +623,14 @@ def verify_manifest(
         raise
 
 
-def _verify(
-    envelope: dict,
-    root_pub_b64: str,
-    expected: Expected,
-    now: int,
-    state: ClientState,
-    require_crl: bool,
-) -> tuple[dict, ClientState]:
-    _only(envelope, {"cert", "payload", "sig"})
-    cert, payload = envelope.get("cert"), envelope.get("payload")
+def check_certificate(cert: Any, root_pub_b64: str, now: int) -> dict:
+    """Everything about a signing certificate that needs no client state: shape,
+    root signature, issuer, recomputed key id, lifetime and the validity window.
+    Returns the certificate payload. The server uses it to check its own certificate
+    before signing; the verifier uses it first."""
     _only(cert, {"payload", "sig"}, "bad_cert")
     cp = _only(cert.get("payload"), _CERT_KEYS, "bad_cert")
-    if (
-        cp.get("typ") != "fab-signing-cert"
-        or not _v1(cp.get("v"))
-        or not isinstance(payload, dict)
-    ):
+    if cp.get("typ") != "fab-signing-cert" or not _v1(cp.get("v")):
         raise ManifestError("bad_cert")
     _verify_sig(root_pub_b64, "cert", cp, cert.get("sig", ""))
     if cp.get("issuer_kid") != key_id(root_pub_b64):
@@ -655,6 +646,23 @@ def _verify(
         raise ManifestError("bad_cert")
     if now + CLOCK_SKEW < nb or now - CLOCK_SKEW > na:
         raise ManifestError("cert_not_valid_now")
+    return cp
+
+
+def _verify(
+    envelope: dict,
+    root_pub_b64: str,
+    expected: Expected,
+    now: int,
+    state: ClientState,
+    require_crl: bool,
+) -> tuple[dict, ClientState]:
+    _only(envelope, {"cert", "payload", "sig"})
+    cert, payload = envelope.get("cert"), envelope.get("payload")
+    if not isinstance(payload, dict):
+        raise ManifestError("malformed")
+    cp = check_certificate(cert, root_pub_b64, now)
+    epoch = cp["epoch"]
     if cp["kid"] in state.revoked:
         raise ManifestError("cert_revoked")
     if require_crl:
@@ -691,7 +699,10 @@ def _verify(
     if now - CLOCK_SKEW > payload["expires_at"]:
         raise ManifestError("expired")
     # The manifest must also fall inside the certificate's window.
-    if payload["issued_at"] < nb or payload["expires_at"] > na:
+    if (
+        payload["issued_at"] < cp["not_before"]
+        or payload["expires_at"] > cp["not_after"]
+    ):
         raise ManifestError("outside_cert_window")
 
     key = _binding_key(payload["company_id"], payload["person_id"])

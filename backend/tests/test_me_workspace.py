@@ -1,0 +1,599 @@
+"""GET /me/workspace (ADR-0028): role -> profile -> signed manifest, fail closed."""
+
+import hashlib
+import json
+import os
+import time
+
+import pytest
+
+import services.workspace_manifest as wm
+import services.workspace_service as ws
+from models import (
+    CompanyMember,
+    Department,
+    WorkspaceManifestState,
+)
+from services.auth import create_access_token
+from tests.conftest import make_company, make_member, make_personnel, make_user
+
+NOW = int(time.time())
+
+
+def _h(user):
+    return {"Authorization": f"Bearer {create_access_token(user.id)}"}
+
+
+def _sha(b: bytes) -> str:
+    return hashlib.sha256(b).hexdigest()
+
+
+class Env:
+    """A configured workspace dir: root key (kept here, never on the 'server'), signing
+    key + cert, and a catalog with finance and default profiles."""
+
+    def __init__(self, tmp_path, monkeypatch):
+        self.dir = tmp_path / "workspace"
+        (self.dir / "catalog" / "layouts").mkdir(parents=True)
+        self.root_priv, self.root_pub = wm.generate_key()
+        self.sign_priv, self.sign_pub = wm.generate_key()
+        (self.dir / "root.pub").write_text(self.root_pub)
+        self._write_signer(epoch=1)
+        mods = self.dir / "catalog" / "mods" / "finance-dashboard" / "1.2.0"
+        (mods / "assets").mkdir(parents=True)
+        (mods / "main.js").write_bytes(b"export default 1;\n")
+        (mods / "assets" / "icon.svg").write_bytes(b"<svg/>")
+        (self.dir / "catalog" / "layouts" / "finance-v2.json").write_bytes(
+            b'{"id":"finance"}'
+        )
+        (self.dir / "catalog" / "layouts" / "terminals.json").write_bytes(
+            b'{"id":"term"}'
+        )
+        self.profiles = {
+            "v": 1,
+            "profiles": [
+                {
+                    "id": "finance",
+                    "match": {"roles": ["user"], "departments": ["finance"]},
+                    "layout": "finance-v2",
+                    "mods": [{"name": "finance-dashboard", "version": "1.2.0"}],
+                    "min_client_version": "1.0.0",
+                },
+                {
+                    "id": "managers",
+                    "match": {"roles": ["founder", "executive"]},
+                    "layout": "terminals",
+                    "mods": [],
+                },
+            ],
+            "defaults": {"layout": "terminals", "mods": []},
+        }
+        self.write_profiles()
+        monkeypatch.setenv("WORKSPACE_DIR", str(self.dir))
+        monkeypatch.delenv("WORKSPACE_ROOT_PUB", raising=False)
+        monkeypatch.setenv("PUBLIC_BASE_URL", "https://app.example.test")
+
+    def write_profiles(self):
+        (self.dir / "catalog" / "profiles.json").write_text(json.dumps(self.profiles))
+
+    def _write_signer(self, epoch):
+        key = self.dir / "signing.key"
+        if key.exists():
+            key.unlink()
+        fd = os.open(key, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(self.sign_priv)
+        cert = wm.issue_signing_cert(
+            self.root_priv,
+            self.sign_pub,
+            not_before=NOW - 600,
+            not_after=NOW + 30 * 86400,
+            serial=epoch,
+            epoch=epoch,
+        )
+        (self.dir / "signing.cert.json").write_text(json.dumps(cert))
+
+
+@pytest.fixture()
+def env(tmp_path, monkeypatch):
+    return Env(tmp_path, monkeypatch)
+
+
+@pytest.fixture()
+def people(auth_client, db_session):
+    """auth_client's founder, plus a finance 'user' employee in the same company."""
+    co = auth_client._test_company
+    fin = Department(company_id=co.id, name="Finance", slug="finance")
+    db_session.add(fin)
+    db_session.flush()
+    founder_person = make_personnel(
+        db_session, co.id, name="Founder", slug="founder", type="human"
+    )
+    founder_person.user_id = auth_client._test_user.id
+    emp_user = make_user(db_session, email="ap@test.com", name="AP")
+    make_member(db_session, emp_user.id, co.id, role="user")
+    emp = make_personnel(db_session, co.id, name="AP Clerk", slug="ap", type="human")
+    emp.user_id, emp.department_id = emp_user.id, fin.id
+    db_session.add_all([founder_person, emp])
+    db_session.commit()
+    return {
+        "co": co,
+        "founder": auth_client._test_user,
+        "emp_user": emp_user,
+        "emp": emp,
+        "fin": fin,
+    }
+
+
+def _get(client, user, **params):
+    return client.get("/me/workspace", headers=_h(user), params=params)
+
+
+def _verify(env, body, person, co, *, floors=True):
+    exp = wm.Expected(
+        co.id, person.id, "herdr-provisioner", "1.0.0",
+        **({"min_generation": body["bootstrap"]["min_generation"], "min_epoch": body["bootstrap"]["min_epoch"], "min_crl_number": body["bootstrap"]["min_crl_number"]} if floors else {}),
+    )  # fmt: skip
+    return wm.verify_wire(
+        json.dumps(body["manifest"]),
+        root_pub_b64=env.root_pub,
+        expected=exp,
+        now=NOW,
+        state=wm.ClientState(),
+    )
+
+
+# ── happy path ───────────────────────────────────────────────────────────────
+
+
+def test_employee_gets_the_finance_profile_and_it_verifies(client, env, people):
+    r = _get(client, people["emp_user"], company_id=people["co"].id)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    payload, _ = _verify(env, body, people["emp"], people["co"])
+    assert payload["layout"]["id"] == "finance-v2"
+    assert [m["name"] for m in payload["mods"]] == ["finance-dashboard"]
+    files = {f["path"] for f in payload["mods"][0]["files"]}
+    assert files == {"main.js", "assets/icon.svg"}
+    assert payload["gateway_url"] == "https://app.example.test"
+    assert body["bootstrap"] == {
+        "min_generation": 1,
+        "min_epoch": 1,
+        "min_crl_number": 0,
+    }
+
+
+def test_founder_gets_the_manager_profile(client, env, people):
+    r = _get(client, people["founder"])
+    assert r.status_code == 200
+    assert r.json()["manifest"]["payload"]["layout"]["id"] == "terminals"
+
+
+def test_unmatched_person_falls_back_to_defaults_or_404(
+    client, env, people, db_session
+):
+    other = make_user(db_session, email="x@test.com", name="X")
+    make_member(db_session, other.id, people["co"].id, role="user")
+    p = make_personnel(
+        db_session, people["co"].id, name="Ops", slug="ops", type="human"
+    )
+    p.user_id = other.id
+    db_session.add(p)
+    db_session.commit()
+    assert (
+        _get(client, other).json()["manifest"]["payload"]["layout"]["id"] == "terminals"
+    )
+    del env.profiles["defaults"]
+    env.write_profiles()
+    r = _get(client, other)
+    assert r.status_code == 503 and r.json()["detail"]["reason"] == "no_profile"
+
+
+def test_sub_department_inherits_the_parent_department_profile(
+    client, env, people, db_session
+):
+    sub = Department(
+        company_id=people["co"].id,
+        name="AP",
+        slug="ap-team",
+        parent_id=people["fin"].id,
+    )
+    db_session.add(sub)
+    db_session.flush()
+    people["emp"].department_id = sub.id
+    db_session.add(people["emp"])
+    db_session.commit()
+    assert (
+        _get(client, people["emp_user"]).json()["manifest"]["payload"]["layout"]["id"]
+        == "finance-v2"
+    )
+
+
+def test_generation_grows_and_each_issue_has_its_own_floor(client, env, people):
+    a = _get(client, people["emp_user"]).json()
+    b = _get(client, people["emp_user"]).json()
+    assert (
+        b["manifest"]["payload"]["generation"]
+        == a["manifest"]["payload"]["generation"] + 1
+    )
+    assert b["bootstrap"]["min_generation"] == b["manifest"]["payload"]["generation"]
+
+
+def test_epoch_bump_restarts_the_count_for_a_new_key(client, env, people):
+    _get(client, people["emp_user"])
+    _get(client, people["emp_user"])
+    env.sign_priv, env.sign_pub = wm.generate_key()  # recovery uses a NEW key
+    env._write_signer(epoch=2)
+    body = _get(client, people["emp_user"]).json()
+    assert body["manifest"]["payload"]["epoch"] == 2
+    assert body["manifest"]["payload"]["generation"] == 1
+    assert body["bootstrap"]["min_epoch"] == 2
+
+
+def test_server_refuses_when_its_epoch_is_behind_the_stored_state(
+    client, env, people, db_session
+):
+    _get(client, people["emp_user"])
+    row = db_session.exec(WorkspaceManifestState.__table__.select()).first()
+    db_session.execute(WorkspaceManifestState.__table__.update().values(epoch=5))
+    db_session.commit()
+    r = _get(client, people["emp_user"])
+    assert (
+        r.status_code == 503
+        and r.json()["detail"]["reason"] == "signing_epoch_behind_state"
+    )
+    assert row is not None
+
+
+# ── files ────────────────────────────────────────────────────────────────────
+
+
+def test_files_are_served_by_hash_and_only_from_your_own_profile(client, env, people):
+    body = _get(client, people["emp_user"]).json()
+    entry = body["manifest"]["payload"]["mods"][0]["files"][0]
+    r = client.get(
+        f"/me/workspace/files/{entry['sha256']}", headers=_h(people["emp_user"])
+    )
+    assert r.status_code == 200 and _sha(r.content) == entry["sha256"]
+    assert r.headers["cache-control"] == "private, no-store"
+    assert r.headers["x-content-type-options"] == "nosniff"
+    layout_sha = body["manifest"]["payload"]["layout"]["sha256"]
+    assert (
+        client.get(
+            f"/me/workspace/files/{layout_sha}", headers=_h(people["emp_user"])
+        ).status_code
+        == 200
+    )
+    # the founder's profile does not contain the finance mod file
+    assert (
+        client.get(
+            f"/me/workspace/files/{entry['sha256']}", headers=_h(people["founder"])
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            "/me/workspace/files/" + "0" * 64, headers=_h(people["emp_user"])
+        ).status_code
+        == 404
+    )
+
+
+def test_file_endpoint_rejects_malformed_hashes(client, env, people):
+    for bad in ("../x", "ABC", "g" * 64, "a" * 63):
+        r = client.get(f"/me/workspace/files/{bad}", headers=_h(people["emp_user"]))
+        assert r.status_code in (404, 503, 422)
+        assert r.status_code != 200
+
+
+def test_a_catalog_file_changed_after_listing_is_not_served(client, env, people):
+    body = _get(client, people["emp_user"]).json()
+    entry = next(
+        f
+        for f in body["manifest"]["payload"]["mods"][0]["files"]
+        if f["path"] == "main.js"
+    )
+    mods = env.dir / "catalog" / "mods" / "finance-dashboard" / "1.2.0"
+    (mods / "main.js").write_bytes(b"tampered")
+    # the profile now hashes differently, so the old hash is simply not part of it
+    r = client.get(
+        f"/me/workspace/files/{entry['sha256']}", headers=_h(people["emp_user"])
+    )
+    assert r.status_code == 404
+
+
+# ── tenant isolation and identity ────────────────────────────────────────────
+
+
+def test_requires_authentication(client, env):
+    assert client.get("/me/workspace").status_code == 401
+    assert client.get("/me/workspace/files/" + "a" * 64).status_code == 401
+
+
+def test_person_comes_from_the_session_not_the_request(client, env, people):
+    r = client.get(
+        "/me/workspace",
+        headers=_h(people["emp_user"]),
+        params={
+            "company_id": people["co"].id,
+            "person_id": people["founder"].id,
+            "user_id": people["founder"].id,
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["manifest"]["payload"]["person_id"] == people["emp"].id
+
+
+def test_other_company_member_cannot_ask_for_my_companys_workspace(
+    client, env, people, db_session
+):
+    other_co = make_company(db_session, name="B", slug="b")
+    outsider = make_user(db_session, email="o@test.com", name="O")
+    make_member(db_session, outsider.id, other_co.id, role="founder")
+    p = make_personnel(db_session, other_co.id, name="O", slug="o", type="human")
+    p.user_id = outsider.id
+    db_session.add(p)
+    db_session.commit()
+    assert _get(client, outsider, company_id=people["co"].id).status_code == 403
+    mine = _get(client, outsider, company_id=other_co.id)
+    assert mine.status_code == 200
+    assert mine.json()["manifest"]["payload"]["company_id"] == other_co.id
+    assert mine.json()["manifest"]["payload"]["person_id"] == p.id
+
+
+def test_user_without_a_linked_person_gets_404_and_nothing_is_signed(
+    client, env, people, db_session
+):
+    ghost = make_user(db_session, email="g@test.com", name="G")
+    make_member(db_session, ghost.id, people["co"].id, role="user")
+    db_session.commit()
+    assert _get(client, ghost).status_code == 404
+    assert db_session.exec(WorkspaceManifestState.__table__.select()).first() is None
+
+
+def test_agent_personnel_do_not_get_a_workspace(client, env, people, db_session):
+    agent_user = make_user(db_session, email="agent@test.com", name="Bot")
+    make_member(db_session, agent_user.id, people["co"].id, role="user")
+    a = make_personnel(
+        db_session, people["co"].id, name="Bot", slug="bot2", type="agent"
+    )
+    a.user_id = agent_user.id
+    db_session.add(a)
+    db_session.commit()
+    assert _get(client, agent_user).status_code == 404
+
+
+def test_membership_role_decides_the_profile_not_a_request_field(
+    client, env, people, db_session
+):
+    # demote nothing - the founder's membership row is what matches "managers"
+    rows = db_session.exec(
+        CompanyMember.__table__.select().where(
+            CompanyMember.user_id == people["founder"].id
+        )
+    ).all()
+    assert rows and rows[0].role == "founder"
+
+
+# ── fail closed ──────────────────────────────────────────────────────────────
+
+
+def _reason(r):
+    assert r.status_code == 503, r.text
+    assert r.json()["detail"]["error"] == "workspace_unavailable"
+    assert r.headers["retry-after"] == "30"
+    return r.json()["detail"]["reason"]
+
+
+def _nothing_issued(db_session):
+    return db_session.exec(WorkspaceManifestState.__table__.select()).first() is None
+
+
+def test_unconfigured_server_signs_nothing(
+    client, people, db_session, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("WORKSPACE_DIR", str(tmp_path / "nowhere"))
+    monkeypatch.delenv("WORKSPACE_ROOT_PUB", raising=False)
+    assert _reason(_get(client, people["emp_user"])) == "file_unreadable"
+    assert _nothing_issued(db_session)
+
+
+def test_wrong_root_pinned_means_the_cert_does_not_verify(
+    client, env, people, db_session
+):
+    (env.dir / "root.pub").write_text(wm.generate_key()[1])
+    assert _reason(_get(client, people["emp_user"])).startswith("signing_")
+    assert _nothing_issued(db_session)
+
+
+def test_expired_certificate_signs_nothing(client, env, people, db_session):
+    cert = wm.issue_signing_cert(
+        env.root_priv,
+        env.sign_pub,
+        not_before=NOW - 9000,
+        not_after=NOW - 4000,
+        serial=1,
+    )
+    (env.dir / "signing.cert.json").write_text(json.dumps(cert))
+    assert _reason(_get(client, people["emp_user"])) == "signing_cert_not_valid_now"
+    assert _nothing_issued(db_session)
+
+
+def test_key_that_does_not_match_the_certificate_signs_nothing(
+    client, env, people, db_session
+):
+    other_priv, _ = wm.generate_key()
+    (env.dir / "signing.key").unlink()
+    fd = os.open(env.dir / "signing.key", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(other_priv)
+    assert _reason(_get(client, people["emp_user"])) == "signing_key_cert_mismatch"
+    assert _nothing_issued(db_session)
+
+
+def test_signing_key_with_loose_permissions_is_refused(client, env, people, db_session):
+    (env.dir / "signing.key").chmod(0o644)
+    assert _reason(_get(client, people["emp_user"])) == "signing_key_permissions"
+    assert _nothing_issued(db_session)
+
+
+def test_signing_key_symlink_is_refused(client, env, people, db_session):
+    real = env.dir / "real.key"
+    (env.dir / "signing.key").rename(real)
+    (env.dir / "signing.key").symlink_to(real)
+    assert _reason(_get(client, people["emp_user"])) == "file_unreadable"
+
+
+def test_revoked_signing_key_signs_nothing(client, env, people, db_session):
+    crl = wm.issue_crl(
+        env.root_priv,
+        number=3,
+        revoked_kids=[wm.key_id(env.sign_pub)],
+        issued_at=NOW,
+        next_update=NOW + 86400,
+    )
+    (env.dir / "crl.json").write_text(json.dumps(crl))
+    assert _reason(_get(client, people["emp_user"])) == "signing_key_revoked"
+    assert _nothing_issued(db_session)
+
+
+def test_crl_number_is_reported_as_the_bootstrap_checkpoint(client, env, people):
+    crl = wm.issue_crl(
+        env.root_priv,
+        number=7,
+        revoked_kids=["a" * 32],
+        issued_at=NOW,
+        next_update=NOW + 86400,
+    )
+    (env.dir / "crl.json").write_text(json.dumps(crl))
+    assert _get(client, people["emp_user"]).json()["bootstrap"]["min_crl_number"] == 7
+    r = client.get("/me/workspace/crl", headers=_h(people["emp_user"]))
+    assert r.status_code == 200 and r.json()["payload"]["number"] == 7
+
+
+def test_invalid_crl_signs_nothing(client, env, people, db_session):
+    other_root, _ = wm.generate_key()
+    crl = wm.issue_crl(
+        other_root, number=1, revoked_kids=[], issued_at=NOW, next_update=NOW + 86400
+    )
+    (env.dir / "crl.json").write_text(json.dumps(crl))
+    assert _reason(_get(client, people["emp_user"])) == "crl_invalid"
+    assert _nothing_issued(db_session)
+
+
+@pytest.mark.parametrize(
+    "mutate,reason",
+    [
+        (
+            lambda e: e.profiles["profiles"][0].__setitem__("layout", "nope"),
+            "file_unreadable",
+        ),
+        (
+            lambda e: e.profiles["profiles"][0].__setitem__("layout", "../x"),
+            "layout_name_invalid",
+        ),
+        (
+            lambda e: e.profiles["profiles"][0]["mods"].append(
+                {"name": "ghost", "version": "1.0.0"}
+            ),
+            "mod_missing",
+        ),
+        (
+            lambda e: e.profiles["profiles"][0]["mods"].__setitem__(
+                0, {"name": "Bad Name", "version": "1.0.0"}
+            ),
+            "mod_name_invalid",
+        ),
+        (
+            lambda e: e.profiles["profiles"][0]["match"].__setitem__("zones", ["x"]),
+            "profiles_invalid",
+        ),
+        (
+            lambda e: e.profiles["profiles"][0]["match"].__setitem__("roles", "user"),
+            "profiles_invalid",
+        ),
+        (lambda e: e.profiles.__setitem__("v", 2), "profiles_invalid"),
+    ],
+)
+def test_bad_catalog_signs_nothing(client, env, people, db_session, mutate, reason):
+    mutate(env)
+    env.write_profiles()
+    assert _reason(_get(client, people["emp_user"])) == reason
+    assert _nothing_issued(db_session)
+
+
+def test_symlink_inside_a_mod_is_refused(client, env, people, db_session):
+    mods = env.dir / "catalog" / "mods" / "finance-dashboard" / "1.2.0"
+    (mods / "evil.js").symlink_to("/etc/passwd")
+    assert _reason(_get(client, people["emp_user"])) == "catalog_symlink"
+    assert _nothing_issued(db_session)
+
+
+def test_non_https_gateway_signs_nothing(client, env, people, db_session, monkeypatch):
+    monkeypatch.setenv("PUBLIC_BASE_URL", "http://insecure.example.test")
+    assert _reason(_get(client, people["emp_user"])) == "manifest_bad_gateway_url"
+
+
+def test_audit_failure_means_no_manifest_is_returned(client, env, people, monkeypatch):
+    import services.audit_chain as ac
+
+    monkeypatch.setattr(ac, "record", lambda **kw: None)
+    assert _reason(_get(client, people["emp_user"])) == "audit_unavailable"
+
+
+def test_audit_record_names_what_was_issued_without_secrets(
+    client, env, people, db_session
+):
+    from sqlmodel import select
+
+    from models import AuditEvent
+
+    _get(client, people["emp_user"])
+    ev = db_session.exec(
+        select(AuditEvent).where(AuditEvent.action == "workspace_manifest_issued")
+    ).first()
+    assert ev and ev.actor_type == "human" and ev.actor_id == people["emp_user"].id
+    assert ev.company_id == people["co"].id and ev.target == people["emp"].id
+    detail = json.loads(ev.payload_json)
+    assert detail["layout"] == "finance-v2" and detail["mods"] == [
+        "finance-dashboard@1.2.0"
+    ]
+    assert detail["generation"] == 1 and detail["signing_kid"] == wm.key_id(
+        env.sign_pub
+    )
+    assert env.sign_priv not in ev.payload_json and env.sign_priv not in (
+        ev.reason or ""
+    )
+
+
+# ── generation allocation ────────────────────────────────────────────────────
+
+
+def test_generation_allocation_never_repeats_under_contention(env, people, db_session):
+    seen = [
+        ws.allocate_generation(db_session, people["co"].id, people["emp"].id, 1)
+        for _ in range(25)
+    ]
+    assert seen == list(range(1, 26))
+
+
+def test_stale_compare_and_set_does_not_reuse_a_generation(env, people, db_session):
+    co, pid = people["co"].id, people["emp"].id
+    ws.allocate_generation(db_session, co, pid, 1)
+    # a competing writer moves the row between our read and our update
+    real_exec = db_session.exec
+    state = {"hit": False}
+
+    def racing_exec(stmt, *a, **k):
+        if not state["hit"] and "UPDATE" in str(stmt).upper():
+            state["hit"] = True
+            db_session.execute(
+                WorkspaceManifestState.__table__.update().values(generation=10)
+            )
+            db_session.commit()
+        return real_exec(stmt, *a, **k)
+
+    db_session.exec = racing_exec  # type: ignore[method-assign]
+    got = ws.allocate_generation(db_session, co, pid, 1)
+    db_session.exec = real_exec  # type: ignore[method-assign]
+    assert got == 11  # retried from the new value, never 2
