@@ -498,6 +498,49 @@ def build_tool_definitions(skills: list[Skill]) -> list[dict]:
 # ── Tool executor ─────────────────────────────────────────────────────────────
 
 
+def policy_gate(
+    tool: str,
+    args: dict | None,
+    *,
+    agent_id: str | None,
+    session_id: str | None,
+    source: str = "backend",
+) -> str | None:
+    """
+    The one policy + audit gate every backend tool call passes (ADR-0005/0026).
+    Returns None to proceed, or the text to return instead of running the tool.
+
+    Fail closed: no decision (engine error) blocks; a deny/ask that is enforced
+    blocks; and a decision that could not be written to the audit chain blocks in
+    *every* mode (dry_run only means "do not apply a clean deny", not "act
+    without a record").
+    """
+    try:
+        from services.policy_engine import (
+            PolicyDecisionRequest,
+            audit_decision,
+            decide,
+        )
+
+        req = PolicyDecisionRequest(
+            tool=tool,
+            args={k: v for k, v in (args or {}).items() if not k.startswith("_")},
+            source=source,
+            persona_id=agent_id,
+            session_ref=session_id,
+        )
+        decision = decide(req)
+        audited = audit_decision(req, decision)
+    except Exception as e:  # noqa: BLE001
+        return f"[Policy unavailable: tool blocked ({type(e).__name__})]"
+    if decision.enforced and decision.effect in ("deny", "ask"):
+        verb = "denied" if decision.effect == "deny" else "requires approval"
+        return f"[Policy {verb}: {decision.reason}]"
+    if not audited:
+        return "[Policy audit unavailable: tool blocked]"
+    return None
+
+
 async def execute_skill(
     tool_name: str,
     args: dict,
@@ -514,33 +557,9 @@ async def execute_skill(
     if not skill:
         return f"[Tool '{tool_name}' not found]"
 
-    # Policy Engine (ADR-0005, ADR-0026). Every decision is audited; in enforce
-    # mode a deny/ask blocks the call here, in dry_run it is recorded only.
-    # Fail closed: if the engine cannot produce a decision at all, or the
-    # decision cannot be audited while enforcing, the tool does not run.
-    try:
-        from services.policy_engine import (
-            PolicyDecisionRequest,
-            audit_decision,
-            decide,
-        )
-
-        _req = PolicyDecisionRequest(
-            tool=normalized,
-            args={k: v for k, v in (args or {}).items() if not k.startswith("_")},
-            source="backend",
-            persona_id=agent_id,
-            session_ref=session_id,
-        )
-        _decision = decide(_req)
-        _audited = audit_decision(_req, _decision)
-    except Exception as e:  # noqa: BLE001
-        return f"[Policy unavailable: tool blocked ({type(e).__name__})]"
-    if _decision.enforced and _decision.effect in ("deny", "ask"):
-        verb = "denied" if _decision.effect == "deny" else "requires approval"
-        return f"[Policy {verb}: {_decision.reason}]"
-    if not _audited and _decision.mode == "enforce":
-        return "[Policy audit unavailable: tool blocked]"
+    blocked = policy_gate(normalized, args, agent_id=agent_id, session_id=session_id)
+    if blocked:
+        return blocked
 
     cfg = json.loads(skill.config_json) if skill.config_json else {}
 

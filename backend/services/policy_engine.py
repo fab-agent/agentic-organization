@@ -433,6 +433,21 @@ def evaluate(
     )
 
 
+class PolicyResolutionError(Exception):
+    """The policy scope/mode/ruleset could not be *read* (not "nothing found").
+    `decide()` turns it into an enforced fail-closed deny in every mode (ADR-0026)."""
+
+
+# A rule no evaluator accepts: any matching request is denied fail-closed.
+def _malformed_block_rule(why: str) -> dict:
+    return {
+        "id": "malformed-policy-block",
+        "match": {"tool": "*"},
+        "effect": "__malformed__",
+        "reason": f"Fail-closed: malformed policy block ({why})",
+    }
+
+
 # ── Ruleset loading ──────────────────────────────────────────────────────────
 
 
@@ -440,21 +455,32 @@ def _parse_rules_from_markdown(content: str) -> list[dict]:
     """
     Extract rules from fenced ```policy / ```yaml / ```json blocks in a Policy
     body. A block must be a JSON (or trivially-parsed) list of rule objects.
-    Non-parsing blocks are ignored (the markdown stays human-readable, ADR-0005).
+
+    A ```policy fence is *executable by declaration*: if it does not parse, is not a
+    list, or holds a non-object element, a fail-closed rule is added instead of
+    silently dropping it (ADR-0026). ```json / ```yaml fences may be illustrative
+    prose, so an unparseable one is still ignored; but a list that parses and holds
+    a non-object element is malformed.
     """
     import re
 
     rules: list[dict] = []
     for m in re.finditer(
-        r"```(?:policy|json|yaml)\s*\n(.*?)```", content or "", re.DOTALL
+        r"```(policy|json|yaml)\s*\n(.*?)```", content or "", re.DOTALL
     ):
-        block = m.group(1).strip()
+        fence, block = m.group(1), m.group(2).strip()
         try:
             parsed = json.loads(block)
         except json.JSONDecodeError:
             parsed = _loose_yaml_list(block)
         if isinstance(parsed, list):
-            rules.extend(r for r in parsed if isinstance(r, dict))
+            for r in parsed:
+                if isinstance(r, dict):
+                    rules.append(r)
+                else:
+                    rules.append(_malformed_block_rule("non-object rule"))
+        elif fence == "policy":
+            rules.append(_malformed_block_rule("not a list of rules"))
     return rules
 
 
@@ -494,8 +520,8 @@ def _config(key: str, fallback: str) -> str:
         with get_session() as session:
             row = session.get(AppConfig, key)
             return row.value if row and row.value else fallback
-    except Exception:
-        return fallback
+    except Exception as e:
+        raise PolicyResolutionError(f"config read failed: {key}") from e
 
 
 VALID_MODES = ("off", "dry_run", "enforce")
@@ -523,8 +549,8 @@ def resolve_scope(persona_id: str | None) -> tuple[str | None, str | None, str |
                 person.department_id,
                 cfg.id if cfg else None,
             )
-    except Exception:
-        return None, None, None
+    except Exception as e:
+        raise PolicyResolutionError("scope read failed") from e
 
 
 def _department_chain(session, department_id: str | None) -> list[str]:
@@ -612,8 +638,8 @@ def applicable_policies(
                     ).all()
                 )
         return found
-    except Exception:
-        return []
+    except Exception as e:
+        raise PolicyResolutionError("policy read failed") from e
 
 
 def applicable_policy_contents(
@@ -675,8 +701,8 @@ def resolve_mode(
                         default_effect = row.default_effect
                 if mode and default_effect:
                     break
-    except Exception:
-        pass
+    except Exception as e:
+        raise PolicyResolutionError("policy config read failed") from e
 
     if mode is None:
         mode = _config("policy.mode", DEFAULT_MODE)
@@ -684,7 +710,7 @@ def resolve_mode(
         default_effect = _config("policy.default_effect", DEFAULT_EFFECT)
 
     if mode not in VALID_MODES:
-        mode = DEFAULT_MODE
+        raise PolicyResolutionError(f"invalid policy mode: {mode!r}")
     return mode, default_effect
 
 
@@ -699,7 +725,7 @@ def audit_decision(req: PolicyDecisionRequest, decision: PolicyDecision) -> bool
     try:
         from services import audit_chain
 
-        audit_chain.record(
+        ev = audit_chain.record(
             actor_type="agent" if req.source == "workstation" else "system",
             actor_id=req.persona_id,
             company_id=req.company_id,
@@ -714,7 +740,8 @@ def audit_decision(req: PolicyDecisionRequest, decision: PolicyDecision) -> bool
                 **({"run": req.run} if req.run else {}),
             },
         )
-        return True
+        # record() swallows append errors and returns None (audit_chain.py).
+        return ev is not None
     except Exception:
         return False
 
@@ -728,27 +755,38 @@ def decide(req: PolicyDecisionRequest) -> PolicyDecision:
     blocks in every mode, `dry_run` included. A clean matched deny/ask is only
     applied in `enforce`.
     """
-    # Fill scope from the persona when the caller did not supply it.
-    if req.persona_id and not (
-        req.company_id and req.department_id and req.agent_config_id
-    ):
-        c, d, a = resolve_scope(req.persona_id)
-        req.company_id = req.company_id or c
-        req.department_id = req.department_id or d
-        req.agent_config_id = req.agent_config_id or a
+    try:
+        # Fill scope from the persona when the caller did not supply it.
+        if req.persona_id and not (
+            req.company_id and req.department_id and req.agent_config_id
+        ):
+            c, d, a = resolve_scope(req.persona_id)
+            req.company_id = req.company_id or c
+            req.department_id = req.department_id or d
+            req.agent_config_id = req.agent_config_id or a
 
-    mode, default_effect = resolve_mode(
-        req.company_id, req.department_id, req.agent_config_id
-    )
-
-    if mode == "off":
-        return PolicyDecision("allow", "Policy engine off", None, "off", False)
-
-    ruleset = load_ruleset(
-        applicable_policy_contents(
+        mode, default_effect = resolve_mode(
             req.company_id, req.department_id, req.agent_config_id
         )
-    )
+
+        if mode == "off":
+            return PolicyDecision("allow", "Policy engine off", None, "off", False)
+
+        ruleset = load_ruleset(
+            applicable_policy_contents(
+                req.company_id, req.department_id, req.agent_config_id
+            )
+        )
+    except PolicyResolutionError as e:
+        # "could not read the policy" is not "no policy": block in every mode.
+        return PolicyDecision(
+            "deny",
+            f"Fail-closed: policy could not be resolved ({e})",
+            None,
+            "unresolved",
+            True,
+            fail_closed=True,
+        )
 
     raw = evaluate(req, ruleset, default_effect=default_effect)
     enforced = raw.fail_closed or (mode == "enforce" and raw.effect != "allow")

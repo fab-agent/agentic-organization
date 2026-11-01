@@ -101,8 +101,19 @@ async def _handle(msg: dict, principal: PersonaPrincipal) -> dict | None:
         args = params.get("arguments") or {}
 
         if name == "org_policies":
-            c, d, a = resolve_scope(principal.persona_id)
-            bodies = applicable_policy_contents(c, d, a)
+            try:
+                c, d, a = resolve_scope(principal.persona_id)
+                bodies = applicable_policy_contents(c, d, a)
+            except Exception:  # noqa: BLE001 — unreadable is not "no policies" (ADR-0026)
+                return _rpc_result(
+                    req_id,
+                    {
+                        "isError": True,
+                        "content": [
+                            {"type": "text", "text": "Policies could not be loaded."}
+                        ],
+                    },
+                )
             text = "\n\n---\n\n".join(bodies) if bodies else "No policies apply."
             return _rpc_result(req_id, {"content": [{"type": "text", "text": text}]})
 

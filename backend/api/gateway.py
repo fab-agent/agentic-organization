@@ -38,7 +38,12 @@ from models import AgentConfig, Personnel, ProviderKey, User
 from services import audit_chain, authz, gateway_limits
 from services.gateway_auth import PersonaPrincipal, create_persona_token, run_info
 from services.model_routing import ModelRoutingError, resolve_model
-from services.policy_engine import PolicyDecisionRequest, audit_decision, decide
+from services.policy_engine import (
+    PolicyDecision,
+    PolicyDecisionRequest,
+    audit_decision,
+    decide,
+)
 from services.provider_service import get_provider_models, is_custom_provider
 
 router = APIRouter(tags=["gateway"])
@@ -401,7 +406,16 @@ def policy_decide(
         run=run_info(principal),
     )
     decision = decide(req)
-    audit_decision(req, decision)
+    if not audit_decision(req, decision):
+        # No durable record -> do not hand the client an "allow" (ADR-0026).
+        return PolicyDecision(
+            "deny",
+            "Fail-closed: policy decision could not be audited",
+            None,
+            decision.mode,
+            True,
+            fail_closed=True,
+        ).as_dict()
     return decision.as_dict()
 
 

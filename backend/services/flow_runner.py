@@ -287,8 +287,22 @@ def _get_anthropic_tool_definitions(skills: list) -> list[dict]:
     return tools
 
 
-def _execute_flow_tool(tool_name: str, tool_input: dict) -> str:
-    """Execute a tool call during flow execution. Returns string result."""
+def _execute_flow_tool(
+    tool_name: str, tool_input: dict, agent_id: str | None = None
+) -> str:
+    """Execute a tool call during flow execution. Returns string result.
+    Passes the same policy + audit gate as every backend tool call (ADR-0026)."""
+    from services.agent_runtime import policy_gate
+
+    blocked = policy_gate(
+        tool_name.replace(" ", "_").lower(),
+        tool_input if isinstance(tool_input, dict) else {},
+        agent_id=agent_id,
+        session_id=None,
+        source="flow",
+    )
+    if blocked:
+        return blocked
     if tool_name == "web_search":
         try:
             import asyncio
@@ -310,6 +324,7 @@ def _call_llm_with_tools(
     api_key: str,
     tools: list[dict],
     base_url: str | None = None,
+    agent_id: str | None = None,
 ) -> str:
     """Multi-turn LLM call with tool use loop. Returns final text response."""
     if provider != "anthropic" or not tools:
@@ -341,7 +356,7 @@ def _call_llm_with_tools(
         tool_results = []
         for block in resp.content:
             if block.type == "tool_use":
-                result_text = _execute_flow_tool(block.name, block.input)
+                result_text = _execute_flow_tool(block.name, block.input, agent_id)
                 tool_results.append(
                     {
                         "type": "tool_result",
@@ -472,6 +487,7 @@ def run_flow(flow_id: str) -> None:
                     api_key=api_key,
                     tools=tools,
                     base_url=resolved.base_url,
+                    agent_id=agent.id,
                 )
 
             # Deliver to inbox
