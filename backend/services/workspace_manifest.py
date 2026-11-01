@@ -5,7 +5,7 @@ What a client (the `3pa` provisioner) may install into a Herdr app home is decid
 a manifest the server signs. Trust chain:
 
     root key (offline, public half pinned by the installer / MDM)
-      -> signing certificate (root-signed, short lived, names the signing key)
+      -> signing certificate (root-signed, short lived, names the signing key + epoch)
         -> manifest (signed by the signing key; hashes of the layout and every mod file)
 
 The root key never lives on the server. Rotation is a new certificate signed by the root;
@@ -15,6 +15,12 @@ there is no "the server tells you its previous key" step (the flaw of the older
 Everything here is pure: `verify_manifest` takes the clock and the client's stored
 state and returns the new state; the caller persists it. A second implementation (the
 TypeScript client) must reproduce `tests/vectors/workspace_manifest_vectors.json`.
+
+Canonical profile (also in ADR-0027): JSON with object keys sorted by UTF-16 code unit
+order (the RFC 8785 / JavaScript order, so a JS client sorts the same way), no
+whitespace, every non-ASCII character escaped as lower-case `\\uXXXX` (so no Unicode
+normalisation question), no floats, integers within +/-(2^53-1) and never `-0`,
+duplicate keys and lone surrogates rejected, depth at most 32.
 """
 
 from __future__ import annotations
@@ -23,8 +29,10 @@ import base64
 import hashlib
 import json
 import re
-from dataclasses import dataclass, field
+import unicodedata
+from dataclasses import dataclass, field, replace
 from typing import Any
+from urllib.parse import urlsplit
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -46,30 +54,54 @@ MAX_CERT_LIFETIME = 90 * 24 * 3600
 CLOCK_SKEW = 300
 MAX_MODS = 64
 MAX_FILES_PER_MOD = 512
-MAX_TOTAL_BYTES = 256 * 1024 * 1024
+MAX_TOTAL_BYTES = 256 * 1024 * 1024  # layout + all mod files
 MAX_JSON_DEPTH = 32
+MAX_WIRE_BYTES = 256 * 1024  # one envelope on the wire
+MAX_CRL_ENTRIES = 10_000
 _MAX_SAFE_INT = 2**53 - 1  # what a JavaScript client can represent exactly
 
-_SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_NAME = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
-_VERSION = re.compile(r"^\d{1,6}\.\d{1,6}\.\d{1,6}$")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+_KID = re.compile(r"[0-9a-f]{32}")
+_NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
+_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+_VERSION = re.compile(r"[0-9]{1,6}\.[0-9]{1,6}\.[0-9]{1,6}")
+_HOST = re.compile(r"[A-Za-z0-9.-]{1,253}")
+_RESERVED = {"con", "prn", "aux", "nul"} | {
+    f"{d}{i}" for d in ("com", "lpt") for i in range(1, 10)
+}
+_BAD_PATH_CHARS = set('<>"|?*:\\')
 
 
 class ManifestError(Exception):
-    """Verification or construction failed. `code` is stable and value-free."""
+    """Verification or construction failed. `code` is stable and value-free.
+    `state` carries the client state reached before the failure (for example a
+    revocation list that was accepted), so the caller can persist it."""
 
-    def __init__(self, code: str):
+    def __init__(self, code: str, state: ClientState | None = None):
         super().__init__(code)
         self.code = code
+        self.state = state
 
 
-# ── canonical bytes ──────────────────────────────────────────────────────────
+def _is_int(x: Any) -> bool:
+    return isinstance(x, int) and not isinstance(x, bool)
+
+
+# ── canonical bytes and strict wire parsing ──────────────────────────────────
+
+
+def _check_str(s: str) -> None:
+    if any(0xD800 <= ord(c) <= 0xDFFF for c in s):
+        raise ManifestError("bad_string")  # lone surrogate: not a Unicode scalar string
 
 
 def _check_json(obj: Any, depth: int = 0) -> None:
     if depth > MAX_JSON_DEPTH:
         raise ManifestError("too_deep")
-    if obj is None or isinstance(obj, (str, bool)):
+    if obj is None or isinstance(obj, bool):
+        return
+    if isinstance(obj, str):
+        _check_str(obj)
         return
     if isinstance(obj, int):
         if abs(obj) > _MAX_SAFE_INT:
@@ -83,18 +115,83 @@ def _check_json(obj: Any, depth: int = 0) -> None:
         for k, v in obj.items():
             if not isinstance(k, str):
                 raise ManifestError("non_string_key")
+            _check_str(k)
             _check_json(v, depth + 1)
         return
     raise ManifestError("unsupported_type")  # floats included: no cross-language form
 
 
+def _ser(obj: Any) -> str:
+    if obj is None:
+        return "null"
+    if obj is True:
+        return "true"
+    if obj is False:
+        return "false"
+    if isinstance(obj, str):
+        return json.dumps(obj, ensure_ascii=True)
+    if isinstance(obj, int):
+        return str(obj)
+    if isinstance(obj, list):
+        return "[" + ",".join(_ser(v) for v in obj) + "]"
+    keys = sorted(obj, key=lambda k: k.encode("utf-16-be"))  # UTF-16 code unit order
+    return (
+        "{"
+        + ",".join(json.dumps(k, ensure_ascii=True) + ":" + _ser(obj[k]) for k in keys)
+        + "}"
+    )
+
+
 def canonical_bytes(obj: Any) -> bytes:
-    """Sorted keys, no whitespace, ASCII-only escapes (so no Unicode normalisation
-    question), no floats, integers within +/-2^53. Reproducible in any language."""
     _check_json(obj)
-    return json.dumps(
-        obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode("ascii")
+    return _ser(obj).encode("ascii")
+
+
+def parse_wire(data: bytes | str, max_bytes: int = MAX_WIRE_BYTES) -> Any:
+    """Parse untrusted JSON under the canonical profile: size cap, duplicate keys,
+    floats, exponent forms, `-0`, NaN/Infinity, out-of-range integers and lone
+    surrogates are all rejected instead of being resolved differently per parser."""
+    raw = data.encode("utf-8", "surrogatepass") if isinstance(data, str) else data
+    if len(raw) > max_bytes:
+        raise ManifestError("wire_too_large")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise ManifestError("bad_encoding") from e
+
+    def pairs(items):
+        d: dict = {}
+        for k, v in items:
+            if k in d:
+                raise ManifestError("duplicate_key")
+            d[k] = v
+        return d
+
+    def bad_float(_s):
+        raise ManifestError("float_not_allowed")
+
+    def bad_const(_s):
+        raise ManifestError("float_not_allowed")
+
+    def parse_int(s):
+        if s == "-0":
+            raise ManifestError("negative_zero")
+        return int(s)
+
+    try:
+        obj = json.loads(
+            text,
+            object_pairs_hook=pairs,
+            parse_float=bad_float,
+            parse_constant=bad_const,
+            parse_int=parse_int,
+        )
+    except RecursionError as e:
+        raise ManifestError("too_deep") from e
+    except json.JSONDecodeError as e:
+        raise ManifestError("bad_json") from e
+    _check_json(obj)
+    return obj
 
 
 def _signed_bytes(kind: str, payload: dict) -> bytes:
@@ -131,14 +228,19 @@ def load_private(private_b64: str) -> Ed25519PrivateKey:
 
 def key_id(public_b64: str) -> str:
     """Recomputed from the public key by every verifier; never taken on trust."""
-    return hashlib.sha256(base64.b64decode(public_b64)).hexdigest()[:32]
+    try:
+        return hashlib.sha256(base64.b64decode(public_b64, validate=True)).hexdigest()[
+            :32
+        ]
+    except (ValueError, TypeError) as e:
+        raise ManifestError("bad_key") from e
 
 
 def _verify_sig(public_b64: str, kind: str, payload: dict, sig_b64: str) -> None:
     try:
-        Ed25519PublicKey.from_public_bytes(base64.b64decode(public_b64)).verify(
-            base64.b64decode(sig_b64), _signed_bytes(kind, payload)
-        )
+        Ed25519PublicKey.from_public_bytes(
+            base64.b64decode(public_b64, validate=True)
+        ).verify(base64.b64decode(sig_b64, validate=True), _signed_bytes(kind, payload))
     except (InvalidSignature, ValueError, TypeError) as e:
         raise ManifestError("bad_signature") from e
 
@@ -149,7 +251,27 @@ def _sign(private_b64: str, kind: str, payload: dict) -> str:
     ).decode()
 
 
+def _only(d: Any, allowed: set[str], code: str = "malformed") -> dict:
+    """Reject non-objects and unknown fields (a signed document has no free-form room)."""
+    if not isinstance(d, dict) or set(d) - allowed:
+        raise ManifestError(code)
+    return d
+
+
 # ── root-signed documents ────────────────────────────────────────────────────
+
+_CERT_KEYS = {
+    "typ",
+    "v",
+    "kid",
+    "pub",
+    "issuer_kid",
+    "not_before",
+    "not_after",
+    "serial",
+    "epoch",
+}
+_CRL_KEYS = {"typ", "v", "number", "revoked_kids", "issued_at", "next_update"}
 
 
 def issue_signing_cert(
@@ -159,8 +281,13 @@ def issue_signing_cert(
     not_before: int,
     not_after: int,
     serial: int,
+    epoch: int = 1,
 ) -> dict:
-    """Run offline with the root key. The server only ever receives the result."""
+    """Run offline with the root key. The server only ever receives the result.
+    `epoch` is raised by the root to recover from a compromised signing key: a
+    client that has seen epoch N refuses N-1, and restarts its generation floor at N."""
+    if not _is_int(epoch) or epoch < 1:
+        raise ManifestError("bad_epoch")
     if not 0 < not_after - not_before <= MAX_CERT_LIFETIME:
         raise ManifestError("cert_lifetime")
     root_pub = base64.b64encode(_pub_raw(load_private(root_private_b64))).decode()
@@ -173,24 +300,48 @@ def issue_signing_cert(
         "not_before": not_before,
         "not_after": not_after,
         "serial": serial,
+        "epoch": epoch,
     }
     return {"payload": payload, "sig": _sign(root_private_b64, "cert", payload)}
 
 
 def issue_crl(
-    root_private_b64: str, *, number: int, revoked_kids: list[str], issued_at: int
+    root_private_b64: str,
+    *,
+    number: int,
+    revoked_kids: list[str],
+    issued_at: int,
+    next_update: int,
 ) -> dict:
+    """A CRL is a full cumulative snapshot of every revoked key id so far."""
     payload = {
         "typ": "fab-crl",
         "v": 1,
         "number": number,
-        "revoked_kids": sorted(revoked_kids),
+        "revoked_kids": sorted(set(revoked_kids)),
         "issued_at": issued_at,
+        "next_update": next_update,
     }
     return {"payload": payload, "sig": _sign(root_private_b64, "crl", payload)}
 
 
-# ── manifest construction (server) ───────────────────────────────────────────
+# ── manifest body validation ─────────────────────────────────────────────────
+
+_BODY_KEYS = {
+    "typ", "v", "company_id", "person_id", "aud", "generation", "issued_at",
+    "expires_at", "min_client_version", "gateway_url", "layout", "mods",
+}  # fmt: skip
+
+
+def _check_name(name: Any) -> str:
+    if (
+        not isinstance(name, str)
+        or not _NAME.fullmatch(name)
+        or name.endswith(".")
+        or name.split(".")[0] in _RESERVED
+    ):
+        raise ManifestError("bad_name")
+    return name
 
 
 def _safe_path(path: Any) -> str:
@@ -199,73 +350,114 @@ def _safe_path(path: Any) -> str:
         or not path
         or len(path) > 200
         or path.startswith("/")
-        or "\\" in path
-        or "\x00" in path
-        or ":" in path
+        or any(ord(c) < 0x20 or ord(c) == 0x7F or c in _BAD_PATH_CHARS for c in path)
+        or path != unicodedata.normalize("NFC", path)
     ):
         raise ManifestError("bad_path")
-    parts = path.split("/")
-    if any(p in ("", ".", "..") for p in parts):
-        raise ManifestError("bad_path")
+    _check_str(path)
+    for part in path.split("/"):
+        if (
+            part in ("", ".", "..")
+            or part != part.strip()
+            or part.endswith(".")
+            or len(part.encode("utf-8")) > 255
+            or part.split(".")[0].strip().lower() in _RESERVED
+        ):
+            raise ManifestError("bad_path")
     return path
+
+
+def _check_https_url(url: Any) -> None:
+    if (
+        not isinstance(url, str)
+        or len(url) > 300
+        or any(c.isspace() or ord(c) < 0x20 for c in url)
+    ):
+        raise ManifestError("bad_gateway_url")
+    try:
+        u = urlsplit(url)
+        port = u.port
+    except ValueError as e:
+        raise ManifestError("bad_gateway_url") from e
+    if (
+        u.scheme != "https"
+        or not u.hostname
+        or not _HOST.fullmatch(u.hostname)
+        or u.username is not None
+        or u.password is not None
+        or u.fragment
+        or (port is not None and not 0 < port < 65536)
+    ):
+        raise ManifestError("bad_gateway_url")
 
 
 def _validate_body(p: dict) -> None:
     """Shape and limits of a manifest payload. Used when building and verifying."""
-    for k in ("company_id", "person_id", "aud"):
-        if not isinstance(p.get(k), str) or not p[k] or len(p[k]) > 128:
+    _only(p, _BODY_KEYS)
+    for k in ("company_id", "person_id"):
+        if not isinstance(p.get(k), str) or not _ID.fullmatch(p[k]):
             raise ManifestError("bad_binding")
-    if not isinstance(p.get("generation"), int) or p["generation"] < 1:
+    if not isinstance(p.get("aud"), str) or not _NAME.fullmatch(p["aud"]):
+        raise ManifestError("bad_binding")
+    if not _is_int(p.get("generation")) or p["generation"] < 1:
         raise ManifestError("bad_generation")
     for k in ("issued_at", "expires_at"):
-        if not isinstance(p.get(k), int) or p[k] < 0:
+        if not _is_int(p.get(k)) or p[k] < 0:
             raise ManifestError("bad_time")
     if not 0 < p["expires_at"] - p["issued_at"] <= MAX_MANIFEST_LIFETIME:
         raise ManifestError("bad_lifetime")
-    if not isinstance(p.get("min_client_version"), str) or not _VERSION.match(
+    if not isinstance(p.get("min_client_version"), str) or not _VERSION.fullmatch(
         p["min_client_version"]
     ):
         raise ManifestError("bad_version")
-    gw = p.get("gateway_url")
-    if not isinstance(gw, str) or not gw.startswith("https://") or len(gw) > 300:
-        raise ManifestError("bad_gateway_url")
-    layout = p.get("layout")
-    if (
-        not isinstance(layout, dict)
-        or not _NAME.match(str(layout.get("id", "")))
-        or not _SHA256.match(str(layout.get("sha256", "")))
+    _check_https_url(p.get("gateway_url"))
+
+    layout = _only(p.get("layout"), {"id", "sha256", "size"}, "bad_layout")
+    _check_name(layout.get("id"))
+    if not isinstance(layout.get("sha256"), str) or not _SHA256.fullmatch(
+        layout["sha256"]
     ):
         raise ManifestError("bad_layout")
+    if not _is_int(layout.get("size")) or layout["size"] < 0:
+        raise ManifestError("bad_size")
+    total = layout["size"]
+
     mods = p.get("mods")
     if not isinstance(mods, list) or len(mods) > MAX_MODS:
         raise ManifestError("bad_mods")
     seen_mods: set[str] = set()
-    total = 0
     for m in mods:
-        if not isinstance(m, dict) or not _NAME.match(str(m.get("name", ""))):
-            raise ManifestError("bad_mod")
-        if m["name"] in seen_mods:
+        _only(m, {"name", "version", "files"}, "bad_mod")
+        name = _check_name(m.get("name"))
+        if name in seen_mods:
             raise ManifestError("duplicate_mod")
-        seen_mods.add(m["name"])
-        if not _VERSION.match(str(m.get("version", ""))):
+        seen_mods.add(name)
+        if not isinstance(m.get("version"), str) or not _VERSION.fullmatch(
+            m["version"]
+        ):
             raise ManifestError("bad_mod")
         files = m.get("files")
         if not isinstance(files, list) or not files or len(files) > MAX_FILES_PER_MOD:
             raise ManifestError("bad_mod_files")
-        seen_paths: set[str] = set()
+        keys: set[str] = set()
         for f in files:
-            if not isinstance(f, dict):
-                raise ManifestError("bad_mod_files")
+            _only(f, {"path", "sha256", "size"}, "bad_mod_files")
             path = _safe_path(f.get("path"))
-            if path.lower() in seen_paths:  # case-insensitive filesystems
+            key = unicodedata.normalize("NFC", path).casefold()
+            if key in keys:
                 raise ManifestError("duplicate_path")
-            seen_paths.add(path.lower())
-            if not _SHA256.match(str(f.get("sha256", ""))):
+            keys.add(key)
+            if not isinstance(f.get("sha256"), str) or not _SHA256.fullmatch(
+                f["sha256"]
+            ):
                 raise ManifestError("bad_hash")
-            size = f.get("size")
-            if not isinstance(size, int) or size < 0:
+            if not _is_int(f.get("size")) or f["size"] < 0:
                 raise ManifestError("bad_size")
-            total += size
+            total += f["size"]
+        for key in keys:  # a file and a directory of the same name cannot coexist
+            parts = key.split("/")
+            if any("/".join(parts[:i]) in keys for i in range(1, len(parts))):
+                raise ManifestError("path_conflict")
     if total > MAX_TOTAL_BYTES:
         raise ManifestError("too_large")
 
@@ -274,9 +466,8 @@ def sign_manifest(signing_private_b64: str, cert: dict, payload: dict) -> dict:
     """Server side. Refuses to sign a body that would not verify."""
     body = {"typ": "fab-workspace-manifest", "v": 1, **payload}
     _validate_body(body)
-    if cert["payload"]["kid"] != key_id(
-        base64.b64encode(_pub_raw(load_private(signing_private_b64))).decode()
-    ):
+    pub = base64.b64encode(_pub_raw(load_private(signing_private_b64))).decode()
+    if cert["payload"]["kid"] != key_id(pub):
         raise ManifestError("cert_key_mismatch")
     return {
         "cert": cert,
@@ -290,42 +481,90 @@ def sign_manifest(signing_private_b64: str, cert: dict, payload: dict) -> dict:
 
 @dataclass(frozen=True)
 class Expected:
-    """What the client already knows from its own session, never from the manifest."""
+    """What the client already knows from its own session, never from the manifest.
+
+    `min_generation` / `min_epoch` are floors from an authenticated online bootstrap
+    (the signed-in session asks the server for them). A client that has lost its
+    state MUST NOT start from zero: it bootstraps with these floors, or refuses."""
 
     company_id: str
     person_id: str
     aud: str  # e.g. "herdr-provisioner"
     client_version: str = "0.0.0"
+    min_generation: int = 0
+    min_epoch: int = 0
 
 
 @dataclass(frozen=True)
 class ClientState:
-    """Persisted by the client after each accepted manifest or CRL."""
+    """Persisted by the client (atomically, under a lock) after each accepted document."""
 
     generations: dict[str, dict[str, Any]] = field(default_factory=dict)
+    epoch: int = 0
     crl_number: int = 0
+    crl_digest: str = ""
+    crl_next_update: int = 0
     revoked: frozenset[str] = frozenset()
+    last_seen: int = 0  # highest clock reading accepted; the clock may not go back
 
 
 def _vtuple(v: str) -> tuple[int, ...]:
     return tuple(int(x) for x in v.split("."))
 
 
-def verify_crl(crl: dict, root_pub_b64: str, state: ClientState) -> ClientState:
-    p = crl.get("payload")
-    if not isinstance(p, dict) or p.get("typ") != "fab-crl" or p.get("v") != 1:
+def _binding_key(company_id: str, person_id: str) -> str:
+    return json.dumps([company_id, person_id], separators=(",", ":"))  # unambiguous
+
+
+def _check_clock(now: int, state: ClientState) -> ClientState:
+    if not _is_int(now) or now < 0:
+        raise ManifestError("bad_clock")
+    if now + CLOCK_SKEW < state.last_seen:
+        raise ManifestError("clock_rollback", state)
+    return replace(state, last_seen=max(state.last_seen, now))
+
+
+def verify_crl(
+    crl: dict, root_pub_b64: str, state: ClientState, now: int
+) -> ClientState:
+    """Ingest a revocation list. Call this on its own and persist the result BEFORE
+    verifying any manifest, so a revocation survives a rejected manifest."""
+    _only(crl, {"payload", "sig"}, "bad_crl")
+    p = _only(crl.get("payload"), _CRL_KEYS, "bad_crl")
+    if p.get("typ") != "fab-crl" or p.get("v") != 1:
         raise ManifestError("bad_crl")
     _verify_sig(root_pub_b64, "crl", p, crl.get("sig", ""))
-    if not isinstance(p.get("number"), int) or not isinstance(
-        p.get("revoked_kids"), list
+    kids = p.get("revoked_kids")
+    if (
+        not _is_int(p.get("number"))
+        or p["number"] < 1
+        or not _is_int(p.get("issued_at"))
+        or not _is_int(p.get("next_update"))
+        or p["next_update"] <= p["issued_at"]
+        or not isinstance(kids, list)
+        or len(kids) > MAX_CRL_ENTRIES
+        or kids != sorted(set(kids))
+        or not all(isinstance(k, str) and _KID.fullmatch(k) for k in kids)
     ):
         raise ManifestError("bad_crl")
+    state = _check_clock(now, state)
+    if p["issued_at"] > now + CLOCK_SKEW:
+        raise ManifestError("crl_from_future", state)
+    d = digest(p)
     if p["number"] < state.crl_number:
-        raise ManifestError("crl_rollback")
-    return ClientState(
-        generations=state.generations,
+        raise ManifestError("crl_rollback", state)
+    if p["number"] == state.crl_number:
+        if d != state.crl_digest:
+            raise ManifestError("crl_conflict", state)
+        return state
+    if not state.revoked <= set(kids):
+        raise ManifestError("crl_not_cumulative", state)
+    return replace(
+        state,
         crl_number=p["number"],
-        revoked=state.revoked | frozenset(p["revoked_kids"]),
+        crl_digest=d,
+        crl_next_update=p["next_update"],
+        revoked=frozenset(kids),
     )
 
 
@@ -337,41 +576,70 @@ def verify_manifest(
     now: int,
     state: ClientState,
     crl: dict | None = None,
+    require_crl: bool = False,
 ) -> tuple[dict, ClientState]:
     """
-    Returns `(payload, new_state)` or raises ManifestError. Order: revocation list,
-    certificate (root signature, recomputed key id, window), manifest signature,
-    bindings, time, replay/rollback. Nothing is installed by this function.
-    """
-    if crl is not None:
-        state = verify_crl(crl, root_pub_b64, state)
+    Returns `(payload, new_state)` or raises ManifestError (its `.state` is the state
+    reached so far). Order: clock, revocation list, certificate (root signature,
+    recomputed key id, window, epoch), manifest signature, shape, bindings, time,
+    floors, replay/rollback. Nothing is installed by this function.
 
+    `require_crl=True` demands that a revocation list has been seen and is not past its
+    `next_update`; without it, revocation reaches the client only as fast as it learns of
+    a list, and the hard bound for a stolen signing key is the certificate's expiry.
+    """
+    try:
+        state = _check_clock(now, state)
+        if crl is not None:
+            state = verify_crl(crl, root_pub_b64, state, now)
+        return _verify(envelope, root_pub_b64, expected, now, state, require_crl)
+    except ManifestError as e:
+        if e.state is None:
+            e.state = state
+        raise
+
+
+def _verify(
+    envelope: dict,
+    root_pub_b64: str,
+    expected: Expected,
+    now: int,
+    state: ClientState,
+    require_crl: bool,
+) -> tuple[dict, ClientState]:
+    _only(envelope, {"cert", "payload", "sig"})
     cert, payload = envelope.get("cert"), envelope.get("payload")
-    if not isinstance(cert, dict) or not isinstance(payload, dict):
-        raise ManifestError("malformed")
-    cp = cert.get("payload")
+    _only(cert, {"payload", "sig"}, "bad_cert")
+    cp = _only(cert.get("payload"), _CERT_KEYS, "bad_cert")
     if (
-        not isinstance(cp, dict)
-        or cp.get("typ") != "fab-signing-cert"
+        cp.get("typ") != "fab-signing-cert"
         or cp.get("v") != 1
+        or not isinstance(payload, dict)
     ):
         raise ManifestError("bad_cert")
     _verify_sig(root_pub_b64, "cert", cp, cert.get("sig", ""))
     if cp.get("issuer_kid") != key_id(root_pub_b64):
         raise ManifestError("bad_cert")
-    if cp.get("kid") != key_id(cp.get("pub", "")):
+    if not isinstance(cp.get("pub"), str) or cp.get("kid") != key_id(cp["pub"]):
         raise ManifestError("bad_cert")
-    nb, na = cp.get("not_before"), cp.get("not_after")
-    if (
-        not isinstance(nb, int)
-        or not isinstance(na, int)
-        or not 0 < na - nb <= MAX_CERT_LIFETIME
+    nb, na, epoch = cp.get("not_before"), cp.get("not_after"), cp.get("epoch")
+    if not (
+        _is_int(nb) and _is_int(na) and _is_int(epoch) and _is_int(cp.get("serial"))
     ):
+        raise ManifestError("bad_cert")
+    if not 0 < na - nb <= MAX_CERT_LIFETIME or epoch < 1:
         raise ManifestError("bad_cert")
     if now + CLOCK_SKEW < nb or now - CLOCK_SKEW > na:
         raise ManifestError("cert_not_valid_now")
     if cp["kid"] in state.revoked:
         raise ManifestError("cert_revoked")
+    if require_crl:
+        if state.crl_number < 1:
+            raise ManifestError("crl_required")
+        if now - CLOCK_SKEW > state.crl_next_update:
+            raise ManifestError("crl_stale")
+    if epoch < max(state.epoch, expected.min_epoch):
+        raise ManifestError("epoch_rollback")
 
     if payload.get("typ") != "fab-workspace-manifest" or payload.get("v") != 1:
         raise ManifestError("malformed")
@@ -393,18 +661,27 @@ def verify_manifest(
     # The manifest must also fall inside the certificate's window.
     if payload["issued_at"] < nb or payload["expires_at"] > na:
         raise ManifestError("outside_cert_window")
+    if payload["generation"] < expected.min_generation:
+        raise ManifestError("below_floor")
 
-    key = f"{payload['company_id']}:{payload['person_id']}"
+    gens = state.generations
+    if epoch > state.epoch:  # root-authorised recovery: the generation floor restarts
+        gens = {}
+    key = _binding_key(payload["company_id"], payload["person_id"])
     d = digest(payload)
-    last = state.generations.get(key)
+    last = gens.get(key)
     if last:
         if payload["generation"] < last["generation"]:
             raise ManifestError("rollback")
         if payload["generation"] == last["generation"] and d != last["digest"]:
             raise ManifestError("generation_conflict")
-    gens = dict(state.generations)
-    gens[key] = {"generation": payload["generation"], "digest": d}
-    return payload, ClientState(gens, state.crl_number, state.revoked)
+    gens = {**gens, key: {"generation": payload["generation"], "digest": d}}
+    return payload, replace(state, generations=gens, epoch=max(epoch, state.epoch))
+
+
+def verify_wire(data: bytes | str, **kwargs: Any) -> tuple[dict, ClientState]:
+    """`verify_manifest` for untrusted bytes: strict parse first."""
+    return verify_manifest(parse_wire(data), **kwargs)
 
 
 def verify_file(content: bytes, entry: dict) -> None:

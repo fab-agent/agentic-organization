@@ -61,7 +61,7 @@ def _body(**kw):
         "expires_at": NOW + 3600,
         "min_client_version": "1.0.0",
         "gateway_url": "https://gw.example.test",
-        "layout": {"id": "finance-v2", "sha256": SHA},
+        "layout": {"id": "finance-v2", "sha256": SHA, "size": 50},
         "mods": [
             {
                 "name": "finance-dashboard",
@@ -101,7 +101,7 @@ def _code(env, **kw):
 def test_valid_manifest_verifies_and_advances_state():
     payload, st = _verify(_env())
     assert payload["generation"] == 5
-    assert st.generations["co1:p1"]["generation"] == 5
+    assert st.generations[wm._binding_key("co1", "p1")]["generation"] == 5
 
 
 # ── tampering ────────────────────────────────────────────────────────────────
@@ -184,14 +184,6 @@ def test_wrong_root_pinned_rejects_everything():
             state=ClientState(),
         )
     assert e.value.code == "bad_signature"
-
-
-def test_signatures_are_domain_separated():
-    """A CRL signature must not verify as a cert, and so on."""
-    crl = issue_crl(ROOT_PRIV, number=1, revoked_kids=[], issued_at=NOW)
-    cert = {"payload": crl["payload"], "sig": crl["sig"]}
-    with pytest.raises(ManifestError):
-        wm._verify_sig(ROOT_PUB, "cert", cert["payload"], cert["sig"])
 
 
 # ── bindings ─────────────────────────────────────────────────────────────────
@@ -290,52 +282,6 @@ def test_rotation_is_a_new_root_signed_cert_and_old_manifests_still_verify():
     _verify(new_env)
 
 
-def test_revoked_signing_key_is_rejected_even_with_a_valid_signature():
-    crl = issue_crl(
-        ROOT_PRIV, number=1, revoked_kids=[wm.key_id(SIGN_PUB)], issued_at=NOW
-    )
-    assert _code(_env(), crl=crl) == "cert_revoked"
-
-
-def test_revocation_persists_in_state_across_calls():
-    crl = issue_crl(
-        ROOT_PRIV, number=1, revoked_kids=[wm.key_id(SIGN_PUB)], issued_at=NOW
-    )
-    st = wm.verify_crl(crl, ROOT_PUB, ClientState())
-    assert _code(_env(), state=st) == "cert_revoked"
-
-
-def test_crl_rollback_is_rejected():
-    st = wm.verify_crl(
-        issue_crl(ROOT_PRIV, number=5, revoked_kids=[], issued_at=NOW),
-        ROOT_PUB,
-        ClientState(),
-    )
-    old = issue_crl(ROOT_PRIV, number=4, revoked_kids=[], issued_at=NOW)
-    with pytest.raises(ManifestError) as e:
-        wm.verify_crl(old, ROOT_PUB, st)
-    assert e.value.code == "crl_rollback"
-
-
-def test_crl_signed_by_anyone_but_root_is_rejected():
-    evil = issue_crl(EVIL_PRIV, number=9, revoked_kids=["x"], issued_at=NOW)
-    with pytest.raises(ManifestError) as e:
-        wm.verify_crl(evil, ROOT_PUB, ClientState())
-    assert e.value.code == "bad_signature"
-
-
-def test_revocation_cannot_be_undone_by_a_later_crl():
-    st = wm.verify_crl(
-        issue_crl(ROOT_PRIV, number=1, revoked_kids=["k1"], issued_at=NOW),
-        ROOT_PUB,
-        ClientState(),
-    )
-    st = wm.verify_crl(
-        issue_crl(ROOT_PRIV, number=2, revoked_kids=[], issued_at=NOW), ROOT_PUB, st
-    )
-    assert "k1" in st.revoked
-
-
 # ── body validation ──────────────────────────────────────────────────────────
 
 
@@ -404,16 +350,6 @@ def test_unsafe_paths_in_a_hand_made_envelope_fail_verification_too():
 # ── canonical form ───────────────────────────────────────────────────────────
 
 
-def test_floats_and_huge_ints_have_no_canonical_form():
-    for bad in ({"a": 1.5}, {"a": 2**60}, {"a": float("nan")}, {1: "x"}):
-        with pytest.raises(ManifestError):
-            wm.canonical_bytes(bad)
-
-
-def test_canonical_bytes_are_ascii_sorted_and_compact():
-    assert wm.canonical_bytes({"b": 1, "a": "é"}) == b'{"a":"\\u00e9","b":1}'
-
-
 # ── file verification ────────────────────────────────────────────────────────
 
 
@@ -434,12 +370,685 @@ def test_file_verification_checks_size_and_hash():
 # ── cross-language vectors ───────────────────────────────────────────────────
 
 
-def _vectors():
-    cert = _cert()
+# ── key tooling ──────────────────────────────────────────────────────────────
+
+
+# ── round 1: canonical profile and strict wire parsing ───────────────────────
+
+
+def test_keys_sort_by_utf16_code_unit_like_javascript():
+    # U+E000 (BMP) sorts AFTER U+10000 (surrogate pair D800 DC00) in UTF-16 order.
+    out = wm.canonical_bytes({"": 1, "\U00010000": 2})
+    assert out == b'{"\\ud800\\udc00":2,"\\ue000":1}'
+
+
+def test_canonical_form_is_ascii_compact_and_lowercase_escaped():
+    assert wm.canonical_bytes({"b": 1, "a": "é"}) == b'{"a":"\\u00e9","b":1}'
+    assert wm.canonical_bytes({"a": "x\n\x01\x7f"}) == b'{"a":"x\\n\\u0001\\u007f"}'
+
+
+def test_integer_like_keys_stay_strings_in_text_order():
+    assert wm.canonical_bytes({"10": 1, "9": 2, "2": 3}) == b'{"10":1,"2":3,"9":2}'
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"a": 1.5},
+        {"a": 2**53},
+        {"a": -(2**53)},
+        {"a": float("nan")},
+        {1: "x"},
+        {"a": "\ud800"},
+        {"\udc00": 1},
+        {"a": {1, 2}},
+    ],
+)
+def test_values_without_a_portable_canonical_form_are_rejected(bad):
+    with pytest.raises(ManifestError):
+        wm.canonical_bytes(bad)
+
+
+def test_safe_integer_boundary_is_inclusive():
+    assert wm.canonical_bytes({"a": 2**53 - 1}) == b'{"a":9007199254740991}'
+    assert wm.canonical_bytes({"a": -(2**53 - 1)}) == b'{"a":-9007199254740991}'
+
+
+def test_non_bmp_and_bmp_keys_that_collide_only_in_the_old_serialiser_are_rejected():
+    keys = {}
+    keys["\U00010000"] = 1
+    keys["\ud800\udc00"] = (
+        2  # same JSON escape, different Python key: must not serialise
+    )
+    with pytest.raises(ManifestError):
+        wm.canonical_bytes(keys)
+
+
+@pytest.mark.parametrize(
+    "text,code",
+    [
+        ('{"a":1,"a":2}', "duplicate_key"),
+        ('{"a":1.0}', "float_not_allowed"),
+        ('{"a":1e0}', "float_not_allowed"),
+        ('{"a":NaN}', "float_not_allowed"),
+        ('{"a":Infinity}', "float_not_allowed"),
+        ('{"a":-0}', "negative_zero"),
+        ('{"a":9007199254740992}', "int_out_of_range"),
+        ('{"a":"\\ud800"}', "bad_string"),
+        ("{not json", "bad_json"),
+        ("[" * 5000 + "]" * 5000, "too_deep"),
+    ],
+)
+def test_wire_parser_rejects_what_parsers_resolve_differently(text, code):
+    with pytest.raises(ManifestError) as e:
+        wm.parse_wire(text)
+    assert e.value.code == code
+
+
+def test_wire_parser_caps_size_and_encoding():
+    with pytest.raises(ManifestError) as e:
+        wm.parse_wire('{"a":"' + "x" * wm.MAX_WIRE_BYTES + '"}')
+    assert e.value.code == "wire_too_large"
+    with pytest.raises(ManifestError) as e:
+        wm.parse_wire(b'{"a":"\xff"}')
+    assert e.value.code == "bad_encoding"
+
+
+def test_a_signed_envelope_round_trips_through_the_strict_wire_parser():
     env = _env()
-    crl = issue_crl(ROOT_PRIV, number=3, revoked_kids=["bb", "aa"], issued_at=NOW)
+    wire = json.dumps(env)
+    payload, _ = wm.verify_wire(
+        wire, root_pub_b64=ROOT_PUB, expected=EXPECT, now=NOW, state=ClientState()
+    )
+    assert payload["generation"] == 5
+
+
+def test_unknown_fields_are_rejected_everywhere():
+    for path in (
+        ("payload",),
+        ("payload", "layout"),
+        ("payload", "mods", 0),
+        ("payload", "mods", 0, "files", 0),
+        ("cert",),
+        ("cert", "payload"),
+    ):
+        env = _env()
+        node = env
+        for k in path:
+            node = node[k]
+        node["extra"] = 1
+        with pytest.raises(ManifestError):
+            _verify(env)
+    env = _env()
+    env["extra"] = 1
+    assert _code(env) == "malformed"
+
+
+def test_padding_field_cannot_inflate_a_manifest():
+    env = _env()
+    env["payload"]["padding"] = "x" * 131072
+    with pytest.raises(ManifestError):
+        _verify(env)
+
+
+# ── round 2: portable paths and strict fields ────────────────────────────────
+
+
+def _one_file(path):
+    return [
+        {
+            "name": "m",
+            "version": "1.0.0",
+            "files": [{"path": path, "sha256": SHA, "size": 1}],
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "CON",
+        "nul.txt",
+        "AUX",
+        "com1.js",
+        "LPT9",
+        "dir/Con.d/x.js",
+        "a.js.",
+        "a.js ",
+        " a.js",
+        ".. /x.js",
+        "a<b",
+        "a>b",
+        'a"b',
+        "a|b",
+        "a?b",
+        "a*b",
+        "a:b",
+        "é.js",  # NFD
+        "x" * 100 + "/" + "y" * 256,
+        "é" * 150 + ".js",
+        "a\tb",
+        "a\x7fb",
+    ],
+)
+def test_portable_path_rules(path):
+    with pytest.raises(ManifestError) as e:
+        _env(mods=_one_file(path))
+    assert e.value.code == "bad_path"
+
+
+@pytest.mark.parametrize(
+    "path", ["main.js", "dir/sub/file.min.js", "é.js", "CONSOLE.js", "a-b_c.d/e.js"]
+)
+def test_ordinary_paths_are_accepted(path):
+    _env(mods=_one_file(path))
+
+
+def test_unicode_equivalent_and_case_equivalent_paths_collide():
+    files = [
+        {"path": "é.js", "sha256": SHA, "size": 1},
+        {"path": "É.JS", "sha256": SHA, "size": 1},
+    ]
+    with pytest.raises(ManifestError) as e:
+        _env(mods=[{"name": "m", "version": "1.0.0", "files": files}])
+    assert e.value.code == "duplicate_path"
+
+
+def test_a_file_and_a_directory_of_the_same_name_cannot_coexist():
+    files = [
+        {"path": "a", "sha256": SHA, "size": 1},
+        {"path": "a/b.js", "sha256": SHA, "size": 1},
+    ]
+    with pytest.raises(ManifestError) as e:
+        _env(mods=[{"name": "m", "version": "1.0.0", "files": files}])
+    assert e.value.code == "path_conflict"
+
+
+@pytest.mark.parametrize(
+    "kw,code",
+    [
+        ({"generation": True}, "bad_generation"),
+        ({"issued_at": True}, "bad_time"),
+        ({"min_client_version": "١.٠.٠"}, "bad_version"),
+        ({"min_client_version": "1.0.0\n"}, "bad_version"),
+        ({"company_id": "co\n"}, "bad_binding"),
+        ({"company_id": "a:b"}, "bad_binding"),
+        ({"aud": "Has Space"}, "bad_binding"),
+        ({"gateway_url": "https://"}, "bad_gateway_url"),
+        ({"gateway_url": "https://user:pw@gw.example.test"}, "bad_gateway_url"),
+        ({"gateway_url": "https://gw.example.test:99999"}, "bad_gateway_url"),
+        ({"gateway_url": "https://gw.example.test/#frag"}, "bad_gateway_url"),
+        ({"gateway_url": "https://gw example.test"}, "bad_gateway_url"),
+        ({"gateway_url": "http://gw.example.test"}, "bad_gateway_url"),
+        ({"layout": {"id": 1, "sha256": SHA, "size": 1}}, "bad_name"),
+        ({"layout": {"id": "ok", "sha256": SHA}}, "bad_size"),
+        ({"layout": {"id": "con", "sha256": SHA, "size": 1}}, "bad_name"),
+    ],
+)
+def test_loose_field_types_and_formats_are_rejected(kw, code):
+    with pytest.raises(ManifestError) as e:
+        _env(**kw)
+    assert e.value.code == code
+
+
+def test_mod_name_with_trailing_newline_or_reserved_name_is_rejected():
+    for name in ("m\n", "con", "nul", "m."):
+        with pytest.raises(ManifestError):
+            _env(
+                mods=[
+                    {
+                        "name": name,
+                        "version": "1.0.0",
+                        "files": [{"path": "a.js", "sha256": SHA, "size": 1}],
+                    }
+                ]
+            )
+
+
+def test_total_size_includes_the_layout_and_is_capped():
+    big = wm.MAX_TOTAL_BYTES
+    _env(layout={"id": "l", "sha256": SHA, "size": big - 1}, mods=_one_file("a.js"))
+    with pytest.raises(ManifestError) as e:
+        _env(layout={"id": "l", "sha256": SHA, "size": big}, mods=_one_file("a.js"))
+    assert e.value.code == "too_large"
+
+
+def test_counts_are_capped_at_the_limit():
+    f = [
+        {"path": f"f{i}.js", "sha256": SHA, "size": 0}
+        for i in range(wm.MAX_FILES_PER_MOD)
+    ]
+    _env(mods=[{"name": "m", "version": "1.0.0", "files": f}])
+    with pytest.raises(ManifestError):
+        _env(
+            mods=[
+                {
+                    "name": "m",
+                    "version": "1.0.0",
+                    "files": [*f, {"path": "x.js", "sha256": SHA, "size": 0}],
+                }
+            ]
+        )
+    mods = [
+        {"name": f"m{i}", "version": "1.0.0", "files": f[:1]}
+        for i in range(wm.MAX_MODS + 1)
+    ]
+    with pytest.raises(ManifestError):
+        _env(mods=mods)
+
+
+# ── round 3: revocation lists ────────────────────────────────────────────────
+
+KID = wm.key_id(SIGN_PUB)
+
+
+def _crl(number=1, kids=None, issued=NOW, next_update=NOW + 86400, key=ROOT_PRIV):
+    return issue_crl(
+        key,
+        number=number,
+        revoked_kids=kids or [],
+        issued_at=issued,
+        next_update=next_update,
+    )
+
+
+def _ingest(crl, state=None, now=NOW):
+    return wm.verify_crl(crl, ROOT_PUB, state or ClientState(), now)
+
+
+def test_revoked_signing_key_is_rejected_even_with_a_valid_signature():
+    assert _code(_env(), crl=_crl(kids=[KID])) == "cert_revoked"
+
+
+def test_revocation_persists_when_the_manifest_is_rejected():
+    with pytest.raises(ManifestError) as e:
+        _verify(_env(), crl=_crl(kids=[KID]))
+    saved = e.value.state  # the caller persists this even though the manifest failed
+    assert KID in saved.revoked and saved.crl_number == 1
+    assert _code(_env(), state=saved) == "cert_revoked"
+
+
+def test_crl_is_ingested_on_its_own_and_survives_a_cold_manifest_check():
+    st = _ingest(_crl(kids=[KID]))
+    assert _code(_env(), state=st) == "cert_revoked"
+
+
+def test_crl_rollback_is_rejected():
+    st = _ingest(_crl(number=5))
+    with pytest.raises(ManifestError) as e:
+        _ingest(_crl(number=4), st)
+    assert e.value.code == "crl_rollback"
+
+
+def test_crl_must_be_cumulative_and_cannot_unrevoke():
+    st = _ingest(_crl(number=1, kids=[KID]))
+    with pytest.raises(ManifestError) as e:
+        _ingest(_crl(number=2, kids=[]), st)
+    assert e.value.code == "crl_not_cumulative"
+    st2 = _ingest(_crl(number=2, kids=[KID, "f" * 32]), st)
+    assert KID in st2.revoked and "f" * 32 in st2.revoked
+
+
+def test_number_may_skip_but_same_number_with_other_content_is_a_conflict():
+    st = _ingest(_crl(number=1, kids=[KID]))
+    st = _ingest(_crl(number=50, kids=[KID]), st)  # missed snapshots are normal
+    with pytest.raises(ManifestError) as e:
+        _ingest(_crl(number=50, kids=[KID, "e" * 32]), st)
+    assert e.value.code == "crl_conflict"
+    assert _ingest(_crl(number=50, kids=[KID]), st) == st  # same content: idempotent
+
+
+def test_crl_signed_by_anyone_but_root_is_rejected():
+    with pytest.raises(ManifestError) as e:
+        _ingest(_crl(key=EVIL_PRIV, kids=["a" * 32]))
+    assert e.value.code == "bad_signature"
+
+
+def test_crl_shape_bool_number_and_bad_kids_and_future_issue_are_rejected():
+    for crl in (
+        _crl(number=True),
+        _crl(kids=["short"]),
+        _crl(issued=NOW + 10**6, next_update=NOW + 10**6 + 10),
+    ):
+        with pytest.raises(ManifestError):
+            _ingest(crl)
+
+
+def test_domain_separation_cert_cannot_be_presented_as_crl():
+    cert = _cert()
+    with pytest.raises(ManifestError):
+        wm.verify_crl(
+            {"payload": cert["payload"], "sig": cert["sig"]},
+            ROOT_PUB,
+            ClientState(),
+            NOW,
+        )
+
+
+def test_require_crl_demands_a_fresh_list():
+    with pytest.raises(ManifestError) as e:
+        verify_manifest(
+            _env(),
+            root_pub_b64=ROOT_PUB,
+            expected=EXPECT,
+            now=NOW,
+            state=ClientState(),
+            require_crl=True,
+        )
+    assert e.value.code == "crl_required"
+    st = _ingest(_crl(next_update=NOW + 600))
+    verify_manifest(
+        _env(),
+        root_pub_b64=ROOT_PUB,
+        expected=EXPECT,
+        now=NOW,
+        state=st,
+        require_crl=True,
+    )
+    with pytest.raises(ManifestError) as e:
+        verify_manifest(
+            _env(),
+            root_pub_b64=ROOT_PUB,
+            expected=EXPECT,
+            now=NOW + 600 + 301,
+            state=st,
+            require_crl=True,
+        )
+    assert e.value.code in ("crl_stale", "expired")
+
+
+# ── round 4: epochs, bootstrap floors, state keys, clock ─────────────────────
+
+
+def _cert_epoch(epoch, **kw):
+    args = dict(not_before=NOW - 3600, not_after=NOW + 86400, serial=epoch, epoch=epoch)
+    args.update(kw)
+    return issue_signing_cert(ROOT_PRIV, SIGN_PUB, **args)
+
+
+def test_epoch_bump_recovers_from_a_poisoned_generation_floor():
+    # A stolen signing key signed generation 2**53-1; the root issues epoch 2.
+    poisoned = sign_manifest(SIGN_PRIV, _cert_epoch(1), _body(generation=2**53 - 1))
+    _, st = _verify(poisoned)
+    assert _code(_env(generation=6), state=st) == "rollback"
+    new_env = sign_manifest(SIGN_PRIV, _cert_epoch(2), _body(generation=1))
+    _, st2 = _verify(new_env, state=st)
+    assert st2.epoch == 2
+    assert (
+        _code(poisoned, state=st2) == "epoch_rollback"
+    )  # old-epoch manifests are dead
+
+
+def test_lower_epoch_than_seen_or_than_the_floor_is_rejected():
+    _, st = _verify(sign_manifest(SIGN_PRIV, _cert_epoch(3), _body()))
+    assert (
+        _code(sign_manifest(SIGN_PRIV, _cert_epoch(2), _body(generation=9)), state=st)
+        == "epoch_rollback"
+    )
+    floor = Expected("co1", "p1", "herdr-provisioner", "1.0.0", min_epoch=4)
+    assert (
+        _code(sign_manifest(SIGN_PRIV, _cert_epoch(3), _body()), expected=floor)
+        == "epoch_rollback"
+    )
+
+
+def test_lost_state_cannot_be_replayed_past_a_bootstrap_floor():
+    old = _env(generation=3)
+    _verify(old)  # accepted only because the state was empty
+    floor = Expected("co1", "p1", "herdr-provisioner", "1.0.0", min_generation=5)
+    assert _code(old, expected=floor) == "below_floor"
+    _verify(_env(generation=5), expected=floor)
+
+
+def test_state_keys_cannot_collide_across_company_person_pairs():
+    assert wm._binding_key("a", "b:c") != wm._binding_key("a:b", "c")
+    with pytest.raises(ManifestError):
+        _env(company_id="a:b")
+
+
+def test_the_clock_cannot_be_wound_back():
+    _, st = _verify(_env(), now=NOW)
+    assert st.last_seen == NOW
+    with pytest.raises(ManifestError) as e:
+        _verify(_env(), state=st, now=NOW - 10_000)
+    assert e.value.code == "clock_rollback"
+    _verify(_env(), state=st, now=NOW - 100)  # small skew is fine
+
+
+def test_replayed_old_payload_cannot_gain_life_from_a_new_cert():
+    env = _env(generation=5)
+    _, st = _verify(env)
+    re_signed = sign_manifest(SIGN_PRIV, _cert_epoch(1, serial=9), env["payload"] | {})
+    _verify(re_signed, state=st)  # same content, new cert: idempotent, not fresher
+    assert _code(re_signed, state=st, now=NOW + 3600 + 400) == "expired"
+
+
+# ── round 5: key tooling ─────────────────────────────────────────────────────
+
+
+def _run(mk, *argv):
+    return mk.main(list(argv))
+
+
+def test_key_tooling_end_to_end_and_private_keys_are_not_printed(tmp_path, capsys):
+    import time
+
+    from scripts import manifest_keys as mk
+
+    root_f, sign_f, cert_f = (
+        tmp_path / "root.key",
+        tmp_path / "sign.key",
+        tmp_path / "cert.json",
+    )
+    assert _run(mk, "root-init", "--out", str(root_f)) == 0
+    root_out = json.loads(capsys.readouterr().out)
+    assert _run(mk, "signing-init", "--out", str(sign_f)) == 0
+    sign_out = json.loads(capsys.readouterr().out)
+    assert oct(root_f.stat().st_mode & 0o777) == "0o600"
+    assert root_f.read_text().strip() not in json.dumps(root_out)
+
+    _run(
+        mk,
+        "issue-cert",
+        "--root",
+        str(root_f),
+        "--signing-pub",
+        sign_out["public_key"],
+        "--serial",
+        "1",
+        "--days",
+        "30",
+        "--out",
+        str(cert_f),
+    )
+    capsys.readouterr()
+    now = int(time.time())
+    env = sign_manifest(
+        sign_f.read_text().strip(),
+        json.loads(cert_f.read_text()),
+        _body(issued_at=now, expires_at=now + 3600),
+    )
+    verify_manifest(
+        env,
+        root_pub_b64=root_out["public_key"],
+        expected=EXPECT,
+        now=now,
+        state=ClientState(),
+    )
+
+
+def test_key_tooling_never_overwrites_and_refuses_unsafe_inputs(tmp_path, capsys):
+    from scripts import manifest_keys as mk
+
+    root_f = tmp_path / "root.key"
+    _run(mk, "root-init", "--out", str(root_f))
+    out = json.loads(capsys.readouterr().out)
+    with pytest.raises(FileExistsError):
+        _run(mk, "root-init", "--out", str(root_f))
+    keep = root_f.read_text()
+    with pytest.raises(SystemExit):  # public output may not be the private input
+        _run(
+            mk,
+            "issue-cert",
+            "--root",
+            str(root_f),
+            "--signing-pub",
+            out["public_key"],
+            "--serial",
+            "1",
+            "--out",
+            str(root_f),
+        )
+    assert root_f.read_text() == keep
+    existing = tmp_path / "x.json"
+    existing.write_text("keep")
+    with pytest.raises(FileExistsError):
+        _run(
+            mk,
+            "issue-cert",
+            "--root",
+            str(root_f),
+            "--signing-pub",
+            out["public_key"],
+            "--serial",
+            "1",
+            "--out",
+            str(existing),
+        )
+    assert existing.read_text() == "keep"
+    loose = tmp_path / "loose.key"
+    loose.write_text(keep)
+    loose.chmod(0o644)
+    with pytest.raises(SystemExit):
+        _run(
+            mk,
+            "issue-cert",
+            "--root",
+            str(loose),
+            "--signing-pub",
+            out["public_key"],
+            "--serial",
+            "1",
+            "--out",
+            str(tmp_path / "c.json"),
+        )
+    link = tmp_path / "link.key"
+    link.symlink_to(root_f)
+    with pytest.raises(SystemExit):
+        _run(
+            mk,
+            "issue-cert",
+            "--root",
+            str(link),
+            "--signing-pub",
+            out["public_key"],
+            "--serial",
+            "1",
+            "--out",
+            str(tmp_path / "c2.json"),
+        )
+
+
+@pytest.mark.parametrize("days", ["0", "-1", "91"])
+def test_key_tooling_days_are_bounded(tmp_path, capsys, days):
+    from scripts import manifest_keys as mk
+
+    root_f = tmp_path / "root.key"
+    _run(mk, "root-init", "--out", str(root_f))
+    pub = json.loads(capsys.readouterr().out)["public_key"]
+    with pytest.raises(SystemExit):
+        _run(
+            mk,
+            "issue-cert",
+            "--root",
+            str(root_f),
+            "--signing-pub",
+            pub,
+            "--serial",
+            "1",
+            "--days",
+            days,
+            "--out",
+            str(tmp_path / "c.json"),
+        )
+
+
+def test_key_tooling_accepts_the_full_90_days_and_carries_crl_forward(tmp_path, capsys):
+    from scripts import manifest_keys as mk
+
+    root_f = tmp_path / "root.key"
+    _run(mk, "root-init", "--out", str(root_f))
+    pub = json.loads(capsys.readouterr().out)["public_key"]
+    assert (
+        _run(
+            mk,
+            "issue-cert",
+            "--root",
+            str(root_f),
+            "--signing-pub",
+            pub,
+            "--serial",
+            "1",
+            "--days",
+            "90",
+            "--out",
+            str(tmp_path / "c.json"),
+        )
+        == 0
+    )
+    capsys.readouterr()
+    c1, c2 = tmp_path / "crl1.json", tmp_path / "crl2.json"
+    _run(
+        mk,
+        "issue-crl",
+        "--root",
+        str(root_f),
+        "--number",
+        "1",
+        "--revoke",
+        "a" * 32,
+        "--out",
+        str(c1),
+    )
+    _run(
+        mk,
+        "issue-crl",
+        "--root",
+        str(root_f),
+        "--number",
+        "2",
+        "--revoke",
+        "b" * 32,
+        "--previous",
+        str(c1),
+        "--out",
+        str(c2),
+    )
+    kids = json.loads(c2.read_text())["payload"]["revoked_kids"]
+    assert kids == ["a" * 32, "b" * 32]
+
+
+# ── cross-language vectors ───────────────────────────────────────────────────
+
+CANON_CASES = [
+    {"b": 1, "a": "é", "c": [True, None]},
+    {"": 1, "\U00010000": 2},
+    {"10": 1, "9": 2, "2": 3},
+    {"s": 'x\n\t"\\\x01\x7f '},
+    {"n": [0, -1, 2**53 - 1, -(2**53 - 1)]},
+    {},
+    [],
+]
+REJECT_WIRE = [
+    '{"a":1,"a":2}', '{"a":1.0}', '{"a":1e0}', '{"a":-0}', '{"a":NaN}',
+    '{"a":9007199254740992}', '{"a":"\\ud800"}',
+]  # fmt: skip
+
+
+def _vectors():
+    env = _env()
     return {
-        "note": "Ed25519 is deterministic; keys are fixed-seed test keys. A second implementation must verify these.",
+        "note": "Ed25519 is deterministic and keys are fixed-seed test keys; a second implementation must reproduce every value here.",
         "now": NOW,
         "root_pub": ROOT_PUB,
         "signing_pub": SIGN_PUB,
@@ -450,17 +1059,13 @@ def _vectors():
             "client_version": EXPECT.client_version,
         },
         "canonical": [
-            {
-                "input": {"b": 1, "a": "é", "c": [True, None]},
-                "bytes": wm.canonical_bytes(
-                    {"b": 1, "a": "é", "c": [True, None]}
-                ).decode(),
-            }
+            {"input": c, "bytes": wm.canonical_bytes(c).decode()} for c in CANON_CASES
         ],
-        "cert": cert,
+        "reject_wire": REJECT_WIRE,
+        "cert": _cert(),
         "manifest": env,
         "manifest_digest": wm.digest(env["payload"]),
-        "crl": crl,
+        "crl": _crl(number=3, kids=["b" * 32, "a" * 32]),
     }
 
 
@@ -469,54 +1074,6 @@ def test_vectors_file_matches_the_implementation():
     if not VECTORS.exists():
         VECTORS.write_text(json.dumps(got, indent=2, sort_keys=True) + "\n")
     assert json.loads(VECTORS.read_text()) == got
-
-
-# ── key tooling ──────────────────────────────────────────────────────────────
-
-
-def test_key_tooling_end_to_end_and_private_keys_are_not_printed(tmp_path, capsys):
-    from scripts import manifest_keys as mk
-
-    root_f, sign_f = tmp_path / "root.key", tmp_path / "sign.key"
-    assert mk.main(["root-init", "--out", str(root_f)]) == 0
-    root_out = json.loads(capsys.readouterr().out)
-    assert mk.main(["signing-init", "--out", str(sign_f)]) == 0
-    sign_out = json.loads(capsys.readouterr().out)
-    assert oct(root_f.stat().st_mode & 0o777) == "0o600"
-    assert root_f.read_text().strip() not in json.dumps(root_out)
-
-    cert_f = tmp_path / "cert.json"
-    mk.main(
-        [
-            "issue-cert",
-            "--root",
-            str(root_f),
-            "--signing-pub",
-            sign_out["public_key"],
-            "--serial",
-            "1",
-            "--out",
-            str(cert_f),
-        ]
-    )
-    capsys.readouterr()
-    now = __import__("time").time()
-    cert = json.loads(cert_f.read_text())
-    body = _body(issued_at=int(now) - 60, expires_at=int(now) + 3600)
-    env = sign_manifest(sign_f.read_text().strip(), cert, body)
-    _, _ = verify_manifest(
-        env,
-        root_pub_b64=root_out["public_key"],
-        expected=EXPECT,
-        now=int(now),
-        state=ClientState(),
-    )
-
-
-def test_key_tooling_refuses_to_overwrite_a_key(tmp_path):
-    from scripts import manifest_keys as mk
-
-    f = tmp_path / "k"
-    mk.main(["root-init", "--out", str(f)])
-    with pytest.raises(FileExistsError):
-        mk.main(["root-init", "--out", str(f)])
+    for text in REJECT_WIRE:
+        with pytest.raises(ManifestError):
+            wm.parse_wire(text)

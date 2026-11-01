@@ -52,28 +52,80 @@ must reproduce `backend/tests/vectors/workspace_manifest_vectors.json`:
   knows from its own session, never what the manifest says about itself;
 - time: not expired, not from the future (beyond skew), and inside the certificate's
   window;
-- **replay / rollback**: per `(company, person)` the client stores the last accepted
-  generation and digest. Lower generation is rejected; the same generation with a
-  different digest is a conflict; the same digest is idempotent.
+- **replay / rollback**: per `(company, person)` (stored under an unambiguous
+  JSON-array key, not a joined string) the client stores the last accepted generation
+  and digest. Lower generation is rejected; the same generation with a different digest
+  is a conflict; the same digest is idempotent.
+- **epoch (recovery)**: the certificate carries an `epoch` the root raises when a
+  signing key may have been stolen. A client that has seen epoch N refuses N-1, and a
+  higher epoch restarts the generation floor, so a thief who pushed `generation` to the
+  maximum cannot lock a person out for good. Only the root can raise it.
+- **bootstrap floors**: a client that has lost its state must not start from zero. It
+  asks the server, over its authenticated session, for `min_generation` and `min_epoch`
+  and verifies against them (`Expected`); with no floor it refuses to bootstrap.
+- **clock**: the highest clock reading accepted is stored and the clock may not go
+  back beyond the skew (`clock_rollback`). Setting the clock back to revive an expired
+  manifest is therefore detected as long as the state survives; a deleted state file is
+  the bootstrap case above.
+- **revocation lists** are root-signed, **cumulative** full snapshots (a list that drops
+  a previously revoked key is refused), carry `issued_at` and `next_update`, may skip
+  numbers, and the same number with different content is a conflict. The client ingests
+  and persists a list **on its own, before checking any manifest** (`verify_crl`), so a
+  revocation is not lost when the manifest is rejected; `ManifestError.state` also
+  returns the state reached. `require_crl` makes the client refuse to accept a
+  manifest if it has seen no list or the last one is past `next_update`.
 
 Signatures are **domain separated** (`fab-signing-cert-v1`, `fab-crl-v1`,
 `fab-workspace-manifest-v1` prefixes), so one document type cannot be presented as
-another. Canonical form: sorted keys, no whitespace, ASCII-only escapes, no floats,
-integers within +/-2^53, depth at most 32.
+another.
+
+**Canonical profile** (a second implementation must match byte for byte; the vectors
+file has cases for each rule): object keys sorted by **UTF-16 code unit** order (the
+RFC 8785 and JavaScript order, which differs from code point order for characters
+above U+FFFF); no whitespace; every character outside U+0020-U+007E escaped, as `\n`
+`\r` `\t` `\b` `\f` or lower-case `\u00xx` / `\uxxxx` (surrogate pairs for
+non-BMP), so there is no Unicode normalisation question and DEL (U+007F) is escaped
+too; no floats; integers within +/-(2^53-1) and never `-0`; lone surrogates rejected;
+depth at most 32. Untrusted bytes go through a strict parser first (`parse_wire`):
+size cap (256 KiB), duplicate keys, floats and exponent forms, `-0`, NaN/Infinity,
+out-of-range integers and lone surrogates are rejected rather than resolved
+differently by each parser. Signed documents have no free-form room: unknown fields
+are rejected at every level.
 
 The provisioner then, for each file, downloads it, checks size and SHA-256
 (`verify_file`), stages it in a temporary directory with traversal and symlink
 rejection, and activates the whole set atomically. Verification in this module never
-installs anything.
+installs anything. Its state file (generation per person, epoch, revocation list,
+last clock reading) is written atomically under a lock, mode 0600; the same OS user can
+still delete it, which is why the bootstrap floors exist.
+
+**Portable names.** Paths, mod names and layout ids must be valid on Windows, macOS and
+Linux: no `..`, absolute, backslash, drive or alternate-stream colon, control
+characters or `<>"|?*`; no Windows device names (`CON`, `NUL`, `COM1`... with any
+extension); no trailing dot or space; NFC only; each component at most 255 UTF-8 bytes;
+two paths that are equal after NFC and case folding collide, and a file and a directory
+of the same name cannot coexist. Sizes of the layout and every mod file count against a
+256 MiB total; a manifest has at most 64 mods and 512 files per mod. The provisioner
+still has to resolve real paths and refuse symlinks and reparse points when it writes.
 
 ## What this does not do
 
 - It does not stop a user from adding their own mods, or running another Herdr
   instance (ADR-0026 decision 4: drift is a diagnostic signal).
-- Revocation is as fresh as the last revocation list the client saw; the hard bound is
-  the manifest lifetime (24 h) and the certificate lifetime (30 days by default).
+- The 24 h manifest lifetime bounds only the replay of a manifest someone already has.
+  If a **signing key is stolen**, the thief can sign fresh manifests until the
+  certificate expires (at most 90 days, 30 by default) unless the client has a current
+  revocation list; use `require_crl` to make that bound `next_update` instead, and raise
+  the epoch to recover. A cold-start client that is shown only a late, empty list cannot
+  tell it from a clean history: the bootstrap floors close that gap.
 - A compromised root key is recovered only by re-pinning a new root on every client
-  (reinstall or MDM push). Keeping the root offline is the mitigation.
+  (reinstall or MDM push). Keeping the root offline is an **operating rule**, not
+  something the code can enforce: `root-init` and `issue-*` will run anywhere. The
+  server installer must therefore accept only the root *public* key and an
+  offline-issued certificate, and must never be given the root private key.
+- It assumes the pinned root public key itself was installed by a trusted channel
+  (installer / MDM). The older `wellknown` endpoint and CLI are not yet migrated to
+  this module.
 - Authorisation is not in the manifest. The server re-checks person, tenant and role on
   every call (ADR-0026 decision 5); a valid manifest grants nothing by itself.
 

@@ -10,10 +10,51 @@
           null
         ]
       }
+    },
+    {
+      "bytes": "{\"\\ud800\\udc00\":2,\"\\ue000\":1}",
+      "input": {
+        "\ue000": 1,
+        "\ud800\udc00": 2
+      }
+    },
+    {
+      "bytes": "{\"10\":1,\"2\":3,\"9\":2}",
+      "input": {
+        "10": 1,
+        "2": 3,
+        "9": 2
+      }
+    },
+    {
+      "bytes": "{\"s\":\"x\\n\\t\\\"\\\\\\u0001\\u007f\\u2028\"}",
+      "input": {
+        "s": "x\n\t\"\\\u0001\u007f\u2028"
+      }
+    },
+    {
+      "bytes": "{\"n\":[0,-1,9007199254740991,-9007199254740991]}",
+      "input": {
+        "n": [
+          0,
+          -1,
+          9007199254740991,
+          -9007199254740991
+        ]
+      }
+    },
+    {
+      "bytes": "{}",
+      "input": {}
+    },
+    {
+      "bytes": "[]",
+      "input": []
     }
   ],
   "cert": {
     "payload": {
+      "epoch": 1,
       "issuer_kid": "34750f98bd59fcfc946da45aaabe933b",
       "kid": "6a3803d5f059902a1c6dafbc9ba47292",
       "not_after": 1802592000,
@@ -23,20 +64,21 @@
       "typ": "fab-signing-cert",
       "v": 1
     },
-    "sig": "tQ7/Owf6mCfmwyB4yp3TaMwFhec6jV64GigK+HlZeYrpcIiRphy0eAiSw6CcMha3ybXrHwUqsVpwOmlav30rAQ=="
+    "sig": "4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA=="
   },
   "crl": {
     "payload": {
       "issued_at": 1800000000,
+      "next_update": 1800086400,
       "number": 3,
       "revoked_kids": [
-        "aa",
-        "bb"
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       ],
       "typ": "fab-crl",
       "v": 1
     },
-    "sig": "QndeyUiWEgOwWGiw83idMD5+uv3QkGYKR8N+Jqoh4XkMjuOyogjYeM8JjXD15cdY1LMSuHyCdTP8MTTplQk+Dw=="
+    "sig": "SfcogH87K/R0qbRYrJdpUkvILzrUXQSWLPR33EvKcXxEgPDUXI3E2zNl84shww8y4wjBM9ijYK+VJhpgK1bCBA=="
   },
   "expected": {
     "aud": "herdr-provisioner",
@@ -47,6 +89,7 @@
   "manifest": {
     "cert": {
       "payload": {
+        "epoch": 1,
         "issuer_kid": "34750f98bd59fcfc946da45aaabe933b",
         "kid": "6a3803d5f059902a1c6dafbc9ba47292",
         "not_after": 1802592000,
@@ -56,7 +99,7 @@
         "typ": "fab-signing-cert",
         "v": 1
       },
-      "sig": "tQ7/Owf6mCfmwyB4yp3TaMwFhec6jV64GigK+HlZeYrpcIiRphy0eAiSw6CcMha3ybXrHwUqsVpwOmlav30rAQ=="
+      "sig": "4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA=="
     },
     "payload": {
       "aud": "herdr-provisioner",
@@ -67,7 +110,8 @@
       "issued_at": 1799999940,
       "layout": {
         "id": "finance-v2",
-        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "size": 50
       },
       "min_client_version": "1.0.0",
       "mods": [
@@ -87,11 +131,20 @@
       "typ": "fab-workspace-manifest",
       "v": 1
     },
-    "sig": "ptCI4FnEmd6SNyv0WoEE3wdyVslKyYAVUQ6R2FOPPK3855s8lPmTu7H5xLEg6+rgZtSdxCBVMwtMO59FJxxUCg=="
+    "sig": "fUgosbUCRyKVtQ1lz8Syqepuwuh5N/LUArZAKhNrHZhNSOXEhQRaFqnjavKBPK9wueBlSioBSA5EVC8jjWKUAA=="
   },
-  "manifest_digest": "5c229f897083763c0017da11187784b03df4de9983c7d54954bf1b63a7b74d71",
-  "note": "Ed25519 is deterministic; keys are fixed-seed test keys. A second implementation must verify these.",
+  "manifest_digest": "8fd6133955b9cb670777ab395a647d5ee089daa13e197626b22997ec2989d750",
+  "note": "Ed25519 is deterministic and keys are fixed-seed test keys; a second implementation must reproduce every value here.",
   "now": 1800000000,
+  "reject_wire": [
+    "{\"a\":1,\"a\":2}",
+    "{\"a\":1.0}",
+    "{\"a\":1e0}",
+    "{\"a\":-0}",
+    "{\"a\":NaN}",
+    "{\"a\":9007199254740992}",
+    "{\"a\":\"\\ud800\"}"
+  ],
   "root_pub": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w=",
   "signing_pub": "gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q="
 }
