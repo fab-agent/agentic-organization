@@ -7,8 +7,10 @@ What the policy engine executes from a Policy's markdown body, and what it refus
 ## Executable blocks
 
 Fences with the info string `policy`, `json` or `yaml` (case-insensitive) are
-executed. Each must be **closed**, must **parse** (JSON first, then YAML), and must
-hold a **list of rule objects**. A rule has `match` (an object) and `effect`
+executed. Each must be **closed** and must **parse** (JSON first, then YAML). A
+block that parses to a list yields its rule objects; a `policy` block must be a
+list (an empty block is fine). Parsed `json`/`yaml` data that is not rule-shaped is
+not a rule block (see "Not executed"). A rule has `match` (an object) and `effect`
 (`allow`, `ask`, `deny`); `match` may have `tool`, `provenance`, `source`, `args`,
 `command`.
 
@@ -27,7 +29,10 @@ Anything else in an executable fence is a *problem*, not a skipped block:
 At **save time** (`POST/PUT /policies`, change-request `content`) a policy with
 problems is refused with `422 malformed_policy`. At **runtime** a stored policy with
 problems makes every decision for the personas it applies to a fail-closed deny, in
-every mode, until it is fixed. It never silently loses rules.
+every mode except `off` (which skips the engine on purpose), until it is fixed. It
+never silently loses rules. A leading byte-order mark is ignored; any other U+FEFF is
+data and is never removed. Problem texts name the kind and rule position (`rule #2`),
+never ids, effects or other policy text.
 
 ## Not executed
 
@@ -52,5 +57,5 @@ would fail closed:
 
     cd backend && python scripts/policy_inventory.py
 
-It is read-only and prints ids, names and problems, never policy text. Fix a listed
+It only reads (SELECT; for production use a read-only database role) and prints policy ids, names and problem kinds with rule positions, never policy text. Fix a listed
 policy by repairing its block or moving prose to a ` ```text ` fence.

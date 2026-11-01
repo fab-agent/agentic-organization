@@ -591,7 +591,6 @@ _YAML_RULE = "- id: r\n  match: {tool: probe}\n  effect: deny\n  reason: no"
         "---\n",
         "# note\n---\n",
         "\ufeff# note\n   \n",
-        "# note\n\ufeff  \n",
         "%YAML 1.1\n%TAG ! tag:example.com,2026:\n---\n",
     ],
 )
@@ -683,3 +682,75 @@ def test_policy_inventory_reports_malformed_without_printing_text(db_session, ca
     assert policy_inventory.main() == 1
     out = capsys.readouterr().out
     assert "bad" in out and "good" not in out and "broken" not in out
+
+
+# ── round 6: BOM only at the start; string data untouched; value-free problems ─
+
+
+@pytest.mark.parametrize("fence", ["json", "yaml"])
+def test_literal_and_escaped_feff_in_a_string_give_the_same_verdict(fence):
+    lit = "A\ufeffB"
+    if fence == "json":
+        lit_body = '[{"id": "r", "match": {"tool": "probe", "args": {"payload": "%s"}}, "effect": "deny"}]'
+        bodies = [lit_body % lit, lit_body % "A\\ufeffB"]
+    else:
+        y = '- id: r\n  match: {tool: probe, args: {payload: "%s"}}\n  effect: deny'
+        bodies = [y % lit, y % "A\\ufeffB"]
+    for b in bodies:
+        rules, problems = pe.parse_policy_content(_fenced(fence, b))
+        assert problems == []
+        assert rules[0]["match"]["args"]["payload"] == lit
+
+
+def test_mid_block_bom_never_becomes_a_silent_allow():
+    for body in ("# note\n\ufeff  \n" + _YAML_RULE, "x: 1\n\ufeff" + _YAML_RULE):
+        v = _verdict(_fenced("yaml", body))
+        assert (v.effect == "deny") or pe.validate_policy_content(
+            _fenced("yaml", body)
+        ) == []
+
+
+def test_numeric_yaml_args_key_is_rejected_at_save_and_denied_at_runtime():
+    body = "- id: r\n  match:\n    tool: probe\n    args:\n      1: '*'\n  effect: deny"
+    assert pe.validate_policy_content(_fenced("yaml", body))
+    rules = pe.load_ruleset([_fenced("yaml", body)])
+    d = pe.evaluate(
+        pe.PolicyDecisionRequest(tool="probe", args={"x": "y"}),
+        rules,
+        default_effect="allow",
+    )
+    assert d.effect == "deny" and d.fail_closed
+
+
+def test_validation_problems_never_echo_policy_text(db_session, capsys):
+    import json as _json
+    import sys
+
+    import models
+    from scripts import policy_inventory
+    from tests.conftest import make_company
+
+    body = _json.dumps(
+        [
+            {
+                "id": "BODY_ID_SENTINEL",
+                "match": {"tool": "p"},
+                "effect": "BODY_VALUE_SENTINEL",
+                "reason": "BODY_REASON_SENTINEL",
+            }
+        ]
+    )
+    content = _fenced("policy", body)
+    for text in pe.validate_policy_content(content):
+        assert "SENTINEL" not in text
+    co = make_company(db_session)
+    db_session.add(
+        models.Policy(
+            company_id=co.id, scope="company", name="p-name", slug="p", content=content
+        )
+    )
+    db_session.commit()
+    for argv in (["policy_inventory.py"], ["policy_inventory.py", "--json"]):
+        sys.argv = argv
+        assert policy_inventory.main() == 1
+        assert "SENTINEL" not in capsys.readouterr().out

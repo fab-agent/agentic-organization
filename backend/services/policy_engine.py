@@ -316,6 +316,8 @@ def _match_rule(
         if not isinstance(arg_spec, dict):
             raise _RuleError("'match.args' must be an object")
         for key_glob, pat in arg_spec.items():
+            if not isinstance(key_glob, str):
+                raise _RuleError("'match.args' keys must be text")
             patterns = _as_patterns(pat)
             candidates = [
                 str(v)
@@ -507,7 +509,7 @@ def _rule_schema_problem(rule: dict) -> str | None:
         if "match" not in rule or "effect" not in rule:
             raise _RuleError("rule needs 'match' and 'effect'")
         if rule["effect"] not in VALID_EFFECTS:
-            raise _RuleError(f"invalid effect: {rule['effect']!r}")
+            raise _RuleError("invalid effect")
         match = rule["match"]
         if not isinstance(match, dict):
             raise _RuleError("'match' must be an object")
@@ -517,7 +519,9 @@ def _rule_schema_problem(rule: dict) -> str | None:
         if arg_spec:
             if not isinstance(arg_spec, dict):
                 raise _RuleError("'match.args' must be an object")
-            for pat in arg_spec.values():
+            for key, pat in arg_spec.items():
+                if not isinstance(key, str):
+                    raise _RuleError("'match.args' keys must be text")
                 _as_patterns(pat)
         if "command" in match:
             spec = match["command"]
@@ -573,7 +577,9 @@ def parse_policy_content(content: str) -> tuple[list[dict], list[str]]:
     for fence, body, terminated in _tokenize_fences(text):
         if fence not in _EXECUTABLE_FENCES:
             continue
-        body = body.replace("\ufeff", "").strip()
+        body = body.lstrip(
+            "\ufeff"
+        ).strip()  # leading BOM only; never touch string data
         if len(body.encode("utf-8", "ignore")) > MAX_POLICY_BLOCK_BYTES:
             problems.append("block too large")
             continue
@@ -611,10 +617,11 @@ def validate_policy_content(content: str) -> list[str]:
     """Problems that would make the policy fail closed at runtime, found without
     evaluating it; empty = fine. Used to reject a bad policy when it is saved."""
     rules, problems = parse_policy_content(content)
-    for r in rules:
+    for i, r in enumerate(rules, 1):
         why = _rule_schema_problem(r)
         if why:
-            problems.append(f"rule {str(r.get('id', '?'))[:60]}: {why}")
+            # Index, not id/value: problems must never echo policy text.
+            problems.append(f"rule #{i}: {why}")
     return problems
 
 
