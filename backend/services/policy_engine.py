@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import fnmatch
 import json
-import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -453,70 +452,113 @@ def _malformed_block_rule(why: str) -> dict:
 
 
 MAX_POLICY_BLOCK_BYTES = 64 * 1024  # one executable block; bounds parse cost
-
-_OPEN_FENCE = re.compile(r"^ {0,3}(`{3,})[ \t]*([^`]*?)[ \t]*$")
+MAX_POLICY_DOC_BYTES = 1024 * 1024  # a whole policy document
+MAX_POLICY_RULES = 500
 _EXECUTABLE_FENCES = ("policy", "json", "yaml")
+
+
+def _backtick_run(line: str) -> tuple[int, str]:
+    """(count, rest) for a line that starts with up to 3 spaces + backticks.
+    Single linear pass; no regex, so no backtracking on hostile input."""
+    i = 0
+    while i < len(line) and i < 3 and line[i] == " ":
+        i += 1
+    j = i
+    while j < len(line) and line[j] == "`":
+        j += 1
+    return j - i, line[j:]
 
 
 def _tokenize_fences(text: str):
     """
     Yield `(info, body, terminated)` for each top-level fenced block, CommonMark
     style: an opener is a line of >=3 backticks (at most 3 spaces of indent) plus
-    an info string; the closer is a line of >=as many backticks and nothing else.
-    Backticks inside a line (e.g. in a JSON string) never close a block, and a
-    block opened by a non-executable info string (```text, a longer outer fence)
-    swallows its content, so documentation examples are not executed.
+    an info string without backticks; the closer is a line of >=as many backticks
+    and nothing else. Backticks inside a line (e.g. in a JSON string) never close
+    a block, and a block opened by a non-executable info string (```text, a longer
+    outer fence) swallows its content, so documentation examples are not executed.
+    Only backtick fences are recognised (no tilde fences, list or quote context).
     """
     lines = text.splitlines()
     i = 0
     while i < len(lines):
-        m = _OPEN_FENCE.match(lines[i])
-        if not m:
+        n, rest = _backtick_run(lines[i])
+        if n < 3 or "`" in rest:
             i += 1
             continue
-        n, info = len(m.group(1)), (m.group(2).split() or [""])[0].lower()
-        closer = re.compile(r"^ {0,3}`{" + str(n) + r",}[ \t]*$")
+        words = rest.split()
+        info = words[0].lower() if words else ""
         j = i + 1
-        while j < len(lines) and not closer.match(lines[j]):
+        while j < len(lines):
+            m, tail = _backtick_run(lines[j])
+            if m >= n and not tail.strip():
+                break
             j += 1
         terminated = j < len(lines)
         yield info, "\n".join(lines[i + 1 : j]), terminated
         i = j + 1
 
 
+def _significant_start(body: str) -> str:
+    """First meaningful character: BOM, blank lines and `#` comment lines skipped."""
+    body = body.lstrip("\ufeff")
+    for line in body.splitlines():
+        t = line.strip().lstrip("\ufeff")
+        if t and not t.startswith("#"):
+            return t[0]
+    return ""
+
+
 def _block_is_rule_attempt(fence: str, body: str) -> bool:
     """For ```json / ```yaml: a block that *starts like a rule list* is a rule
     attempt. Prose objects (`{...}`) that do not parse are documentation."""
-    first = body.lstrip()[:1]
-    return first in ("[",) or (fence == "yaml" and first == "-")
+    first = _significant_start(body)
+    return first == "[" or (fence == "yaml" and first == "-")
 
 
-def _parse_rules_from_markdown(content: str) -> list[dict]:
+def _rule_schema_problem(rule: dict) -> str | None:
+    """Static check equal to what `_match_rule` raises on, so a policy that would
+    fail closed at runtime is caught when it is saved."""
+    if "match" not in rule or "effect" not in rule:
+        return "rule needs 'match' and 'effect'"
+    if rule["effect"] not in VALID_EFFECTS:
+        return f"invalid effect: {rule['effect']!r}"
+    if not isinstance(rule["match"], dict):
+        return "'match' must be an object"
+    return None
+
+
+def parse_policy_content(content: str) -> tuple[list[dict], list[str]]:
     """
-    Extract rules from fenced blocks in a Policy body. Contract (ADR-0026):
+    `(rules, problems)` from a Policy body. Contract (ADR-0026):
 
     - ```policy is executable by declaration. Anything but a closed block holding a
-      JSON/YAML *list of rule objects* adds a fail-closed rule (never a silent drop).
+      JSON/YAML *list of rule objects* is a problem.
     - ```json / ```yaml are executable when they parse to a list (same checks), and
-      malformed when they start like a rule list but do not parse/terminate, or
-      parse to a rule-shaped object (has `match`/`effect`) outside a list. Other
-      JSON/YAML (prose examples) is ignored. The decision uses the parsed
-      structure, never raw text.
-    - Info strings are case-insensitive. Fences are line-based (see
-      `_tokenize_fences`); other info strings are documentation and skipped.
-    - A block above MAX_POLICY_BLOCK_BYTES is malformed (bounds evaluation cost).
+      a problem when they start like a rule list (BOM, blank and `#` lines skipped)
+      but do not parse/terminate, or parse to a rule-shaped object (has
+      `match`/`effect`) outside a list. Other JSON/YAML (prose) is ignored. The
+      decision uses the parsed structure, never raw text.
+    - Info strings are case-insensitive; other info strings are documentation.
+    - Limits: document, block and rule count (bounds evaluation cost).
+    Problems are typed separately from user rules, so a user rule id can never
+    be mistaken for a parse error.
     """
     rules: list[dict] = []
-    for fence, body, terminated in _tokenize_fences(content or ""):
+    problems: list[str] = []
+    text = content or ""
+    if len(text.encode("utf-8", "ignore")) > MAX_POLICY_DOC_BYTES:
+        return rules, ["policy document too large"]
+    for fence, body, terminated in _tokenize_fences(text):
         if fence not in _EXECUTABLE_FENCES:
             continue
-        body = body.strip()
+        body = body.lstrip("\ufeff").strip()
         if len(body.encode("utf-8", "ignore")) > MAX_POLICY_BLOCK_BYTES:
-            rules.append(_malformed_block_rule("block too large"))
+            problems.append("block too large")
             continue
         if not terminated:
             if fence == "policy" or _block_is_rule_attempt(fence, body):
-                rules.append(_malformed_block_rule("unterminated block"))
+                problems.append("unterminated block")
             continue
         try:
             parsed = json.loads(body)
@@ -524,28 +566,37 @@ def _parse_rules_from_markdown(content: str) -> list[dict]:
             parsed = _loose_yaml_list(body)
         if isinstance(parsed, list):
             for r in parsed:
-                rules.append(
-                    r
-                    if isinstance(r, dict)
-                    else _malformed_block_rule("non-object rule")
-                )
+                if not isinstance(r, dict):
+                    problems.append("non-object rule")
+                else:
+                    rules.append(r)
         elif fence == "policy":
-            rules.append(_malformed_block_rule("not a list of rules"))
+            problems.append("not a list of rules")
         elif isinstance(parsed, dict) and ("match" in parsed or "effect" in parsed):
-            rules.append(_malformed_block_rule("rule object outside a list"))
+            problems.append("rule object outside a list")
         elif parsed is None and _block_is_rule_attempt(fence, body):
-            rules.append(_malformed_block_rule("unparseable rule list"))
-    return rules
+            problems.append("unparseable rule list")
+    if len(rules) > MAX_POLICY_RULES:
+        problems.append("too many rules")
+    return rules, problems
+
+
+def _parse_rules_from_markdown(content: str) -> list[dict]:
+    """Rules for the evaluator: user rules plus one fail-closed sentinel per
+    problem, so a broken policy denies instead of silently losing rules."""
+    rules, problems = parse_policy_content(content)
+    return [*rules, *(_malformed_block_rule(p) for p in problems)]
 
 
 def validate_policy_content(content: str) -> list[str]:
-    """Problems that would make the policy fail closed at runtime; empty = fine.
-    Used to reject a bad policy when it is saved (ADR-0026)."""
-    return [
-        r["reason"]
-        for r in _parse_rules_from_markdown(content)
-        if r.get("id") == "malformed-policy-block"
-    ]
+    """Problems that would make the policy fail closed at runtime, found without
+    evaluating it; empty = fine. Used to reject a bad policy when it is saved."""
+    rules, problems = parse_policy_content(content)
+    for r in rules:
+        why = _rule_schema_problem(r)
+        if why:
+            problems.append(f"rule {str(r.get('id', '?'))[:60]}: {why}")
+    return problems
 
 
 def _loose_yaml_list(block: str) -> Any:

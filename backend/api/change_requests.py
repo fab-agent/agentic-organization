@@ -78,6 +78,15 @@ def _validate_proposed(
         p = harness.parse_proposal(proposed)
         harness.check_target(session, company_id, p, personnel_id)
         return
+    if change_type == "policy" and isinstance(proposed.get("content"), str):
+        from services.policy_engine import validate_policy_content
+
+        problems = validate_policy_content(proposed["content"])
+        if problems:
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "malformed_policy", "problems": problems},
+            )
     dept_id = proposed.get("department_id")
     if dept_id is not None:
         dept = session.get(Department, dept_id)

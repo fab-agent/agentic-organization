@@ -477,3 +477,95 @@ def test_save_time_guard_rejects_malformed_policy():
     with pytest.raises(HTTPException) as e:
         _reject_malformed("```policy\n[{broken\n```")
     assert e.value.status_code == 422
+
+
+# ── round 4: linear-time opener, BOM/comment starts, typed problems ──────────
+
+
+def test_hostile_opener_lines_are_linear_time():
+    import time
+
+    def cost(n):
+        t = time.perf_counter()
+        pe.load_ruleset(["```" + " " * n + "`"])
+        pe.validate_policy_content("```" + " " * n + "`\n" + "``` " * n)
+        return time.perf_counter() - t
+
+    cost(64)  # warm up
+    assert cost(20000) < 0.5  # was ~1.3 s at n=1024 with the old regex
+
+
+def test_oversized_document_is_a_problem():
+    big = "x" * (pe.MAX_POLICY_DOC_BYTES + 1)
+    assert pe.validate_policy_content(big) == ["policy document too large"]
+    v = _verdict(big)
+    assert v.effect == "deny" and v.fail_closed
+
+
+def test_too_many_rules_is_a_problem():
+    rules = ",".join(
+        ['{"match":{"tool":"z"},"effect":"allow"}'] * (pe.MAX_POLICY_RULES + 1)
+    )
+    assert "too many rules" in pe.validate_policy_content(
+        _fenced("policy", f"[{rules}]")
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "\ufeff[{broken",
+        '\ufeff[{"match":{"tool":"probe"},"effect":"deny"}',
+        "# note\n- match: {tool: probe}\n  effect: deny",
+        "# note\n- match: [broken\n  effect: deny",
+    ],
+)
+@pytest.mark.parametrize("fence", ["json", "yaml"])
+def test_bom_or_comment_prefixed_broken_or_unterminated_lists_fail_closed(fence, body):
+    if fence == "json" and body.startswith("#"):
+        pytest.skip("comment lines are a YAML feature")
+    # unterminated variant
+    v = _verdict(f"```{fence}\n{body}")
+    assert v.effect == "deny" and v.fail_closed
+    # closed + broken variant (skip the ones that are valid when closed)
+    closed = _verdict(f"```{fence}\n{body}\n```")
+    if "broken" in body or body.rstrip().endswith('"deny"}'):
+        assert closed.effect == "deny" and closed.fail_closed
+
+
+def test_bom_prefixed_valid_list_executes():
+    assert _is_rule_deny(_fenced("json", _DENY.join(["\ufeff", ""])))
+    assert _is_rule_deny(
+        _fenced(
+            "yaml",
+            "# header\n- id: r\n  match: {tool: probe}\n  effect: deny\n  reason: no",
+        )
+    )
+
+
+def test_user_rule_with_sentinel_id_is_not_a_parse_error():
+    body = '[{"id": "malformed-policy-block", "match": {"tool": "probe"}, "effect": "deny"}]'
+    assert pe.validate_policy_content(_fenced("policy", body)) == []
+    v = _verdict(_fenced("policy", body))
+    assert v.effect == "deny" and not v.fail_closed
+
+
+def test_save_time_schema_check_matches_runtime():
+    bad_effect = '[{"id": "r", "match": {"tool": "p"}, "effect": "kaboom"}]'
+    no_match = '[{"id": "r", "effect": "deny"}]'
+    bad_match = '[{"id": "r", "match": "p", "effect": "deny"}]'
+    for body in (bad_effect, no_match, bad_match):
+        assert pe.validate_policy_content(_fenced("policy", body)), body
+        v = _verdict(_fenced("policy", body))
+        assert v.effect == "deny" and v.fail_closed
+
+
+def test_change_request_rejects_malformed_policy_content():
+    from fastapi import HTTPException
+
+    from api.change_requests import _validate_proposed
+
+    _validate_proposed(None, "c", {"content": "plain prose"}, "policy")
+    with pytest.raises(HTTPException) as e:
+        _validate_proposed(None, "c", {"content": "```policy\n[{broken\n```"}, "policy")
+    assert e.value.status_code == 422
