@@ -109,13 +109,16 @@ def _read_fd(
         fd = os.open(name, _O_FILE, dir_fd=dir_fd)
     except OSError as e:
         raise WorkspaceUnavailable("file_unreadable") from e
-    with os.fdopen(fd, "rb") as f:
-        st = os.fstat(f.fileno())
-        if not stat.S_ISREG(st.st_mode) or st.st_size > limit or st.st_nlink != 1:
-            raise WorkspaceUnavailable("file_invalid")
-        if private and (st.st_mode & 0o077 or st.st_uid != os.geteuid()):
-            raise WorkspaceUnavailable("signing_key_permissions")
-        data = f.read(limit + 1)
+    try:
+        with os.fdopen(fd, "rb") as f:
+            st = os.fstat(f.fileno())
+            if not stat.S_ISREG(st.st_mode) or st.st_size > limit or st.st_nlink != 1:
+                raise WorkspaceUnavailable("file_invalid")
+            if private and (st.st_mode & 0o077 or st.st_uid != os.geteuid()):
+                raise WorkspaceUnavailable("signing_key_permissions")
+            data = f.read(limit + 1)
+    except OSError as e:  # fstat / read / close failing is an IO fault, not a crash
+        raise WorkspaceUnavailable("file_unreadable") from e
     if len(data) > limit:
         raise WorkspaceUnavailable("file_invalid")
     return data
@@ -231,6 +234,8 @@ def load_signer(now: int) -> Signer:
             raise WorkspaceUnavailable(f"signing_{e.code}") from e
         except (ValueError, TypeError, UnicodeDecodeError) as e:
             raise WorkspaceUnavailable("signing_material_invalid") from e
+        except OSError as e:
+            raise WorkspaceUnavailable("file_unreadable") from e
         if wm.key_id(pub) != cp["kid"]:
             raise WorkspaceUnavailable("signing_key_cert_mismatch")
 
@@ -249,6 +254,23 @@ def load_signer(now: int) -> Signer:
         return Signer(priv, cert, root_pub, cp["epoch"], cp["kid"], crl, crl_number)
     finally:
         os.close(root_fd)
+
+
+def _parse_highwater(value: object) -> int:
+    """ASCII decimal within the protocol's safe-integer range, or an error. (str.isdigit
+    accepts characters int() rejects, and a very long digit string trips Python's
+    int-conversion limit - both used to escape as a 500.)"""
+    if (
+        not isinstance(value, str)
+        or not value.isascii()
+        or not value.isdigit()
+        or not 1 <= len(value) <= 16
+    ):
+        raise WorkspaceUnavailable("crl_highwater_invalid")
+    n = int(value)
+    if n > _SAFE_MAX_GENERATION:
+        raise WorkspaceUnavailable("crl_highwater_invalid")
+    return n
 
 
 def enforce_crl_highwater(session, signer: Signer) -> None:
@@ -275,9 +297,7 @@ def enforce_crl_highwater(session, signer: Signer) -> None:
                 except IntegrityError:
                     session.rollback()
                     continue
-            if not row.value.isdigit():  # corrupt state is not "zero"
-                raise WorkspaceUnavailable("crl_highwater_invalid")
-            seen = int(row.value)
+            seen = _parse_highwater(row.value)  # corrupt state is not "zero"
             if new < seen:
                 raise WorkspaceUnavailable(
                     "crl_rollback" if signer.crl is not None else "crl_missing"
@@ -357,6 +377,10 @@ def _profile_from(d: object, pid: str, *, allow_match: bool = True) -> Profile:
         if not isinstance(version, str) or not wm._VERSION.fullmatch(version):
             raise _bad()
         mods.append((_name(m.get("name")), version))
+    if len({n for n, _v in mods}) != len(
+        mods
+    ):  # the manifest forbids a repeated mod name
+        raise _bad()
     mcv = d.get("min_client_version", "0.0.0")
     if not isinstance(mcv, str) or not wm._VERSION.fullmatch(mcv):
         raise _bad()
@@ -384,8 +408,12 @@ def _load_profiles(root_fd: int) -> dict:
         raise _bad()
     # Validate the whole file, not only the entry this person happens to reach: a broken
     # `defaults` or a later profile is a configuration error for everyone.
+    ids: set[str] = set()
     for i, p in enumerate(doc.get("profiles", [])):
-        _validate_profile(p, f"profile-{i}")
+        prof = _validate_profile(p, f"profile-{i}")
+        if prof.id in ids or prof.id == "default":  # audit reasons must be unambiguous
+            raise _bad()
+        ids.add(prof.id)
     if "defaults" in doc:
         _profile_from(doc["defaults"], "default", allow_match=False)
     return doc
@@ -401,16 +429,17 @@ def person_context(session, user_id: str, person: Personnel, company_id: str) ->
     ids = _department_chain(session, person.department_id)
 
     def counts(m) -> bool:
-        if m.scope_id is None or m.scope_id in ids:
-            return True
-        if (
-            m.role == "agent_owner"
-        ):  # scoped to an AGENT of this company (authz.scope_valid)
+        if m.role == "agent_owner":
+            # Only a membership scoped to an AGENT of this company counts
+            # (authz.scope_valid). A null, department or human scope is invalid for this
+            # role, so it must not pass as a general company or department scope below.
+            if not m.scope_id:
+                return False
             agent = session.get(Personnel, m.scope_id)
             return bool(
                 agent and agent.type == "agent" and agent.company_id == company_id
             )
-        return False
+        return m.scope_id is None or m.scope_id in ids
 
     roles = {
         m.role

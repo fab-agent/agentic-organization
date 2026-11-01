@@ -1315,3 +1315,124 @@ def test_agent_owner_scoped_to_a_human_or_foreign_agent_does_not_match(
         _get(client, people["emp_user"]).json()["manifest"]["payload"]["layout"]["id"]
         == "finance-v2"
     )
+
+
+# ── CODEX-ME-WORKSPACE3 ──────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "bad", ["²", "9" * 5000, "", "-1", "1.5", " 7", "٣", "9" * 17, str(2**53)]
+)
+def test_odd_highwater_values_are_a_503_never_a_500(
+    client, env, people, db_session, bad
+):
+    from models import AppConfig
+
+    _put_crl(env, 3)
+    db_session.add(AppConfig(key="workspace.crl_highwater", value=bad))
+    db_session.commit()
+    assert _reason(_get(client, people["emp_user"])) == "crl_highwater_invalid"
+    assert (
+        _reason(client.get("/me/workspace/crl", headers=_h(people["emp_user"])))
+        == "crl_highwater_invalid"
+    )
+
+
+def test_highwater_accepts_the_largest_safe_value(db_session):
+    from models import AppConfig
+
+    db_session.add(AppConfig(key="workspace.crl_highwater", value=str(2**53 - 1)))
+    db_session.commit()
+    ws.enforce_crl_highwater(db_session, _signer(2**53 - 1))  # equal: fine, no write
+
+
+@pytest.mark.parametrize("which", ["root.pub", "signing.key", "signing.cert.json"])
+def test_io_error_on_signing_material_is_a_503(
+    client, env, people, db_session, monkeypatch, which
+):
+    real = ws.os.fstat
+    target = {}
+
+    real_open = ws.os.open
+
+    def tracking_open(path, flags, *a, **k):
+        fd = real_open(path, flags, *a, **k)
+        target[fd] = path
+        return fd
+
+    def failing(fd):
+        if target.get(fd) == which:
+            raise OSError(5, "Input/output error")
+        return real(fd)
+
+    monkeypatch.setattr(ws.os, "open", tracking_open)
+    monkeypatch.setattr(ws.os, "fstat", failing)
+    assert _reason(_get(client, people["emp_user"])) == "file_unreadable"
+    assert (
+        _reason(client.get("/me/workspace/crl", headers=_h(people["emp_user"])))
+        == "file_unreadable"
+    )
+    assert _nothing_issued(db_session)
+
+
+def test_repeated_mod_in_any_profile_is_rejected_even_if_not_selected(
+    client, env, people, db_session
+):
+    dup = {"name": "finance-dashboard", "version": "1.2.0"}
+    env.profiles["profiles"][1]["mods"] = [dup, dup]
+    env.write_profiles()
+    assert _reason(_get(client, people["emp_user"])) == "profiles_invalid"
+    env.profiles["profiles"][1]["mods"] = [
+        dup,
+        {"name": "finance-dashboard", "version": "9.9.9"},
+    ]
+    env.write_profiles()
+    assert _reason(_get(client, people["emp_user"])) == "profiles_invalid"
+    env.profiles["profiles"][1]["mods"] = []
+    env.profiles["defaults"]["mods"] = [dup, dup]
+    env.write_profiles()
+    assert _reason(_get(client, people["emp_user"])) == "profiles_invalid"
+    assert _nothing_issued(db_session)
+
+
+def test_profile_ids_must_be_unique_and_not_the_reserved_default(client, env, people):
+    env.profiles["profiles"][1]["id"] = "finance"
+    env.write_profiles()
+    assert _reason(_get(client, people["emp_user"])) == "profiles_invalid"
+    env.profiles["profiles"][1]["id"] = "default"
+    env.write_profiles()
+    assert _reason(_get(client, people["emp_user"])) == "profiles_invalid"
+
+
+@pytest.mark.parametrize("scope", ["none", "department", "human"])
+def test_an_invalid_agent_owner_membership_counts_for_nothing(
+    client, env, people, db_session, scope
+):
+    env.profiles["profiles"].insert(
+        0,
+        {
+            "id": "owners",
+            "match": {"roles": ["agent_owner"]},
+            "layout": "terminals",
+            "mods": [],
+        },
+    )
+    env.write_profiles()
+    value = {
+        "none": None,
+        "department": people["fin"].id,
+        "human": people["founder"].id,
+    }[scope]
+    db_session.add(
+        CompanyMember(
+            user_id=people["emp_user"].id,
+            company_id=people["co"].id,
+            role="agent_owner",
+            scope_id=value,
+        )
+    )
+    db_session.commit()
+    assert (
+        _get(client, people["emp_user"]).json()["manifest"]["payload"]["layout"]["id"]
+        == "finance-v2"
+    )

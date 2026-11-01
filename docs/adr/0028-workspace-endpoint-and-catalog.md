@@ -31,7 +31,8 @@ company the user is not a member of gets 404/403 and nothing is signed.
 
 **Profiles.** `catalog/profiles.json` has a closed schema (`v`, `profiles`, `defaults`;
 a profile is `id`, `match`, `layout`, `mods`, `min_client_version`; a mod is `name`,
-`version`): any unknown key or wrong type anywhere in the **whole file** is a
+`version`): any unknown key, wrong type, repeated mod name or repeated profile id (`default` is
+reserved) anywhere in the **whole file** is a
 configuration error (503 `profiles_invalid`) for everyone, not only for the person who
 would have matched that entry. The first profile whose `match` holds wins, else
 `defaults`, else no workspace. `match` keys (all must hold, each is any-of): `roles` (the
@@ -89,7 +90,7 @@ else `PUBLIC_BASE_URL` / `WORKSTATION_BASE_URL`). The request's `Host` and
 (`gateway_url_not_configured`) instead of guessing. It must be `https`.
 
 **Revocation list checkpoint.** `min_crl_number` in the bootstrap floors comes from the
-served `crl.json`. The server keeps the highest **valid** list number it has ever served
+served `crl.json`. The server keeps the highest **valid** list number it has ever accepted
 (`workspace.crl_highwater` in `AppConfig`) and raises it with a compare-and-set, so two
 processes can never lower each other's value; `/me/workspace` and `/me/workspace/crl` use
 the same checkpoint. Serving an older list is refused (`crl_rollback`), and so is serving
