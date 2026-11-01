@@ -54,6 +54,12 @@ re-issued manifest is never the "same generation, different content" conflict. A
 signing epoch restarts the count at 1; a server whose epoch is lower than the stored one
 refuses (misconfiguration or rollback).
 
+**Gateway URL.** The `gateway_url` the manifest signs tells the client where to send
+every model call, so it comes only from operator configuration (`workstation.base_url`,
+else `PUBLIC_BASE_URL` / `WORKSTATION_BASE_URL`). The request's `Host` and
+`X-Forwarded-*` headers are never used, and with nothing configured the endpoint refuses
+(`gateway_url_not_configured`) instead of guessing. It must be `https`.
+
 **Fail closed.** Any of: missing/invalid signing material, catalog or profile error,
 non-https gateway URL, audit write failure, generation contention -> `503
 workspace_unavailable` with a stable value-free `reason` and `Retry-After`, and no

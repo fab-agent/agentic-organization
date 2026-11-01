@@ -394,6 +394,7 @@ def test_unconfigured_server_signs_nothing(
 ):
     monkeypatch.setenv("WORKSPACE_DIR", str(tmp_path / "nowhere"))
     monkeypatch.delenv("WORKSPACE_ROOT_PUB", raising=False)
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://app.example.test")
     assert _reason(_get(client, people["emp_user"])) == "file_unreadable"
     assert _nothing_issued(db_session)
 
@@ -597,3 +598,45 @@ def test_stale_compare_and_set_does_not_reuse_a_generation(env, people, db_sessi
     got = ws.allocate_generation(db_session, co, pid, 1)
     db_session.exec = real_exec  # type: ignore[method-assign]
     assert got == 11  # retried from the new value, never 2
+
+
+# ── gateway_url comes from configuration only ────────────────────────────────
+
+
+def test_host_header_never_decides_the_signed_gateway_url(client, env, people):
+    r = client.get(
+        "/me/workspace",
+        headers={
+            **_h(people["emp_user"]),
+            "Host": "evil.example.test",
+            "X-Forwarded-Host": "evil.example.test",
+            "X-Forwarded-Proto": "https",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["manifest"]["payload"]["gateway_url"] == "https://app.example.test"
+
+
+def test_no_configured_gateway_url_signs_nothing_even_with_a_host_header(
+    client, env, people, db_session, monkeypatch
+):
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    monkeypatch.delenv("WORKSTATION_BASE_URL", raising=False)
+    r = client.get(
+        "/me/workspace", headers={**_h(people["emp_user"]), "Host": "evil.example.test"}
+    )
+    assert _reason(r) == "gateway_url_not_configured"
+    assert _nothing_issued(db_session)
+
+
+def test_database_setting_wins_over_the_environment(client, env, people, db_session):
+    from models import AppConfig
+
+    db_session.add(
+        AppConfig(key="workstation.base_url", value="https://configured.example.test/")
+    )
+    db_session.commit()
+    body = _get(client, people["emp_user"]).json()
+    assert (
+        body["manifest"]["payload"]["gateway_url"] == "https://configured.example.test"
+    )

@@ -6,12 +6,13 @@ membership. Nothing is signed unless the signing material and catalog are valid
 (503 `workspace_unavailable`, with a value-free reason).
 """
 
+import os
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from api.auth import get_current_user
-from api.well_known import public_base_url
+from api.well_known import _cfg
 from database import get_session
 from models import User
 from services import audit_chain
@@ -19,6 +20,20 @@ from services import workspace_service as ws
 from services.workspaces import person_for_user
 
 router = APIRouter(prefix="/me/workspace", tags=["workspace"])
+
+
+def configured_gateway_url(session) -> str:
+    """Where the signed manifest sends the client. Only operator configuration counts
+    (`workstation.base_url`, else PUBLIC_BASE_URL / WORKSTATION_BASE_URL): the Host header
+    of the request is never trusted for a value that is then signed (ADR-0028)."""
+    url = (
+        _cfg(session, "workstation.base_url")
+        or os.getenv("PUBLIC_BASE_URL", "")
+        or os.getenv("WORKSTATION_BASE_URL", "")
+    )
+    if not url:
+        raise ws.WorkspaceUnavailable("gateway_url_not_configured")
+    return url.rstrip("/")
 
 
 def _unavailable(e: ws.WorkspaceUnavailable) -> HTTPException:
@@ -31,11 +46,9 @@ def _unavailable(e: ws.WorkspaceUnavailable) -> HTTPException:
 
 @router.get("")
 def get_workspace(
-    request: Request,
     company_id: str | None = None,
     user: User = Depends(get_current_user),
 ):
-    base = public_base_url(request)
     with get_session() as session:
         person, cid = person_for_user(session, user, company_id)
         try:
@@ -44,7 +57,7 @@ def get_workspace(
                 user_id=user.id,
                 person=person,
                 company_id=cid,
-                gateway_url=base,
+                gateway_url=configured_gateway_url(session),
             )
         except ws.WorkspaceUnavailable as e:
             raise _unavailable(e) from e
