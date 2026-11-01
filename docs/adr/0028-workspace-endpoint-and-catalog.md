@@ -13,8 +13,9 @@ fail closed, keep tenants apart, and not become a way to reach other people's fi
 
 ## Decision
 
-**Endpoints** (all need a signed-in human session; the person is never taken from the
-request):
+**Endpoints** (all need a signed-in session; the person is never taken from the request,
+and the manifest and file endpoints also need a linked human person; the CRL endpoint
+only needs the session):
 
 - `GET /me/workspace?company_id=` -> `{manifest, bootstrap}`. `manifest` is the ADR-0027
   envelope; `bootstrap` is `{min_generation, min_epoch, min_crl_number}` for a client with
@@ -58,7 +59,12 @@ manifest (names, portable paths, counts, total size).
 in-process index keyed by a stat fingerprint of the profile's files (inode, size, mtime,
 ctime), so a download reads only profiles.json and the one requested file, and any
 change to a file is seen by the next request. The hash of the file actually read must
-still equal the requested one (`file_changed` otherwise). Rate limiting is a later slice.
+still equal the requested one (`file_changed` otherwise). Each request still `stat`s the
+profile's files, so n downloads cost n small metadata scans, and a cold cache or a changed
+catalog re-reads the profile once. Directory listings are read at most `limit + 1` entries
+at a time and the total number of entries visited for one profile is capped. The resolved
+profile *selection* is never cached, only the content index. Rate limiting is a later
+slice.
 
 **Signing material.** `root.pub` (or `WORKSPACE_ROOT_PUB`), `signing.key` (0600, owner
 only), `signing.cert.json`, optional `crl.json`. The server checks, on every issue, that
@@ -83,11 +89,15 @@ else `PUBLIC_BASE_URL` / `WORKSTATION_BASE_URL`). The request's `Host` and
 (`gateway_url_not_configured`) instead of guessing. It must be `https`.
 
 **Revocation list checkpoint.** `min_crl_number` in the bootstrap floors comes from the
-served `crl.json`, and the server keeps the highest list number it has ever served
-(`workspace.crl_highwater` in `AppConfig`): serving an older list is refused
-(`crl_rollback`), and so is serving none once one was published (`crl_missing`); a
-dangling or odd `crl.json` is `crl_invalid`, not "absent". The `GET /me/workspace/crl`
-endpoint needs a signed-in session but no company or linked person: the list is
+served `crl.json`. The server keeps the highest **valid** list number it has ever served
+(`workspace.crl_highwater` in `AppConfig`) and raises it with a compare-and-set, so two
+processes can never lower each other's value; `/me/workspace` and `/me/workspace/crl` use
+the same checkpoint. Serving an older list is refused (`crl_rollback`), and so is serving
+none once one was published (`crl_missing`); a dangling or odd `crl.json` is
+`crl_invalid`, not "absent", and a corrupt mark is `crl_highwater_invalid`, not zero. The
+mark is the highest root-signed list the server has accepted, not necessarily one a
+client has seen: if the root signed a wrong, too-high number, recovery is **not** to
+lower the mark but to publish a corrective list with a still higher number. The list is
 root-signed public metadata.
 
 **Fail closed.** Any of: missing/invalid signing material, catalog or profile error,
@@ -105,6 +115,10 @@ if the record cannot be written, because it hands out code to run.
 - A generation is consumed even if the response is lost or the audit write then fails;
   gaps are fine (the client only needs growth), and rolling the counter back would risk a
   duplicate.
+- A scoped `agent_owner` membership counts as that role when its scope is an agent of
+  the same company; with no relevant membership the person gets the plain `user` role
+  (a product default).
 - Not in this slice: the provisioner and TypeScript verifier, catalog/profile admin UI,
-  per-mod size accounting beyond the manifest limits, rate limiting of this endpoint,
-  caching of resolved profiles, migration of the old `wellknown` flow.
+  rate limiting of this endpoint, migration of the old `wellknown` flow. The revision
+  `a9d3c5e7f128` creates 64-bit columns from the start; it was never released with
+  32-bit ones, so no ALTER is needed.

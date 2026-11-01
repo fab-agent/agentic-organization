@@ -112,8 +112,13 @@ def get_workspace_file(
 
 @router.get("/crl")
 def get_workspace_crl(user: User = Depends(get_current_user)):
+    """The root-signed revocation list. Serving it goes through the same checkpoint as
+    the bootstrap floors, so this endpoint and /me/workspace can never disagree or
+    lower each other."""
     try:
         signer = ws.load_signer(int(time.time()))
+        with get_session() as session:
+            ws.enforce_crl_highwater(session, signer)
     except ws.WorkspaceUnavailable as e:
         raise _unavailable(e) from e
     if signer.crl is None:

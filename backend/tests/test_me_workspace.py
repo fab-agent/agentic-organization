@@ -491,7 +491,7 @@ def test_invalid_crl_signs_nothing(client, env, people, db_session):
         ),
         (
             lambda e: e.profiles["profiles"][0].__setitem__("layout", "../x"),
-            "layout_name_invalid",
+            "profiles_invalid",
         ),
         (
             lambda e: e.profiles["profiles"][0]["mods"].append(
@@ -503,7 +503,7 @@ def test_invalid_crl_signs_nothing(client, env, people, db_session):
             lambda e: e.profiles["profiles"][0]["mods"].__setitem__(
                 0, {"name": "Bad Name", "version": "1.0.0"}
             ),
-            "mod_name_invalid",
+            "profiles_invalid",
         ),
         (
             lambda e: e.profiles["profiles"][0]["match"].__setitem__("zones", ["x"]),
@@ -993,4 +993,325 @@ def test_crl_endpoint_needs_a_session_but_no_company(client, env, people):
     assert (
         client.get("/me/workspace/crl", headers=_h(people["emp_user"])).status_code
         == 404
+    )
+
+
+# ── CODEX-ME-WORKSPACE2 ──────────────────────────────────────────────────────
+
+
+def _put_crl(env, n, kids=None):
+    c = wm.issue_crl(
+        env.root_priv,
+        number=n,
+        revoked_kids=kids or [],
+        issued_at=NOW,
+        next_update=NOW + 86400,
+    )
+    (env.dir / "crl.json").write_text(json.dumps(c))
+
+
+def test_crl_endpoint_shares_the_checkpoint_with_the_manifest(client, env, people):
+    _put_crl(env, 7)
+    assert _get(client, people["emp_user"]).status_code == 200  # mark = 7
+    _put_crl(env, 2)  # a valid but old file is restored
+    r = client.get("/me/workspace/crl", headers=_h(people["emp_user"]))
+    assert _reason(r) == "crl_rollback"
+    assert _reason(_get(client, people["emp_user"])) == "crl_rollback"
+
+
+def test_serving_a_list_only_through_the_crl_endpoint_still_raises_the_mark(
+    client, env, people
+):
+    _put_crl(env, 9)
+    assert (
+        client.get("/me/workspace/crl", headers=_h(people["emp_user"])).json()[
+            "payload"
+        ]["number"]
+        == 9
+    )
+    _put_crl(env, 2)
+    assert _reason(_get(client, people["emp_user"])) == "crl_rollback"
+
+
+def test_a_served_list_that_disappears_is_missing_on_the_crl_endpoint_too(
+    client, env, people
+):
+    _put_crl(env, 4)
+    client.get("/me/workspace/crl", headers=_h(people["emp_user"]))
+    (env.dir / "crl.json").unlink()
+    assert (
+        _reason(client.get("/me/workspace/crl", headers=_h(people["emp_user"])))
+        == "crl_missing"
+    )
+
+
+def _signer(n, with_crl=True):
+    return ws.Signer("p", {}, "r", 1, "k", {"x": 1} if with_crl else None, n)
+
+
+def test_highwater_is_compare_and_set_and_never_lowers_a_concurrent_higher_value(
+    db_session, monkeypatch
+):
+    from models import AppConfig
+
+    db_session.add(AppConfig(key="workspace.crl_highwater", value="2"))
+    db_session.commit()
+    real = db_session.exec
+    state = {"hit": False}
+
+    def racing(stmt, *a, **k):
+        if not state["hit"] and "UPDATE" in str(stmt).upper():
+            state["hit"] = (
+                True  # another process raises the mark to 9 between our read and write
+            )
+            db_session.execute(
+                AppConfig.__table__.update()
+                .where(AppConfig.key == "workspace.crl_highwater")
+                .values(value="9")
+            )
+            db_session.commit()
+        return real(stmt, *a, **k)
+
+    monkeypatch.setattr(db_session, "exec", racing)
+    with pytest.raises(ws.WorkspaceUnavailable) as e:
+        ws.enforce_crl_highwater(
+            db_session, _signer(7)
+        )  # our (older) 7 must lose to their 9
+    assert e.value.reason == "crl_rollback"
+    assert db_session.get(AppConfig, "workspace.crl_highwater").value == "9"
+
+
+def test_highwater_first_creation_race_retries(db_session, monkeypatch):
+    from models import AppConfig
+
+    real_get = db_session.get
+    state = {"n": 0}
+
+    def get_once_empty(model, key, *a, **k):
+        if model is AppConfig and state["n"] == 0:
+            state["n"] += 1
+            db_session.add(
+                AppConfig(key="workspace.crl_highwater", value="3")
+            )  # the other process won
+            db_session.commit()
+            return None
+        return real_get(model, key, *a, **k)
+
+    monkeypatch.setattr(db_session, "get", get_once_empty)
+    ws.enforce_crl_highwater(db_session, _signer(5))
+    assert real_get(AppConfig, "workspace.crl_highwater").value == "5"
+
+
+def test_highwater_database_error_is_a_503_not_a_500(client, env, people, monkeypatch):
+    from sqlalchemy.exc import OperationalError
+
+    _put_crl(env, 3)
+
+    def boom(*a, **k):
+        raise OperationalError("stmt", {}, Exception("db down"))
+
+    monkeypatch.setattr(ws, "enforce_crl_highwater", ws.enforce_crl_highwater)
+    import sqlmodel.orm.session as sm
+
+    real = sm.Session.get
+
+    def failing(self, model, key, *a, **k):
+        if (
+            getattr(model, "__name__", "") == "AppConfig"
+            and key == "workspace.crl_highwater"
+        ):
+            boom()
+        return real(self, model, key, *a, **k)
+
+    monkeypatch.setattr(sm.Session, "get", failing)
+    assert _reason(_get(client, people["emp_user"])) == "state_unavailable"
+
+
+def test_corrupt_highwater_value_fails_closed(client, env, people, db_session):
+    from models import AppConfig
+
+    _put_crl(env, 3)
+    db_session.add(AppConfig(key="workspace.crl_highwater", value="not-a-number"))
+    db_session.commit()
+    assert _reason(_get(client, people["emp_user"])) == "crl_highwater_invalid"
+
+
+def test_a_higher_corrective_list_recovers_after_a_wrong_high_number(
+    client, env, people
+):
+    _put_crl(env, 999)
+    assert _get(client, people["emp_user"]).status_code == 200
+    _put_crl(env, 7)  # lowering is refused ...
+    assert _reason(_get(client, people["emp_user"])) == "crl_rollback"
+    _put_crl(env, 1000)  # ... the root publishes a higher corrective list instead
+    assert (
+        _get(client, people["emp_user"]).json()["bootstrap"]["min_crl_number"] == 1000
+    )
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda e: e.profiles["profiles"][1].__setitem__("id", []),
+        lambda e: e.profiles["profiles"][1].__setitem__("id", "bad id!"),
+        lambda e: e.profiles["defaults"].__setitem__("match", {"unknown": True}),
+        lambda e: e.profiles["defaults"].__setitem__("match", {"roles": ["user"]}),
+        lambda e: e.profiles["profiles"][1].__setitem__("layout", "../escape"),
+        lambda e: e.profiles["profiles"][1].__setitem__("min_client_version", "bad"),
+        lambda e: e.profiles["profiles"][1].__setitem__(
+            "mods", [{"name": "con", "version": "1.0.0"}]
+        ),
+        lambda e: e.profiles["profiles"][1].__setitem__(
+            "mods", [{"name": "ok", "version": "1.0"}]
+        ),
+        lambda e: e.profiles["profiles"][1].__setitem__(
+            "mods", [{"name": f"m{i}", "version": "1.0.0"} for i in range(65)]
+        ),
+    ],
+)
+def test_every_value_in_the_whole_profile_file_is_validated_even_if_not_selected(
+    client, env, people, db_session, mutate
+):
+    mutate(env)  # profile[1] ("managers") is not the one the finance employee gets
+    env.write_profiles()
+    assert _reason(_get(client, people["emp_user"])) == "profiles_invalid"
+    assert _nothing_issued(db_session)
+
+
+def test_a_file_that_vanishes_during_the_scan_is_a_503(
+    client, env, people, db_session, monkeypatch
+):
+    real = ws.os.stat
+
+    def vanishing(path, *a, **k):
+        if path == "main.js" and k.get("dir_fd") is not None:
+            raise FileNotFoundError(path)
+        return real(path, *a, **k)
+
+    monkeypatch.setattr(ws.os, "stat", vanishing)
+    assert _reason(_get(client, people["emp_user"])) == "catalog_changed"
+    assert _nothing_issued(db_session)
+
+
+def test_a_huge_directory_is_rejected_without_listing_all_of_it(env, monkeypatch):
+    consumed = []
+    real = ws.os.scandir
+
+    class Counting:
+        def __init__(self, it):
+            self.it = it
+
+        def __enter__(self):
+            self.cm = self.it.__enter__()
+            return self
+
+        def __exit__(self, *a):
+            return self.it.__exit__(*a)
+
+        def __iter__(self):
+            for e in self.cm:
+                consumed.append(1)
+                yield e
+
+    monkeypatch.setattr(ws.os, "scandir", lambda fd: Counting(real(fd)))
+    monkeypatch.setattr(ws, "MAX_ENTRIES_PER_DIR", 20)
+    d = env.dir / "catalog" / "mods" / "finance-dashboard" / "1.2.0"
+    for i in range(500):
+        (d / f"e{i}.js").write_bytes(b"x")
+    root = ws._open_dir(None, str(env.dir))
+    try:
+        mfd = ws._walk_to(root, ["catalog", "mods", "finance-dashboard", "1.2.0"])
+        try:
+            with pytest.raises(ws.WorkspaceUnavailable) as e:
+                ws._scan(mfd, "", 0, {"files": 0, "bytes": 0})
+            assert e.value.reason == "catalog_too_large"
+        finally:
+            os.close(mfd)
+    finally:
+        os.close(root)
+    assert len(consumed) <= 21  # limit + 1, not all 500
+
+
+def test_total_directory_visits_are_budgeted_even_for_empty_directories(
+    client, env, people, db_session, monkeypatch
+):
+    monkeypatch.setattr(ws, "MAX_VISITS", 30)
+    d = env.dir / "catalog" / "mods" / "finance-dashboard" / "1.2.0"
+    for i in range(12):
+        sub = d / f"d{i}"
+        sub.mkdir()
+        for j in range(5):
+            (sub / f"e{j}").mkdir()
+    assert _reason(_get(client, people["emp_user"])) == "catalog_too_large"
+    assert _nothing_issued(db_session)
+
+
+def test_agent_owner_scoped_to_a_real_agent_of_the_company_matches(
+    client, env, people, db_session
+):
+    env.profiles["profiles"].insert(
+        0,
+        {
+            "id": "owners",
+            "match": {"roles": ["agent_owner"]},
+            "layout": "terminals",
+            "mods": [],
+        },
+    )
+    env.write_profiles()
+    agent = make_personnel(
+        db_session, people["co"].id, name="Bot", slug="bot", type="agent"
+    )
+    db_session.add(
+        CompanyMember(
+            user_id=people["emp_user"].id,
+            company_id=people["co"].id,
+            role="agent_owner",
+            scope_id=agent.id,
+        )
+    )
+    db_session.commit()
+    assert (
+        _get(client, people["emp_user"]).json()["manifest"]["payload"]["layout"]["id"]
+        == "terminals"
+    )
+
+
+def test_agent_owner_scoped_to_a_human_or_foreign_agent_does_not_match(
+    client, env, people, db_session
+):
+    env.profiles["profiles"].insert(
+        0,
+        {
+            "id": "owners",
+            "match": {"roles": ["agent_owner"]},
+            "layout": "terminals",
+            "mods": [],
+        },
+    )
+    env.write_profiles()
+    other = make_company(db_session, name="Other", slug="other")
+    foreign = make_personnel(
+        db_session, other.id, name="Foreign", slug="foreign", type="agent"
+    )
+    db_session.add(
+        CompanyMember(
+            user_id=people["emp_user"].id,
+            company_id=people["co"].id,
+            role="agent_owner",
+            scope_id=people["founder"].id,
+        )
+    )
+    db_session.add(
+        CompanyMember(
+            user_id=people["emp_user"].id,
+            company_id=people["co"].id,
+            role="agent_owner",
+            scope_id=foreign.id,
+        )
+    )
+    db_session.commit()
+    assert (
+        _get(client, people["emp_user"]).json()["manifest"]["payload"]["layout"]["id"]
+        == "finance-v2"
     )

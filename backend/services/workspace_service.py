@@ -31,6 +31,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import stat
 import threading
 import time
@@ -54,6 +55,7 @@ DEFAULT_TTL = 6 * 3600
 MAX_FILE_BYTES = 16 * 1024 * 1024
 MAX_CATALOG_DEPTH = 8
 MAX_ENTRIES_PER_DIR = 2048
+MAX_VISITS = 8192  # directory entries looked at for one profile
 _SAFE_MAX_GENERATION = 2**53 - 1
 _CRL_HIGHWATER_KEY = "workspace.crl_highwater"
 
@@ -147,16 +149,28 @@ def _scan(
     budget: dict,
 ) -> list[tuple[str, str, os.stat_result]]:
     """(relative path, path from the catalog root, stat) for every file below an open
-    directory. Counts, depth and bytes are limited as we go, before anything is read."""
+    directory. Entries, counts, depth and bytes are limited as we go, before anything is
+    read; a file that vanishes or is swapped mid-walk is a controlled 503."""
     if depth > MAX_CATALOG_DEPTH:
         raise WorkspaceUnavailable("catalog_too_deep")
     out: list[tuple[str, str, os.stat_result]] = []
-    with os.scandir(dir_fd) as it:
-        entries = sorted(it, key=lambda e: e.name)
-    if len(entries) > MAX_ENTRIES_PER_DIR:
+    entries = []
+    try:
+        with os.scandir(dir_fd) as it:
+            for e in it:
+                entries.append(e)
+                if len(entries) > MAX_ENTRIES_PER_DIR:
+                    raise WorkspaceUnavailable("catalog_too_large")
+    except OSError as e:
+        raise WorkspaceUnavailable("catalog_changed") from e
+    budget["visits"] = budget.get("visits", 0) + len(entries)
+    if budget["visits"] > MAX_VISITS:
         raise WorkspaceUnavailable("catalog_too_large")
-    for e in entries:
-        st = os.stat(e.name, dir_fd=dir_fd, follow_symlinks=False)
+    for e in sorted(entries, key=lambda x: x.name):
+        try:
+            st = os.stat(e.name, dir_fd=dir_fd, follow_symlinks=False)
+        except OSError as err:
+            raise WorkspaceUnavailable("catalog_changed") from err
         rel = f"{prefix}{e.name}"
         if stat.S_ISLNK(st.st_mode):
             raise WorkspaceUnavailable("catalog_symlink")
@@ -238,22 +252,53 @@ def load_signer(now: int) -> Signer:
 
 
 def enforce_crl_highwater(session, signer: Signer) -> None:
-    """The newest revocation list this server has ever served never goes backwards, and
-    once one was published it cannot silently disappear (a restored old file or a
-    deleted one would otherwise lower the bootstrap checkpoint)."""
-    row = session.get(AppConfig, _CRL_HIGHWATER_KEY)
-    seen = int(row.value) if row and row.value.isdigit() else 0
-    if signer.crl_number < seen:
-        raise WorkspaceUnavailable(
-            "crl_rollback" if signer.crl is not None else "crl_missing"
-        )
-    if signer.crl_number > seen:
-        if row:
-            row.value = str(signer.crl_number)
-            session.add(row)
-        else:
-            session.add(AppConfig(key=_CRL_HIGHWATER_KEY, value=str(signer.crl_number)))
-        session.commit()
+    """The highest valid revocation list this server has ever served never goes
+    backwards, and once one was served it cannot silently disappear (a restored old file
+    or a deleted one would otherwise lower the bootstrap checkpoint). The mark is raised
+    with a compare-and-set, so two processes can never lower each other's value.
+
+    Recovery after serving a wrong (but root-signed) high number is NOT to lower the
+    mark: the root publishes a corrective list with a still higher number."""
+    new = signer.crl_number
+    try:
+        for _ in range(8):
+            row = session.get(AppConfig, _CRL_HIGHWATER_KEY)
+            if row is not None:
+                session.refresh(row)  # never decide on a stale identity-map value
+            if row is None:
+                if new == 0:
+                    return
+                session.add(AppConfig(key=_CRL_HIGHWATER_KEY, value=str(new)))
+                try:
+                    session.commit()
+                    return
+                except IntegrityError:
+                    session.rollback()
+                    continue
+            if not row.value.isdigit():  # corrupt state is not "zero"
+                raise WorkspaceUnavailable("crl_highwater_invalid")
+            seen = int(row.value)
+            if new < seen:
+                raise WorkspaceUnavailable(
+                    "crl_rollback" if signer.crl is not None else "crl_missing"
+                )
+            if new == seen:
+                return
+            res = session.exec(
+                update(AppConfig)
+                .where(
+                    AppConfig.key == _CRL_HIGHWATER_KEY, AppConfig.value == row.value
+                )
+                .values(value=str(new))
+            )
+            session.commit()
+            if res.rowcount == 1:
+                return
+            session.rollback()
+    except SQLAlchemyError as e:
+        session.rollback()
+        raise WorkspaceUnavailable("state_unavailable") from e
+    raise WorkspaceUnavailable("crl_contention")
 
 
 # ── catalog and profiles (closed schema) ─────────────────────────────────────
@@ -283,23 +328,39 @@ def _str_list(v: object) -> list[str]:
     return v
 
 
-def _profile_from(d: object, pid: str) -> Profile:
-    d = _only(d, {"id", "match", "layout", "mods", "min_client_version"})
-    if not isinstance(d.get("layout"), str):
+_PROFILE_ID = re.compile(r"[A-Za-z0-9._-]{1,64}")
+
+
+def _name(v: object) -> str:
+    try:
+        return wm._check_name(v)
+    except wm.ManifestError as e:
+        raise _bad() from e
+
+
+def _profile_from(d: object, pid: str, *, allow_match: bool = True) -> Profile:
+    allowed = {"layout", "mods", "min_client_version"}
+    if allow_match:
+        allowed |= {"id", "match"}
+    d = _only(d, allowed)
+    raw_id = d.get("id", pid)
+    if not isinstance(raw_id, str) or not _PROFILE_ID.fullmatch(raw_id):
+        raise _bad()
+    layout = _name(d.get("layout"))
+    raw_mods = d.get("mods", [])
+    if not isinstance(raw_mods, list) or len(raw_mods) > wm.MAX_MODS:
         raise _bad()
     mods = []
-    raw_mods = d.get("mods", [])
-    if not isinstance(raw_mods, list):
-        raise _bad()
     for m in raw_mods:
         m = _only(m, {"name", "version"})
-        if not isinstance(m.get("name"), str) or not isinstance(m.get("version"), str):
+        version = m.get("version")
+        if not isinstance(version, str) or not wm._VERSION.fullmatch(version):
             raise _bad()
-        mods.append((m["name"], m["version"]))
+        mods.append((_name(m.get("name")), version))
     mcv = d.get("min_client_version", "0.0.0")
-    if not isinstance(mcv, str):
+    if not isinstance(mcv, str) or not wm._VERSION.fullmatch(mcv):
         raise _bad()
-    return Profile(pid, d["layout"], tuple(mods), mcv)
+    return Profile(raw_id, layout, tuple(mods), mcv)
 
 
 def _validate_profile(p: object, pid: str) -> Profile:
@@ -307,7 +368,7 @@ def _validate_profile(p: object, pid: str) -> Profile:
     match = _only(p.get("match", {}), {"roles", "departments", "companies"})
     for key in match:
         _str_list(match[key])
-    return _profile_from(p, str(p.get("id", pid)))
+    return _profile_from(p, pid)
 
 
 def _load_profiles(root_fd: int) -> dict:
@@ -326,7 +387,7 @@ def _load_profiles(root_fd: int) -> dict:
     for i, p in enumerate(doc.get("profiles", [])):
         _validate_profile(p, f"profile-{i}")
     if "defaults" in doc:
-        _profile_from(doc["defaults"], "default")
+        _profile_from(doc["defaults"], "default", allow_match=False)
     return doc
 
 
@@ -338,6 +399,19 @@ def person_context(session, user_id: str, person: Personnel, company_id: str) ->
     from services.policy_engine import _department_chain
 
     ids = _department_chain(session, person.department_id)
+
+    def counts(m) -> bool:
+        if m.scope_id is None or m.scope_id in ids:
+            return True
+        if (
+            m.role == "agent_owner"
+        ):  # scoped to an AGENT of this company (authz.scope_valid)
+            agent = session.get(Personnel, m.scope_id)
+            return bool(
+                agent and agent.type == "agent" and agent.company_id == company_id
+            )
+        return False
+
     roles = {
         m.role
         for m in session.exec(
@@ -345,8 +419,8 @@ def person_context(session, user_id: str, person: Personnel, company_id: str) ->
                 CompanyMember.user_id == user_id, CompanyMember.company_id == company_id
             )
         ).all()
-        if m.scope_id is None or m.scope_id in ids or m.scope_id == person.id
-    } or {"user"}
+        if counts(m)
+    } or {"user"}  # no relevant membership: the plain `user` role (a product default)
     slugs = {d.slug for d in (session.get(Department, i) for i in ids) if d}
     return {"roles": roles, "departments": set(ids) | slugs, "company": company_id}
 
@@ -366,7 +440,7 @@ def resolve_profile(root_fd: int, ctx: dict) -> Profile:
         if ok:
             return _validate_profile(p, f"profile-{i}")
     if "defaults" in doc:
-        return _profile_from(doc["defaults"], "default")
+        return _profile_from(doc["defaults"], "default", allow_match=False)
     raise WorkspaceUnavailable("no_profile")
 
 
@@ -408,7 +482,11 @@ def _stat_signature(root_fd: int, profile: Profile) -> tuple:
             except WorkspaceUnavailable:
                 raise WorkspaceUnavailable("mod_missing") from None
             try:
-                budget = {"files": 0, "bytes": shared["bytes"]}
+                budget = {
+                    "files": 0,
+                    "bytes": shared["bytes"],
+                    "visits": shared.get("visits", 0),
+                }
                 for rel, _p, st in _scan(mfd, "", 0, budget):
                     sig.append(
                         (
@@ -421,6 +499,7 @@ def _stat_signature(root_fd: int, profile: Profile) -> tuple:
                         )
                     )
                 shared["bytes"] = budget["bytes"]
+                shared["visits"] = budget["visits"]
             finally:
                 os.close(mfd)
     finally:
@@ -455,6 +534,8 @@ def _validate_catalog(profile: Profile, layout: dict, mods: list[dict]) -> None:
 def resolve_content(root_fd: int, profile: Profile) -> Resolved:
     if not wm._NAME.fullmatch(profile.layout):
         raise WorkspaceUnavailable("layout_name_invalid")
+    if len(profile.mods) > wm.MAX_MODS:
+        raise WorkspaceUnavailable("catalog_too_large")
     key = _stat_signature(root_fd, profile)
     with _cache_lock:
         hit = _cache.get(key)
@@ -473,13 +554,18 @@ def resolve_content(root_fd: int, profile: Profile) -> Resolved:
         mfd = _walk_to(root_fd, ["catalog", "mods", name, version])
         try:
             entries = []
-            budget = {"files": 0, "bytes": shared["bytes"]}
+            budget = {
+                "files": 0,
+                "bytes": shared["bytes"],
+                "visits": shared.get("visits", 0),
+            }
             for rel, _p, _st in _scan(mfd, "", 0, budget):
                 blob = _read_rel(mfd, rel)
                 h = hashlib.sha256(blob).hexdigest()
                 files[h] = f"catalog/mods/{name}/{version}/{rel}"
                 entries.append({"path": rel, "sha256": h, "size": len(blob)})
             shared["bytes"] = budget["bytes"]
+            shared["visits"] = budget["visits"]
         finally:
             os.close(mfd)
         mods.append({"name": name, "version": version, "files": entries})
@@ -564,6 +650,8 @@ def _resolve_for(
         return resolve_content(root_fd, resolve_profile(root_fd, ctx))
     except (TypeError, KeyError, AttributeError, ValueError) as e:
         raise _bad() from e  # a shape error in config is a 503, never a 500
+    except OSError as e:
+        raise WorkspaceUnavailable("catalog_changed") from e  # raced with a publisher
 
 
 def issue_manifest(
