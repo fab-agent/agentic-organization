@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -451,51 +452,76 @@ def _malformed_block_rule(why: str) -> dict:
 # ── Ruleset loading ──────────────────────────────────────────────────────────
 
 
-_RULE_HINT = ("effect",)
+MAX_POLICY_BLOCK_BYTES = 64 * 1024  # one executable block; bounds parse cost
+
+_OPEN_FENCE = re.compile(r"^ {0,3}(`{3,})[ \t]*([^`]*?)[ \t]*$")
+_EXECUTABLE_FENCES = ("policy", "json", "yaml")
 
 
-def _looks_like_rule(block: str) -> bool:
-    """Unparseable ```json/```yaml text that mentions a rule's `effect` key is
-    treated as a broken rule, not as prose (ADR-0026)."""
-    import re
+def _tokenize_fences(text: str):
+    """
+    Yield `(info, body, terminated)` for each top-level fenced block, CommonMark
+    style: an opener is a line of >=3 backticks (at most 3 spaces of indent) plus
+    an info string; the closer is a line of >=as many backticks and nothing else.
+    Backticks inside a line (e.g. in a JSON string) never close a block, and a
+    block opened by a non-executable info string (```text, a longer outer fence)
+    swallows its content, so documentation examples are not executed.
+    """
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        m = _OPEN_FENCE.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        n, info = len(m.group(1)), (m.group(2).split() or [""])[0].lower()
+        closer = re.compile(r"^ {0,3}`{" + str(n) + r",}[ \t]*$")
+        j = i + 1
+        while j < len(lines) and not closer.match(lines[j]):
+            j += 1
+        terminated = j < len(lines)
+        yield info, "\n".join(lines[i + 1 : j]), terminated
+        i = j + 1
 
-    return bool(re.search(r"""["']?effect["']?\s*[:=]""", block))
+
+def _block_is_rule_attempt(fence: str, body: str) -> bool:
+    """For ```json / ```yaml: a block that *starts like a rule list* is a rule
+    attempt. Prose objects (`{...}`) that do not parse are documentation."""
+    first = body.lstrip()[:1]
+    return first in ("[",) or (fence == "yaml" and first == "-")
 
 
 def _parse_rules_from_markdown(content: str) -> list[dict]:
     """
-    Extract rules from fenced ```policy / ```yaml / ```json blocks in a Policy
-    body. A block must be a JSON (or trivially-parsed) list of rule objects.
+    Extract rules from fenced blocks in a Policy body. Contract (ADR-0026):
 
-    A ```policy fence is *executable by declaration*: a missing closing fence,
-    unparseable text, a non-list, or a non-object element adds a fail-closed rule
-    instead of being dropped (ADR-0026). ```json / ```yaml fences may be
-    illustrative prose, so unparseable text is ignored unless it looks like a rule
-    (mentions an `effect` key); a parsed list with a non-object element is malformed.
+    - ```policy is executable by declaration. Anything but a closed block holding a
+      JSON/YAML *list of rule objects* adds a fail-closed rule (never a silent drop).
+    - ```json / ```yaml are executable when they parse to a list (same checks), and
+      malformed when they start like a rule list but do not parse/terminate, or
+      parse to a rule-shaped object (has `match`/`effect`) outside a list. Other
+      JSON/YAML (prose examples) is ignored. The decision uses the parsed
+      structure, never raw text.
+    - Info strings are case-insensitive. Fences are line-based (see
+      `_tokenize_fences`); other info strings are documentation and skipped.
+    - A block above MAX_POLICY_BLOCK_BYTES is malformed (bounds evaluation cost).
     """
-    import re
-
     rules: list[dict] = []
-    text = content or ""
-    pos = 0
-    opener = re.compile(r"```(policy|json|yaml)[ \t]*\r?\n")
-    while True:
-        m = opener.search(text, pos)
-        if not m:
-            break
-        fence = m.group(1)
-        end = text.find("```", m.end())
-        if end == -1:
-            # No closing fence: the block is unterminated.
-            if fence == "policy" or _looks_like_rule(text[m.end() :]):
+    for fence, body, terminated in _tokenize_fences(content or ""):
+        if fence not in _EXECUTABLE_FENCES:
+            continue
+        body = body.strip()
+        if len(body.encode("utf-8", "ignore")) > MAX_POLICY_BLOCK_BYTES:
+            rules.append(_malformed_block_rule("block too large"))
+            continue
+        if not terminated:
+            if fence == "policy" or _block_is_rule_attempt(fence, body):
                 rules.append(_malformed_block_rule("unterminated block"))
-            break
-        block = text[m.end() : end].strip()
-        pos = end + 3
+            continue
         try:
-            parsed = json.loads(block)
+            parsed = json.loads(body)
         except json.JSONDecodeError:
-            parsed = _loose_yaml_list(block)
+            parsed = _loose_yaml_list(body)
         if isinstance(parsed, list):
             for r in parsed:
                 rules.append(
@@ -505,9 +531,21 @@ def _parse_rules_from_markdown(content: str) -> list[dict]:
                 )
         elif fence == "policy":
             rules.append(_malformed_block_rule("not a list of rules"))
-        elif parsed is None and _looks_like_rule(block):
-            rules.append(_malformed_block_rule("unparseable rule block"))
+        elif isinstance(parsed, dict) and ("match" in parsed or "effect" in parsed):
+            rules.append(_malformed_block_rule("rule object outside a list"))
+        elif parsed is None and _block_is_rule_attempt(fence, body):
+            rules.append(_malformed_block_rule("unparseable rule list"))
     return rules
+
+
+def validate_policy_content(content: str) -> list[str]:
+    """Problems that would make the policy fail closed at runtime; empty = fine.
+    Used to reject a bad policy when it is saved (ADR-0026)."""
+    return [
+        r["reason"]
+        for r in _parse_rules_from_markdown(content)
+        if r.get("id") == "malformed-policy-block"
+    ]
 
 
 def _loose_yaml_list(block: str) -> Any:

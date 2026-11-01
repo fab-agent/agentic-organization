@@ -377,3 +377,103 @@ def test_policy_resolution_error_maps_to_503():
     body = resp.body.decode()
     assert "policy_unavailable" in body and "error_id" in body
     assert "x" not in body.replace("policy_unavailable", "").replace("error_id", "")
+
+
+# ── fence contract (Codex round 3 matrix) ────────────────────────────────────
+
+_DENY = '[{"id": "r", "match": {"tool": "probe"}, "effect": "deny", "reason": "no"}]'
+
+
+def _fenced(info, body, ticks="```", nl="\n"):
+    return f"{ticks}{info}{nl}{body}{nl}{ticks}"
+
+
+def _is_rule_deny(body):
+    v = _verdict(body)
+    return v.effect == "deny" and not v.fail_closed and v.matched_rule == "r"
+
+
+@pytest.mark.parametrize("nl", ["\n", "\r\n"])
+@pytest.mark.parametrize("info", ["policy", "Policy", "POLICY", "json", "JSON"])
+def test_valid_rule_list_executes_for_any_case_and_newline(info, nl):
+    assert _is_rule_deny(_fenced(info, _DENY, nl=nl))
+
+
+def test_four_backtick_block_with_matching_closer_executes():
+    assert _is_rule_deny(_fenced("policy", _DENY, ticks="````"))
+
+
+def test_four_backtick_opener_with_short_closer_is_unterminated():
+    v = _verdict("````policy\n" + _DENY + "\n```")
+    assert v.effect == "deny" and v.fail_closed
+
+
+def test_example_inside_outer_text_fence_is_not_executed():
+    body = "````text\n" + _fenced("policy", _DENY) + "\n````"
+    assert _verdict(body).effect == "allow"
+
+
+def test_backticks_inside_json_string_do_not_close_block():
+    rule = '[{"id": "r", "match": {"tool": "probe"}, "effect": "deny", "reason": "a ``` b"}]'
+    assert _is_rule_deny(_fenced("policy", rule))
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        '{"match": {"tool": "probe"}, "effect": "deny"}',
+        '{"\\u0065ffect": "deny", "match": {"tool": "probe"}}',
+    ],
+)
+def test_rule_object_outside_a_list_fails_closed(body):
+    for fence in ("json", "yaml"):
+        v = _verdict(_fenced(fence, body))
+        assert v.effect == "deny" and v.fail_closed, fence
+
+
+def test_yaml_dict_root_fails_closed():
+    v = _verdict(_fenced("yaml", "match: {tool: probe}\neffect: deny"))
+    assert v.effect == "deny" and v.fail_closed
+
+
+def test_yaml_list_of_rules_executes():
+    assert _is_rule_deny(
+        _fenced("yaml", "- id: r\n  match: {tool: probe}\n  effect: deny\n  reason: no")
+    )
+
+
+def test_oversized_block_is_malformed():
+    big = (
+        "["
+        + ",".join(['{"id":"x","match":{"tool":"zzz"},"effect":"allow"}'] * 2000)
+        + "]"
+    )
+    assert len(big) > pe.MAX_POLICY_BLOCK_BYTES
+    v = _verdict(_fenced("policy", big))
+    assert v.effect == "deny" and v.fail_closed
+
+
+def test_prose_with_effect_word_is_not_a_rule():
+    assert (
+        _verdict("```json\n{note: the sideeffect: is documented\n```").effect == "allow"
+    )
+
+
+def test_validate_policy_content_reports_problems():
+    assert pe.validate_policy_content(_fenced("policy", _DENY)) == []
+    assert pe.validate_policy_content("```policy\n[{broken\n```")
+
+
+# ── bad policies are refused at save time ────────────────────────────────────
+
+
+def test_save_time_guard_rejects_malformed_policy():
+    from fastapi import HTTPException
+
+    from api.policies import _reject_malformed
+
+    _reject_malformed("plain prose")
+    _reject_malformed(_fenced("policy", _DENY))
+    with pytest.raises(HTTPException) as e:
+        _reject_malformed("```policy\n[{broken\n```")
+    assert e.value.status_code == 422

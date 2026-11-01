@@ -17,9 +17,24 @@ from models import (
     User,
 )
 from services import authz
-from services.policy_engine import VALID_EFFECTS, VALID_MODES, resolve_mode
+from services.policy_engine import (
+    VALID_EFFECTS,
+    VALID_MODES,
+    resolve_mode,
+    validate_policy_content,
+)
 
 router = APIRouter(tags=["policies"])
+
+
+def _reject_malformed(content: str | None) -> None:
+    """A policy that would fail closed at runtime is refused when saved (ADR-0026)."""
+    problems = validate_policy_content(content or "")
+    if problems:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "malformed_policy", "problems": problems},
+        )
 
 
 class PolicyCreate(BaseModel):
@@ -249,6 +264,7 @@ def create_policy(body: PolicyCreate, user: User = Depends(get_current_user)):
             body.department_id or None,
             body.agent_config_id or None,
         )
+        _reject_malformed(body.content)
         policy = Policy(
             company_id=body.company_id,
             name=body.name,
@@ -291,6 +307,8 @@ def update_policy(
         if not p or not authz.is_member(session, user.id, p.company_id):
             raise HTTPException(status_code=404, detail="Policy not found")
 
+        if body.content is not None:
+            _reject_malformed(body.content)
         if propose and personnel_id:
             authz.require_role(
                 session,
