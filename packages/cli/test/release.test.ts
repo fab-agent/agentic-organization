@@ -329,3 +329,23 @@ test('R4: the signing tool never overwrites or follows a link for any output', (
   run('sign', '--key', join(d3, 'release.key'), '--body', join(d3, 'body.json'), '--out', join(d3, 'ok.json'))
   assert.match(fails('sign', '--key', join(d3, 'release.key'), '--body', join(d3, 'body.json'), '--out', join(d3, 'ok.json')) ?? '', /refusing to overwrite/)
 })
+
+test('R7: what the updater writes can always be read back; a full state refuses a new channel and stays intact', async () => {
+  const mk = (n: number) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`ch${String.fromCharCode(97 + (i % 26))}${Math.floor(i / 26)}`, { seq: 99999999, version: '999999999999999.999999999999999.999999999999999', digest: 'a'.repeat(64) }]))
+  // the largest state allowed is far below the reader's limit and round-trips
+  const s = setup()
+  writeFileSync(join(s.state, 'release-state.json'), JSON.stringify({ v: 1, channels: mk(15) }))
+  await selfUpdate(s.opts()) // adds "stable" as the 16th
+  assert.equal(Object.keys(loadReleaseState(s.state).channels).length, 16)
+  assert.ok(statSync(join(s.state, 'release-state.json')).size < 16 * 1024)
+  await selfUpdate(s.opts()) // and is read back on the next run
+  // a 17th channel is refused before any file is touched, and the old state is kept
+  const t = setup()
+  const full = JSON.stringify({ v: 1, channels: mk(16) })
+  writeFileSync(join(t.state, 'release-state.json'), full)
+  assert.equal(await code(selfUpdate(t.opts())), 'release_state_full')
+  assert.equal(read(join(t.state, 'release-state.json')), full)
+  assert.equal(read(join(t.lib, '3pa.mjs')), 'old 3pa')
+  // a state with more channels than the policy allows is not valid input either
+  assert.equal(cleanReleaseState({ v: 1, channels: mk(17) }), null)
+})

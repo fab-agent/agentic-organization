@@ -45,6 +45,7 @@ const MESSAGES: Record<string, string> = {
   dest_not_file: 'A file to be replaced is not a plain file; nothing was changed.',
   fs_error: 'A file could not be written completely; nothing was replaced.',
   response_too_large: 'The server sent more data than the signed release allows. Nothing was replaced.',
+  release_state_full: 'This machine already tracks the maximum number of release channels. Nothing was changed.',
   locked: 'Another update or sync is already running.',
 }
 

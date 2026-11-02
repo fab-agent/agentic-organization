@@ -38,7 +38,9 @@ back to an older, vulnerable build.
    encodings refused).
 5. **Anti-rollback is by sequence and by version.** The last accepted `seq`, `version` and
    document digest per channel is kept in `<state>/release-state.json` (read through the strict parser with a 64 KiB cap, validated against a closed schema, written
-   atomically in a 0700 directory; only a genuinely absent file means "no history" - a link,
+   atomically in a 0700 directory, at most 16 channels, and the exact bytes are checked against
+   the reader's limits before the old file is replaced - what the updater writes can always be
+   read back, and a full state refuses a new channel instead of damaging itself; only a genuinely absent file means "no history" - a link,
    a folder, a duplicate key or any damage stops the run before any request is made). A lower `seq` or a lower version is refused
    (`release_rollback`); the same `seq` with different content is refused (`release_conflict`);
    the same document again is fine. The accepted document is recorded **before** any file is

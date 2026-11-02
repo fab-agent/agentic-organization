@@ -38,6 +38,10 @@ export interface ReleaseBody {
   typ: '3pa-release'; v: 1; channel: string; version: string; seq: number
   issued_at: number; expires_at: number; artifacts: Artifact[]
 }
+/** The state file holds at most this many channels, so what the updater writes is always
+ * far below the size the loader accepts (the two limits are one policy). */
+export const MAX_CHANNELS = 16
+export const MAX_STATE_BYTES = 64 * 1024
 export interface ReleaseState { v: 1; channels: Record<string, { seq: number; version: string; digest: string }> }
 
 const KEYS = ['typ', 'v', 'channel', 'version', 'seq', 'issued_at', 'expires_at', 'artifacts']
@@ -107,6 +111,7 @@ export function emptyReleaseState(): ReleaseState {
 export function cleanReleaseState(x: unknown): ReleaseState | null {
   if (!isObj(x) || !sameKeys(x, ['v', 'channels']) || x.v !== 1 || !isObj(x.channels)) return null
   const out: ReleaseState = { v: 1, channels: {} }
+  if (Object.keys(x.channels).length > MAX_CHANNELS) return null
   for (const [ch, rec] of Object.entries(x.channels)) {
     if (!/^[a-z][a-z0-9-]{0,31}$/.test(ch) || !isObj(rec) || !sameKeys(rec, ['seq', 'version', 'digest'])) return null
     if (!int(rec.seq, 1) || typeof rec.version !== 'string' || !SEMVER.test(rec.version) || typeof rec.digest !== 'string' || !HEX64.test(rec.digest)) return null
@@ -130,7 +135,7 @@ export function loadReleaseState(dir: string): ReleaseState {
   if (!st.isFile()) throw new StateError('state_corrupt', 'the release state is not a regular file')
   let parsed: unknown
   try {
-    parsed = parseWire(readFileSync(file), 64 * 1024) // size cap, duplicate keys, odd numbers refused
+    parsed = parseWire(readFileSync(file), MAX_STATE_BYTES) // size cap, duplicate keys, odd numbers refused
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code && !(e instanceof ManifestError)) throw new StateError('state_unreadable', 'the release state could not be read')
     throw new StateError('state_corrupt', 'the release state is damaged')
@@ -141,8 +146,13 @@ export function loadReleaseState(dir: string): ReleaseState {
 }
 
 export function saveReleaseState(dir: string, s: ReleaseState): void {
+  // The exact bytes are checked against the reader's limits BEFORE the old file is replaced, so
+  // what is written can always be read back, and a refusal leaves the old state in place.
+  if (Object.keys(s.channels).length > MAX_CHANNELS) throw new ReleaseError('release_state_full', `at most ${MAX_CHANNELS} release channels can be tracked on one machine`)
+  const text = JSON.stringify(s)
+  if (Buffer.byteLength(text) > MAX_STATE_BYTES || !cleanReleaseState(JSON.parse(text))) throw new ReleaseError('release_state_full', 'the release state would be too large to read back')
   ensurePrivateDir(dir)
-  writeFileAtomic(join(dir, 'release-state.json'), JSON.stringify(s, null, 2))
+  writeFileAtomic(join(dir, 'release-state.json'), text)
 }
 
 export interface VerifiedRelease { body: ReleaseBody; digest: string }
