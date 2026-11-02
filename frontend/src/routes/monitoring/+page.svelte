@@ -177,11 +177,13 @@
 				{#if s.clients.reason}
 					<p class="text-sm text-muted-foreground">{REASON[s.clients.reason] ?? s.clients.reason}</p>
 				{/if}
+				{#if s.clients.issued !== undefined}
 				<p class="text-sm">
 					{s.clients.reporting}/{s.clients.issued} kişi bildirdi · {s.clients.never_reported} kişi henüz hiç bildirmedi ·
 					{s.clients.silent} kişi {s.clients.not_reported_for_days}+ gündür bildirmedi
 					{#if s.clients.behind !== undefined} · {s.clients.behind} kişi güncel sürümün gerisinde{/if}
 				</p>
+				{/if}
 				{#if !s.clients.reason}
 					{#if s.clients.drifting}
 						<p class="text-sm">{s.clients.drifting} kişide sapma var:</p>

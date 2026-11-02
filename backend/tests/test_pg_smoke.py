@@ -290,19 +290,27 @@ def test_drift_report_race_has_one_winner(pg):
     def race(n_threads, now):
         results, barrier = [], threading.Barrier(n_threads)
 
+        errors = []
+
         def worker(i):
-            with Session(database.engine) as s:
-                barrier.wait()
-                results.append((i, store_report(s, cid, pid, base(i + 1), now)))
+            try:
+                with Session(database.engine) as s:
+                    barrier.wait()
+                    results.append((i, store_report(s, cid, pid, base(i + 1), now)))
+            except Exception as e:  # a worker that died must fail the test, not vanish
+                errors.append(e)
 
         ts = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]
         [t.start() for t in ts]
         [t.join() for t in ts]
+        assert not errors, errors
+        assert len(results) == n_threads  # every writer answered
         return results
 
     now = datetime.utcnow()
     first = race(8, now)  # no row yet
     assert sum(1 for _, ok in first if ok) == 1
+    assert sum(1 for _, ok in first if not ok) == 7
     with Session(database.engine) as s:
         rows = s.exec(
             select(WorkspaceClientReport).where(WorkspaceClientReport.person_id == pid)
@@ -313,6 +321,7 @@ def test_drift_report_race_has_one_winner(pg):
     later = now + timedelta(seconds=45)  # the row is old now
     second = race(8, later)
     assert sum(1 for _, ok in second if ok) == 1
+    assert sum(1 for _, ok in second if not ok) == 7
     with Session(database.engine) as s:
         row = s.exec(
             select(WorkspaceClientReport).where(WorkspaceClientReport.person_id == pid)
