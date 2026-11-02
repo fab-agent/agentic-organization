@@ -189,7 +189,7 @@ function notElevated(allow) {
   if (allow) return // explicit: CI runners and deliberate installs into an administrator's own profile
   if (WIN) {
     let g = ''
-    try { g = execFileSync(sys('whoami.exe'), ['/groups'], { encoding: 'utf8' }) } catch { return }
+    try { g = execFileSync(sys('whoami.exe'), ['/groups'], { encoding: 'utf8' }) } catch { die('could not check whether this prompt is elevated; fix that, or pass --allow-elevated if you are sure') }
     if (g.includes('S-1-16-12288')) die('run as the person who will use the workspace, not from an elevated (administrator) prompt')
   } else if (process.getuid && process.getuid() === 0) die('run as the person who will use the workspace, not as root')
 }
