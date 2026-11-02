@@ -112,7 +112,7 @@ expect_fail "state is a parent of home" "may not be" base --state-dir "$(dirname
 expect_fail "prefix reaches home via .." "must not contain" base --prefix "$HOME/sub/.."
 expect_fail "state inside lib" "overlap" base --state-dir "$HOME/.local/lib/3pa/state"
 expect_fail "app home equals state" "overlap" base --state-dir "$HOME/x" --app-home "$HOME/x"
-expect_fail "backslash in path" "control characters or backslashes" base --prefix "$HOME/a\\b"
+expect_fail "backslash in path" "backslashes" base --prefix "$HOME/a\\b"
 expect_fail "newline in path" "control characters" base --prefix "$HOME/a
 b"
 ln -s "$HOME" "$T/homelink"
@@ -214,6 +214,21 @@ for n in lib/3pa/3pa.mjs lib/3pa/herdr bin/3pa bin/herdr-fab; do
 done
 rm -rf "$T/p16"; mkdir -p "$T/p16/bin"; ln -s "$T" "$T/p16/bin/3pa"
 expect_fail "dest is a link" "not a plain file" base --prefix "$T/p16" --state-dir "$T/p16s"
+
+# ── Codex round 4 (I17-I18) ──────────────────────────────────────────────────
+NL='
+'
+rm -rf "$T/lf" "$HOME/.local"; mkdir -p "$T/lf/state" "$T/lf/other"; echo k > "$T/lf/state/root.pub"; echo s > "$T/lf/state/state.json"
+expect_fail "state ends with newline (install)" "control characters" base --state-dir "$T/lf/state$NL"
+expect_fail "state ends with newline (purge)" "control characters" sh "$INST" --uninstall --purge-state --state-dir "$T/lf/state$NL"
+expect_fail "prefix ends with newline" "control characters" base --prefix "$T/lf/other$NL"
+expect_fail "app home ends with newline" "control characters" base --app-home "$T/lf/other$NL"
+expect_fail "state has a tab" "control characters" base --state-dir "$T/lf/a	b"
+[ -f "$T/lf/state/root.pub" ] && [ -f "$T/lf/state/state.json" ] && [ ! -e "$T/lf/other/lib" ] && ok || bad "newline path reached another folder"
+# I18: an empty lib folder that cannot be removed is reported as such
+base --prefix "$T/lf/pfx" --state-dir "$T/lf/st2" >/dev/null 2>&1; chmod 555 "$T/lf/pfx/lib"
+expect_fail "lib rmdir permission" "could not remove the empty folder" sh "$INST" --uninstall --prefix "$T/lf/pfx" --state-dir "$T/lf/st2"
+chmod 755 "$T/lf/pfx/lib"
 
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

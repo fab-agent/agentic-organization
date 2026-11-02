@@ -77,6 +77,12 @@ node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)
 norm() {
   printf '%s' "$1" | sed -e 's://*:/:g' -e 's:/\(\./\)\{1,\}:/:g' -e 's:/\.$::' -e 's:\(.\)/$:\1:'
 }
+# Judge the raw text first: command substitution below would silently drop a trailing newline,
+# turning the named folder into a different one.
+for v in "$PREFIX" "$STATE_DIR" "$APP_HOME"; do
+  [ "$(printf '%s' "$v" | LC_ALL=C tr -d '[:print:]' | wc -c | tr -d ' ')" = "0" ] || die "paths must not contain control characters (newline, tab, ...)"
+  case "$v" in *\\*) die "paths must not contain backslashes" ;; esac
+done
 PREFIX="$(norm "$PREFIX")"; STATE_DIR="$(norm "$STATE_DIR")"; APP_HOME="$(norm "$APP_HOME")"
 
 # One place decides what a path may be. It works on the real locations (links resolved up to
@@ -150,8 +156,11 @@ if [ "$UNINSTALL" -eq 1 ]; then
   done
   # Only files this installer creates are removed, by name; folders go only if they end up empty.
   rm -f -- "$LIB/3pa.mjs" "$LIB/herdr"
-  rmdir "$LIB" 2>/dev/null && say "removed $LIB" || true
-  [ ! -d "$LIB" ] || say "kept $LIB (it holds files that are not ours)"
+  if [ -d "$LIB" ]; then
+    if rmdir "$LIB" 2>/dev/null; then say "removed $LIB"
+    elif [ -n "$(ls -A "$LIB" 2>/dev/null)" ]; then say "kept $LIB (it holds files that are not ours)"
+    else die "could not remove the empty folder $LIB (permissions?)"; fi
+  fi
   if [ "$PURGE" -eq 1 ]; then
     # Exact names only, as the CLI and this installer create them; anything else in the folder
     # is somebody else's and stays. An unreadable folder is an error, not "nothing to do".
