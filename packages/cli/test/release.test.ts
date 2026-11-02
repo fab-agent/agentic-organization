@@ -349,3 +349,16 @@ test('R7: what the updater writes can always be read back; a full state refuses 
   // a state with more channels than the policy allows is not valid input either
   assert.equal(cleanReleaseState({ v: 1, channels: mk(17) }), null)
 })
+
+test('R8: channel names that exist on Object.prototype are ordinary names', async () => {
+  const s = setup()
+  s.publish(body({ channel: 'constructor' }))
+  assert.equal((await selfUpdate(s.opts())).status, 'updated')
+  assert.equal(loadReleaseState(s.state).channels.constructor!.seq, 5)
+  assert.equal((await selfUpdate(s.opts())).status, 'up_to_date')
+  s.publish(body({ channel: 'constructor', seq: 4 })); assert.equal(await code(selfUpdate(s.opts())), 'release_rollback')
+  s.publish(body({ channel: 'constructor', seq: 5, version: '1.1.1' })); assert.equal(await code(selfUpdate(s.opts())), 'release_conflict')
+  // and an unrelated channel on a machine that never saw it has no inherited history
+  const t = setup(); t.publish(body({ channel: 'valueof' }))
+  assert.equal((await selfUpdate(t.opts())).status, 'updated')
+})

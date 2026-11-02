@@ -104,6 +104,11 @@ function validateBody(b: unknown, now: number): ReleaseBody {
   return b as unknown as ReleaseBody
 }
 
+/** Own records only: a channel called `constructor` must not find Object's inherited member. */
+export function channelRecord(s: ReleaseState, ch: string): ReleaseState['channels'][string] | undefined {
+  return Object.hasOwn(s.channels, ch) ? s.channels[ch] : undefined
+}
+
 export function emptyReleaseState(): ReleaseState {
   return { v: 1, channels: {} }
 }
@@ -171,7 +176,7 @@ export function verifyRelease(wire: string | Uint8Array, o: { pub: string; now: 
   if (!verifyDetached(o.pub, RELEASE_DOMAIN, env.body, env.sig)) throw new ReleaseError('release_bad_signature')
   const body = validateBody(env.body, o.now)
   const digest = createHash('sha256').update(canonicalBytes(body)).digest('hex')
-  const prev = o.state.channels[body.channel]
+  const prev = channelRecord(o.state, body.channel)
   if (prev) {
     if (body.seq < prev.seq || cmpVersion(body.version, prev.version) < 0) throw new ReleaseError('release_rollback')
     if (body.seq === prev.seq && digest !== prev.digest) throw new ReleaseError('release_conflict')
@@ -274,7 +279,7 @@ export async function selfUpdate(o: UpdateOptions): Promise<UpdateResult> {
     // The accepted document is recorded first, so a rollback to an older one is impossible
     // from here on even if a later step fails.
     assertOwned()
-    const prev = state.channels[body.channel]
+    const prev = channelRecord(state, body.channel)
     if (!prev || prev.seq !== body.seq) {
       state.channels[body.channel] = { seq: body.seq, version: body.version, digest }
       saveReleaseState(o.stateDir, state)
