@@ -25,6 +25,10 @@ import path from 'node:path'
 const WIN = process.platform === 'win32'
 const P = WIN ? path.win32 : path.posix
 const EXE = WIN ? '.exe' : ''
+// Windows tools are run by absolute path: a `whoami` or `icacls` earlier on PATH (Git for Windows
+// ships a different whoami, for one) must never be the one that decides who the user is.
+const SYS32 = P.join(process.env.SystemRoot || process.env.windir || 'C:\\Windows', 'System32')
+const sys = (exe) => P.join(SYS32, exe)
 
 class Fail extends Error {}
 const die = (m) => { throw new Fail(m) }
@@ -176,16 +180,16 @@ function writeText(dest, text, mode = 0o644) {
 /** Windows has no 0700: take the folder away from everyone but the current user. */
 function privateAcl(dir) {
   if (!WIN) { chmodSync(dir, 0o700); return }
-  const sid = execFileSync('whoami', ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8' }).trim().split(',')[1]?.replace(/"/g, '')
+  const sid = execFileSync(sys('whoami.exe'), ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8' }).trim().split(',')[1]?.replace(/"/g, '')
   if (!sid || !/^S-1-[0-9-]+$/.test(sid)) die('could not determine the current user to restrict the state folder')
-  execFileSync('icacls', [dir, '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`], { stdio: 'ignore' })
+  execFileSync(sys('icacls.exe'), [dir, '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`], { stdio: 'ignore' })
 }
 
 function notElevated(allow) {
   if (allow) return // explicit: CI runners and deliberate installs into an administrator's own profile
   if (WIN) {
     let g = ''
-    try { g = execFileSync('whoami', ['/groups'], { encoding: 'utf8' }) } catch { return }
+    try { g = execFileSync(sys('whoami.exe'), ['/groups'], { encoding: 'utf8' }) } catch { return }
     if (g.includes('S-1-16-12288')) die('run as the person who will use the workspace, not from an elevated (administrator) prompt')
   } else if (process.getuid && process.getuid() === 0) die('run as the person who will use the workspace, not as root')
 }

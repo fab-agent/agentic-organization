@@ -199,13 +199,13 @@ test('windows only: drive-letter paths, reserved names, streams, trailing dots, 
     [path.join(l.d, 'x%PATH%'), /< > " \| \? \* or %/], [path.join(l.d, 'a:stream'), /":"|alternate/], [path.join(l.d, 'a<b'), /< > "/],
   ]) refused(run(base(l).map((x) => (x === l.prefix ? bad : x))), pat, bad)
   ok(run(base(l)))
-  const acl = spawnSync('icacls', [l.state], { encoding: 'utf8' }).stdout
+  const acl = spawnSync(path.join(process.env.SystemRoot, 'System32', 'icacls.exe'), [l.state], { encoding: 'utf8' }).stdout
   assert.doesNotMatch(acl, /Everyone|BUILTIN\\Users|Authenticated Users/i, acl)
 })
 
 test('windows only: an elevated prompt is refused unless --allow-elevated is given', { skip: !WIN }, () => {
   const l = loc()
-  const elevated = spawnSync('whoami', ['/groups'], { encoding: 'utf8' }).stdout.includes('S-1-16-12288')
+  const elevated = spawnSync(path.join(process.env.SystemRoot, 'System32', 'whoami.exe'), ['/groups'], { encoding: 'utf8' }).stdout.includes('S-1-16-12288')
   const r = spawnSync(nodeBin, [INST, ...base(l)], { encoding: 'utf8', env: ENV }) // no flag
   if (elevated) { assert.notEqual(r.status, 0); assert.match(r.stdout + r.stderr, /elevated/); assert.ok(!existsSync(l.prefix)) }
   else assert.equal(r.status, 0, r.stdout + r.stderr)

@@ -41,7 +41,7 @@ program.
    junctions and 8.3 short names are resolved (`realpath.native`); never a drive root, the
    home directory or a parent of it; bin, lib, state and app home must not overlap.
 6. **The state folder is private through its ACL**: the installer removes inheritance and
-   grants only the current user (by SID, via `icacls`). The CLI cannot check mode bits there
+   grants only the current user (by SID, via `icacls`; `whoami.exe` and `icacls.exe` are run by absolute path from System32, because a first CI run showed that a `whoami` from Git for Windows can come first on PATH and answers differently). The CLI cannot check mode bits there
    (ADR-0029) and does not try.
 7. **Launcher and wrapper are `.cmd` files.** Because a path can contain neither `"` nor `%`
    (decision 5), double-quoting is sufficient; the platform URL has `%` doubled. The launcher
