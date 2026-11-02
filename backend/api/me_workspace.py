@@ -8,13 +8,17 @@ membership. Nothing is signed unless the signing material and catalog are valid
 
 import os
 import time
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import select
 
 from api.auth import get_current_user
 from api.well_known import _cfg
 from database import get_session
-from models import User
+from models import User, WorkspaceClientReport
 from services import audit_chain
 from services import workspace_service as ws
 from services.workspaces import person_for_user
@@ -130,3 +134,63 @@ def get_workspace_crl(user: User = Depends(get_current_user)):
     if view.crl is None:
         raise HTTPException(status_code=404, detail="No revocation list published")
     return view.crl
+
+
+REPORT_MIN_INTERVAL = timedelta(seconds=30)
+
+
+class DriftReport(BaseModel):
+    """What a client says about its own app home (ADR-0035): counts only."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    client_version: str = Field(pattern=r"^[0-9A-Za-z.+-]{1,32}$")
+    epoch: int = Field(ge=0, le=2**31 - 1)
+    generation: int = Field(ge=0, le=2**53 - 1)
+    missing: int = Field(ge=0, le=100000)
+    modified: int = Field(ge=0, le=100000)
+    extra: int = Field(ge=0, le=100000)
+    unmanaged: int = Field(ge=0, le=100000)
+    interrupted: bool
+
+
+@router.post("/report", status_code=204)
+def report_drift(
+    body: DriftReport,
+    company_id: str | None = None,
+    user: User = Depends(get_current_user),
+):
+    """Store the caller's own latest drift claim. The person and company come from the
+    session, never from the body. A claim: it feeds a diagnostic view and nothing else."""
+    now = datetime.utcnow()
+    with get_session() as session:
+        person, cid = person_for_user(session, user, company_id)
+        row = session.exec(
+            select(WorkspaceClientReport).where(
+                WorkspaceClientReport.company_id == cid,
+                WorkspaceClientReport.person_id == person.id,
+            )
+        ).first()
+        if row and now - row.received_at < REPORT_MIN_INTERVAL:
+            raise HTTPException(
+                status_code=429,
+                detail="Reports are limited to one every 30 seconds",
+                headers={"Retry-After": "30"},
+            )
+        row = row or WorkspaceClientReport(company_id=cid, person_id=person.id)
+        for k, v in body.model_dump().items():
+            setattr(row, k, v)
+        row.received_at = now
+        session.add(row)
+        try:
+            session.commit()
+        except (
+            IntegrityError
+        ):  # two first reports at once: the other one won; this is "too soon"
+            session.rollback()
+            raise HTTPException(
+                status_code=429,
+                detail="Reports are limited to one every 30 seconds",
+                headers={"Retry-After": "30"},
+            ) from None
+    return Response(status_code=204)

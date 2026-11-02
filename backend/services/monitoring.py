@@ -22,11 +22,14 @@ from models import (
     GatewayUsage,
     Personnel,
     RunDiagnosis,
+    WorkspaceClientReport,
     WorkspaceManifestState,
 )
 
 logger = logging.getLogger("app")
 
+STALE_DAYS = 7
+MAX_DRIFT_NAMES = 20
 ORDER = {"ok": 0, "unknown": 1, "warn": 2, "fail": 3}
 CERT_WARN_SECONDS = 14 * 24 * 3600
 EVAL_DAYS = 30
@@ -349,6 +352,68 @@ def _workspace(company_id: str, now_s: int) -> dict:
     return out
 
 
+def _clients(company_id: str, now: datetime) -> dict:
+    """Self-reported by the clients (ADR-0035): a diagnostic claim, never proof. Counts only."""
+    with get_session() as session:
+        issued = {
+            s.person_id: s
+            for s in session.exec(
+                select(WorkspaceManifestState).where(
+                    WorkspaceManifestState.company_id == company_id
+                )
+            ).all()
+        }
+        reports = {
+            r.person_id: r
+            for r in session.exec(
+                select(WorkspaceClientReport).where(
+                    WorkspaceClientReport.company_id == company_id
+                )
+            ).all()
+        }
+        names = {
+            p.id: p.name
+            for p in session.exec(
+                select(Personnel).where(Personnel.company_id == company_id)
+            ).all()
+        }
+    # Only people who were issued a workspace count; a report from anyone else is ignored.
+    mine = {pid: reports[pid] for pid in issued if pid in reports}
+    out: dict = {"self_reported": True, "issued": len(issued), "reporting": len(mine)}
+    if not mine:
+        return {**out, "status": "unknown", "reason": "no_reports"}
+    cutoff = now - timedelta(days=STALE_DAYS)
+    behind = sum(1 for pid, r in mine.items() if r.generation < issued[pid].generation)
+    stale = sum(
+        1 for pid in issued if pid not in mine or mine[pid].received_at < cutoff
+    )
+    drifting = [
+        (pid, r)
+        for pid, r in mine.items()
+        if r.interrupted or r.missing or r.modified or r.extra or r.unmanaged
+    ]
+    drifting.sort(key=lambda t: names.get(t[0]) or "")
+    out.update(
+        behind=behind,
+        not_reported_for_days=STALE_DAYS,
+        silent=stale,
+        drifting=len(drifting),
+        drifting_people=[
+            {
+                "name": names.get(pid),
+                "missing": r.missing,
+                "modified": r.modified,
+                "extra": r.extra,
+                "unmanaged": r.unmanaged,
+                "interrupted": r.interrupted,
+            }
+            for pid, r in drifting[:MAX_DRIFT_NAMES]
+        ],
+        status="warn" if drifting else "ok",
+    )
+    return out
+
+
 def summary(company_id: str, *, deep: bool = False) -> dict:
     now = datetime.utcnow()
     sections = {
@@ -359,8 +424,7 @@ def summary(company_id: str, *, deep: bool = False) -> dict:
         "workspace": _guard(
             "workspace", lambda: _workspace(company_id, int(time.time()))
         ),
-        # Clients do not report their state yet (ADR-0026 decision 4): say so, do not guess.
-        "clients": {"status": "unknown", "reason": "drift_not_reported"},
+        "clients": _guard("clients", lambda: _clients(company_id, now)),
     }
     return {
         "company_id": company_id,

@@ -928,3 +928,26 @@ class WorkspaceManifestState(SQLModel, table=True):
     epoch: int = Field(default=1, sa_type=BigInteger)
     generation: int = Field(default=0, sa_type=BigInteger)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WorkspaceClientReport(SQLModel, table=True):
+    """The latest drift report a person's client sent (ADR-0035): a self-reported diagnostic
+    claim, never a fact and never an input to any access, policy or signing decision. Counts
+    only: no file names or contents. One row per (company, person), replaced on every report."""
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "person_id", name="uq_workspace_client_report"),
+    )
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    company_id: str = Field(foreign_key="company.id", index=True)
+    person_id: str = Field(foreign_key="personnel.id", index=True)
+    client_version: str = Field(default="")
+    epoch: int = Field(default=0, sa_type=BigInteger)
+    generation: int = Field(default=0, sa_type=BigInteger)
+    missing: int = Field(default=0)
+    modified: int = Field(default=0)
+    extra: int = Field(default=0)
+    unmanaged: int = Field(default=0)
+    interrupted: bool = Field(default=False)
+    received_at: datetime = Field(default_factory=datetime.utcnow)
