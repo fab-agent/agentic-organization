@@ -81,13 +81,13 @@ def live(monkeypatch, tmp_path, db_session):
         p.stop()
 
 
-def sync(live, *extra, root_pub=None, token=None):
+def sync(live, *extra, root_pub=None, token=None, sub="sync"):
     home = live["tmp"]
     cmd = [
         str(TSX),
         "src/index.ts",
         "workspace",
-        "sync",
+        sub,
         "--base",
         live["base"],
         "--company",
@@ -182,3 +182,80 @@ def test_the_wrong_person_cannot_receive_this_persons_workspace(live, db_session
     db_session.commit()  # a member with no linked person
     r = sync(live, token=create_access_token(other.id))
     assert r.returncode == 1 and not (live["tmp"] / "app" / "layouts").exists()
+
+
+def _report_row(live, db_session):
+    from sqlmodel import select
+
+    from models import WorkspaceClientReport
+
+    db_session.expire_all()
+    return db_session.exec(
+        select(WorkspaceClientReport).where(
+            WorkspaceClientReport.person_id == live["person"].id
+        )
+    ).first()
+
+
+def test_the_client_reports_its_own_drift_as_counts_only(live, db_session):
+    from datetime import datetime, timedelta
+
+    r = sync(live)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "status report sent" in r.stdout
+    row = _report_row(live, db_session)
+    assert row and (row.generation, row.missing, row.modified, row.extra) == (
+        1,
+        0,
+        0,
+        0,
+    )
+    assert not row.interrupted and row.company_id == live["co"].id
+
+    # an edit by hand shows up in the next report as a count, and nothing names the file
+    (live["tmp"] / "app" / "mods" / "finance-dashboard" / "main.js").write_bytes(
+        b"evil"
+    )
+    # (the platform limits reports to one per 30 s: pretend the first one was a while ago)
+    row.received_at = datetime.utcnow() - timedelta(seconds=60)
+    db_session.add(row)
+    db_session.commit()
+    again = sync(live, sub="report")
+    assert again.returncode == 0, again.stdout + again.stderr
+    row = _report_row(live, db_session)
+    assert row.modified == 1 and row.missing == 0
+    assert "main.js" not in again.stdout + again.stderr
+
+    # the monitoring page sees it, labelled as a self-report
+    token = create_access_token(live["founder_id"]) if "founder_id" in live else None
+    if token:
+        import httpx
+
+        j = httpx.get(
+            f"{live['base']}/admin/monitoring?company_id={live['co'].id}",
+            headers={"Authorization": f"Bearer {token}"},
+        ).json()
+        assert j["sections"]["clients"]["self_reported"] is True
+
+
+def test_a_failed_report_never_fails_the_sync_and_can_be_turned_off(
+    live, db_session, monkeypatch
+):
+    r = sync(live, "--no-report")
+    assert r.returncode == 0 and "status report" not in r.stdout
+    assert _report_row(live, db_session) is None
+
+    import api.me_workspace as mw
+
+    def boom(*a, **k):
+        raise RuntimeError("database exploded")
+
+    monkeypatch.setattr(mw, "WorkspaceClientReport", boom)
+    r = sync(live)  # the platform now fails the report with a 500
+    assert r.returncode == 0, r.stdout + r.stderr  # the sync is not its result
+    assert "status report not sent [http_500]" in r.stdout
+    assert "already up to date" in r.stdout
+    assert "database exploded" not in r.stdout + r.stderr
+    # and the explicit command says so and fails (that is its whole job)
+    again = sync(live, sub="report")
+    assert again.returncode == 1 and "http_500" in again.stdout + again.stderr

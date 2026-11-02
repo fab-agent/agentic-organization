@@ -27,7 +27,7 @@
 		missing: 'Zincir çapadan sonra kaybolmuş'
 	};
 	const REASON: Record<string, string> = {
-		drift_not_reported: 'İstemciler henüz durum bildirmiyor (sapma raporu sonraki adım).',
+		no_reports: 'Henüz hiçbir istemci durum bildirmedi (3pa workspace sync sonrası otomatik gönderilir).',
 		section_failed: 'Bu bölüm hesaplanamadı; ayrıntı sunucu günlüğünde.'
 	};
 	const LAYERS: Record<string, string> = { model: 'Model', prompt: 'Prompt', tool: 'Araç', policy: 'Politika' };
@@ -173,7 +173,29 @@
 					<h2 class="font-medium">İstemciler (sapma)</h2>
 					<Badge variant={VARIANT[s.clients.status]}>{LABEL[s.clients.status]}</Badge>
 				</div>
-				<p class="text-sm text-muted-foreground">{REASON[s.clients.reason ?? ''] ?? s.clients.reason}</p>
+				<p class="text-xs text-muted-foreground">Kendi bildirimleri: bir tanı sinyalidir, kanıt değildir. Dosya adı içermez, yalnız sayılar.</p>
+				{#if s.clients.reason}
+					<p class="text-sm text-muted-foreground">{REASON[s.clients.reason] ?? s.clients.reason}</p>
+				{/if}
+				{#if s.clients.issued !== undefined}
+				<p class="text-sm">
+					{s.clients.reporting}/{s.clients.issued} kişi bildirdi · {s.clients.never_reported} kişi henüz hiç bildirmedi ·
+					{s.clients.silent} kişi {s.clients.not_reported_for_days}+ gündür bildirmedi
+					{#if s.clients.behind !== undefined} · {s.clients.behind} kişi güncel sürümün gerisinde{/if}
+				</p>
+				{/if}
+				{#if !s.clients.reason}
+					{#if s.clients.drifting}
+						<p class="text-sm">{s.clients.drifting} kişide sapma var:</p>
+						<ul class="text-sm text-muted-foreground">
+							{#each s.clients.drifting_people ?? [] as d, i (i)}
+								<li>
+									{d.name ?? 'bilinmeyen'} — eksik {d.missing}, değişmiş {d.modified}, fazla {d.extra}, yabancı mod {d.unmanaged}{d.interrupted ? ', yarım kalmış güncelleme' : ''}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				{/if}
 			</section>
 		</div>
 		<p class="text-xs text-muted-foreground">Oluşturulma: {new Date(data.generated_at).toLocaleString('tr-TR')}</p>

@@ -37,8 +37,8 @@ on one screen, explicitly without inventing a metrics stack.
      counts, labelled as hypotheses, not fault rates (ADR-0023).
    - `workspace`: whether the signing material loads, epoch, CRL number, days left on the signing
      certificate, read from the certificate's verified payload (`warn` under 14), people issued a manifest and when last.
-   - `clients`: **`unknown`, reason `drift_not_reported`** - clients do not report their state yet
-     (ADR-0026 decision 4). It says so instead of guessing.
+   - `clients`: the self-reported drift of the people who were issued a workspace (ADR-0035); shown
+     as `unknown` (`no_reports`) until anyone has reported. It says so instead of guessing.
 3. **A failing section never fails the response and never leaks.** An unexpected error in one section
    yields `{status: unknown, reason: section_failed}` (the detail goes to the server log); the
    workspace section shows a reason only if it is on an explicit list of the codes the signer loader
@@ -56,7 +56,7 @@ on one screen, explicitly without inventing a metrics stack.
   usage list; no cross-company view (a platform operator view is a different authorisation question).
 - The audit chain is not re-hashed by default; a tampered event is found by `deep=true`, not by the
   cheap check (the anchor check catches truncation and head rewrites).
-- `clients` stays `unknown` until drift reporting exists.
+- `clients` is a self-report (ADR-0035), not a measurement.
 
 ## Verification
 

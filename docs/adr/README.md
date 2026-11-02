@@ -51,6 +51,7 @@ Format: a [MADR](https://adr.github.io/madr/) derivative — see [`0000-template
 | [0032](0032-windows-user-installer.md) | User installer for Windows | proposed |
 | [0033](0033-deployment-contract.md) | Deployment contract (vendor-neutral MDM runbook) | proposed |
 | [0034](0034-monitoring-summary.md) | Monitoring summary (one screen from existing views) | proposed |
+| [0035](0035-client-drift-report.md) | Client drift report (a diagnostic signal, not attestation) | proposed |
 
 ## Adding a new ADR
 

@@ -4,6 +4,7 @@
  *   3pa workspace sync   [--base URL] [--company ID] [--root-pub FILE|BASE64]
  *                        [--app-home DIR] [--oidc ID_TOKEN] [--adopt] [--re-enroll]
  *   3pa workspace status [--app-home DIR]
+ *   3pa workspace report [--base URL] [--company ID] [--app-home DIR]   (drift as counts, ADR-0035)
  *
  * `sync` signs in (the web token stays in memory), asks the platform for the manifest of
  * the signed-in person, verifies it against the root key pinned on this machine, and
@@ -18,6 +19,7 @@ import { join } from 'node:path'
 import * as p from '@clack/prompts'
 import chalk from 'chalk'
 
+import { ReportError, sendReport } from '../utils/drift-report.js'
 import { ProvisionError, checkBaseUrl, scanDrift, syncWorkspace } from '../utils/provisioner.js'
 import { StateError, loadState, workspaceStateDir } from '../utils/workspace-state.js'
 import { loadSession, webSignIn } from './login.js'
@@ -66,7 +68,8 @@ export async function workspace(args: string[]): Promise<void> {
   const sub = args[0]
   if (sub === 'status') return status(args.slice(1))
   if (sub === 'sync') return sync(args.slice(1))
-  console.log('  ' + chalk.bold('Kullanım:') + '  3pa workspace sync | status')
+  if (sub === 'report') return report(args.slice(1))
+  console.log('  ' + chalk.bold('Kullanım:') + '  3pa workspace sync | status | report')
   if (sub) process.exit(1)
 }
 
@@ -92,6 +95,15 @@ async function sync(args: string[]): Promise<void> {
       chalk.green(r.status === 'updated' ? 'Workspace updated' : 'Workspace already up to date') +
         chalk.dim(`  generation ${r.generation}, layout ${r.layout}, mods: ${r.mods.join(', ') || '-'}`),
     )
+    // Best effort and never part of the sync's result: a report that cannot be sent is one dim line.
+    if (!args.includes('--no-report') && !process.env.THREEPA_NO_REPORT) {
+      try {
+        const out = await sendReport({ baseUrl: base, webToken, companyId: flag(args, '--company'), appHome: appHome(args), stateDir: workspaceStateDir(), clientVersion: process.env.THREEPA_VERSION || '1.0.0', timeoutMs: 5000 })
+        console.log(chalk.dim(out === 'sent' ? '  status report sent' : out === 'too_soon' ? '  status report skipped (sent a moment ago)' : '  nothing installed, nothing to report'))
+      } catch (e) {
+        console.log(chalk.dim(`  status report not sent [${e instanceof ReportError ? e.code : 'error'}]`))
+      }
+    }
   } catch (e) {
     const code = e instanceof ProvisionError || e instanceof StateError ? e.code : 'error'
     const known = e instanceof ProvisionError || e instanceof StateError
@@ -102,6 +114,25 @@ async function sync(args: string[]): Promise<void> {
         : known ? (e as Error).message
         : process.env.THREEPA_DEBUG ? (e as Error).message : 'Unexpected error (set THREEPA_DEBUG=1 for details).')
     p.cancel(chalk.red(hint) + chalk.dim(`  [${code}]`))
+    process.exit(1)
+  }
+}
+
+async function report(args: string[]): Promise<void> {
+  p.intro(chalk.bold('3pa workspace report'))
+  try {
+    const base = checkBaseUrl(flag(args, '--base') || process.env.FABAGENT_BASE_URL || loadSession()?.base_url || '')
+    const webToken = process.env.FABAGENT_WEB_TOKEN || (await webSignIn(base, args))
+    if (webToken === null) return void p.cancel('cancelled')
+    const out = await sendReport({ baseUrl: base, webToken, companyId: flag(args, '--company'), appHome: appHome(args), stateDir: workspaceStateDir(), clientVersion: process.env.THREEPA_VERSION || '1.0.0' })
+    p.outro(
+      out === 'sent' ? chalk.green('Status report sent') + chalk.dim('  (counts only; a claim, not proof)')
+        : out === 'too_soon' ? chalk.yellow('A report was sent a moment ago; try again in 30 seconds')
+        : chalk.yellow('Nothing is installed yet; run `3pa workspace sync` first'),
+    )
+  } catch (e) {
+    const code = e instanceof ReportError || e instanceof ProvisionError || e instanceof StateError ? e.code : 'error'
+    p.cancel(chalk.red(e instanceof ReportError ? `The report could not be sent (${code}).` : (MESSAGES[code] ?? 'Unexpected error (set THREEPA_DEBUG=1 for details).')) + chalk.dim(`  [${code}]`))
     process.exit(1)
   }
 }

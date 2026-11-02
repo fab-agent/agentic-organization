@@ -90,10 +90,8 @@ def test_shape_and_no_secret_material(client, world):
     }
     assert body["status"] in {"ok", "unknown", "warn", "fail"}
     assert body["sections"]["service"]["database"] == "ok"
-    assert body["sections"]["clients"] == {
-        "status": "unknown",
-        "reason": "drift_not_reported",
-    }
+    assert body["sections"]["clients"]["status"] == "unknown"
+    assert body["sections"]["clients"]["reason"] == "no_reports"
     text = json.dumps(body).lower()
     for forbidden in ("private", "password", "secret", "traceback", "begin "):
         assert forbidden not in text, forbidden

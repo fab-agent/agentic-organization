@@ -39,7 +39,24 @@ export type Monitoring = {
 			people_issued: number;
 			last_issued: string | null;
 		};
-		clients: Section;
+		clients: Section & {
+			self_reported?: boolean;
+			issued?: number;
+			reporting?: number;
+			behind?: number;
+			never_reported?: number;
+			silent?: number;
+			not_reported_for_days?: number;
+			drifting?: number;
+			drifting_people?: {
+				name: string | null;
+				missing: number;
+				modified: number;
+				extra: number;
+				unmanaged: number;
+				interrupted: boolean;
+			}[];
+		};
 	};
 };
 
