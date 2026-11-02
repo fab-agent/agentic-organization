@@ -227,7 +227,9 @@ test('windows only: .cmd files keep ! ^ & and spaces literal even when the calle
   // A caller with delayed expansion enabled calls our scripts; the "!X!" sits in the state folder
   // name, which the scripts write into their `set` lines. (It cannot sit on the outer command line:
   // cmd would expand it there before our code ever runs.)
-  const l = loc(); const odd = { prefix: path.join(l.d, 'p^&y z'), state: path.join(l.d, 's!X!'), app: path.join(l.d, 'a^b') }
+  const l = loc(); // (a caret in the PREFIX would be eaten by the driver's own delayed expansion, so the prefix has none;
+  // the state and app folders only ever appear inside our scripts and carry the awkward characters)
+  const odd = { prefix: path.join(l.d, 'p&y z'), state: path.join(l.d, 's!X!^q'), app: path.join(l.d, 'a^b!X!') }
   const cli = path.join(T, 'env-cli.mjs'); writeFileSync(cli, 'console.log("STATE=" + process.env.THREEPA_WORKSPACE_DIR + "|APP=" + process.env.HERDR_APP_HOME)\n')
   const args = ['--base-url', B, '--root-pub', KEY, '--cli', cli, '--cli-sha256', sha(cli), '--prefix', odd.prefix, '--state-dir', odd.state, '--app-home', odd.app, ...withHerdr]
   ok(run(args))
