@@ -14,15 +14,17 @@ CONF=""; TARGET=""; EXTRA=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --config) [ $# -ge 2 ] || die "--config needs a value" 2; CONF="$2"; shift 2 ;;
-    --pins-only) EXTRA="--pins-only"; shift ;;
+    --pins-only) EXTRA="$EXTRA --pins-only"; shift ;;
+    --force-artifacts) EXTRA="$EXTRA --force-artifacts"; shift ;;
     --user) [ $# -ge 2 ] || die "--user needs a value" 2; TARGET="$2"; shift 2 ;;
     *) die "unknown option: $1" 2 ;;
   esac
 done
 [ -n "$CONF" ] && [ -f "$CONF" ] || die "--config FILE is required and must exist" 2
-HERE="$(cd "$(dirname "$0")" && pwd)"
-# the path goes to deploy.mjs exactly as given (command substitution would drop a trailing newline
-# and name a different file); deploy.mjs resolves it and refuses control characters
+# the folder this script is in, without command substitution (it would drop a trailing newline
+# and name a different folder)
+case "$0" in */*) HERE="${0%/*}" ;; *) HERE="." ;; esac
+case "$HERE" in /*) ;; *) HERE="$PWD/$HERE" ;; esac
 command -v node >/dev/null 2>&1 || die "Node.js 20 or newer is required (not found)" 2
 
 if [ "$(id -u)" -eq 0 ]; then

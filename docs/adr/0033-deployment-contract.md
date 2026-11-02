@@ -29,21 +29,24 @@ without a tenant, and the product in use is not fixed.
    home, after validating the name (`[A-Za-z0-9._-]`, existing, not `root`); as an ordinary user it
    refuses to act for anyone else. `deploy.ps1` refuses SYSTEM.
 4. **`check` is the detection rule**: read-only; exit 0 only if the installed bundle's SHA-256, the
-   Herdr binary's SHA-256 and the `herdr-fab` launcher (when configured), and the pinned root key,
-   release key and release URL equal the settings. URLs are compared in the installer's own
-   normal form (WHATWG href) and keys must be canonical 32-byte base64: a malformed setting is a
+   Herdr binary's SHA-256 (when configured), the two entry scripts **byte for byte** against what
+   the installer would write (the Node installer exports its generators; a missing or damaged
+   `3pa` wrapper or `herdr-fab` launcher is non-compliant), and the pinned root key, release key
+   and release URL equal the settings. URLs are compared in the installer's own normal form
+   (WHATWG href) and keys must be canonical 32-byte base64: a malformed setting is a
    configuration error (exit 2), never "compliant". `--pins-only` checks the trust setup only.
-   **`install` is idempotent**: if `check` passes it does nothing; otherwise it runs the installer,
-   always with an explicit `--state-dir` equal to the one `check` reads (so a custom
-   `THREEPA_WORKSPACE_DIR` is honoured by both, never split). A custom `--prefix` is not supported
-   by the helper (it always uses the platform default).
-5. **Updates are not deployments, and an install never undoes one.** New versions arrive through
-   signed releases (ADR-0031). If a release was ever accepted on the machine (`release-state.json`
-   exists), a bundle or Herdr binary that differs from the settings is a *newer signed* one: `check`
-   notes it and stays compliant, and `install` re-installs the *installed* file onto itself (only
-   missing pieces change) instead of putting the older bootstrap file back, so a repeated MDM run
-   cannot roll back a security update. Without that history a different file is drift and is
-   replaced.
+5. **`install` is idempotent and never overwrites a file that differs from the settings** unless
+   `--force-artifacts` is given. The settings name the *first* files; a bundle or binary that is
+   already there but different is most likely newer (`3pa self-update`, ADR-0031), possibly damaged
+   or replaced, and the helper does not try to tell which (an earlier design inferred "a signed
+   update happened" from the presence of `release-state.json`; that file is only a record of an
+   accepted document, not proof that the files were installed, so the guess was dropped). The
+   different file is re-installed onto itself, so a repeated MDM run cannot roll a security update
+   back; `check` keeps reporting the difference, so it is visible. A **missing** file is installed
+   from the settings, i.e. the bootstrap version: run `3pa self-update` afterwards (a repaired pair
+   can be briefly mixed). `install` always passes an explicit `--state-dir` equal to the one `check`
+   reads (a custom `THREEPA_WORKSPACE_DIR` is honoured by both). A custom `--prefix` is not
+   supported by the helper (platform default only).
 6. **Vendor-specific packaging is out of scope** until a product is chosen; the runbook states the
    run context each family needs.
 
@@ -52,13 +55,17 @@ without a tenant, and the product in use is not fixed.
 - No Intune `.intunewin`, Jamf pkg/policy, or Ansible role; no tenant testing.
 - No signing-key recovery (still to be written) and no automatic key rotation.
 - `check` does not verify the workspace content (layout and mods); drift reporting is a later slice.
-- The paths of `deploy.conf` and of the scripts must not contain control characters (refused).
+- It cannot tell a legitimately self-updated bundle from a replaced one; use `--pins-only` as the
+  detection rule for fleets that self-update, and `--force-artifacts` to reset deliberately.
+- The settings path must not contain control characters (refused); `deploy.sh` finds its own folder
+  without command substitution, so a newline at the end of that folder's name does not select a
+  sibling.
 
 ## Verification
 
 `installers/deploy/deploy.test.mjs` (CI on Linux, macOS, Windows): settings parsing negatives
 (unknown key, injection characters, duplicates, bad hash, unpaired settings, size limits), `check` writes nothing,
-install/idempotence/drift detection (each pinned value), a custom state folder, a signed update that an install must not undo, URL normalisation, Herdr added later, malformed keys, wrong hash and missing bundle refusals, a
+install/idempotence/drift detection (each pinned value), a custom state folder, a different file that install must not overwrite (and the explicit force), URL normalisation, Herdr added later or missing, damaged entry scripts, malformed keys, wrong hash and missing bundle refusals, a
 pinned-key swap refused, `deploy.sh` user rules (cannot act for another user, root needs a named
 safe user, not `root`, unusual names refused), a config path ending in a newline, and a macOS-style
 home with a space (system tools replaced by recording shims).

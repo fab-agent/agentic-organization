@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -62,7 +62,7 @@ test('check never changes anything; install is idempotent; drift in bundle or ke
     r = run(['check', '--config', conf(over, 'drift.conf')]); assert.equal(r.rc, 1, JSON.stringify(over)); assert.match(r.out, pat)
   }
   const cli2 = path.join(T, 'cli2'); mkdirSync(cli2); writeFileSync(path.join(cli2, '3pa.mjs'), 'console.log("new")\n')
-  r = run(['check', '--config', conf({ CLI_FILE: 'cli2/3pa.mjs', CLI_SHA256: sha(path.join(cli2, '3pa.mjs')) }, 'newer.conf')]); assert.equal(r.rc, 1); assert.match(r.out, /not the intended one/)
+  r = run(['check', '--config', conf({ CLI_FILE: 'cli2/3pa.mjs', CLI_SHA256: sha(path.join(cli2, '3pa.mjs')) }, 'newer.conf')]); assert.equal(r.rc, 1); assert.match(r.out, /not the one in the settings/)
   // a different pinned key is NOT silently replaced by an install (that needs the installer's explicit flag)
   r = run(['install', '--config', conf({ ROOT_PUB: OTHER }, 'swap.conf')]); assert.notEqual(r.rc, 0); assert.match(r.out, /different root key/)
 })
@@ -111,23 +111,50 @@ test('D1: a custom THREEPA_WORKSPACE_DIR is honoured by install AND check', { sk
   assert.equal(runIn(env, ['check', '--config', f]).rc, 0)
 })
 
-test('D2: an older bootstrap bundle never replaces one installed by a signed self-update', { skip: isRoot }, () => {
+test('D2/D8: a file that differs from the settings is never overwritten by install (no guessing about why); --force-artifacts is the explicit way', { skip: isRoot }, () => {
   const h = fresh('d2'); const f = conf({}, 'd2.conf')
   assert.equal(runIn(h, ['install', '--config', f]).rc, 0)
-  writeFileSync(bundleOf(h), 'console.log("NEWER signed bundle")\n') // what self-update leaves behind
-  writeFileSync(path.join(stateOf(h), 'release-state.json'), JSON.stringify({ v: 1, channels: { stable: { seq: 99, version: '9.0.0', digest: 'a'.repeat(64) } } }))
-  let r = runIn(h, ['check', '--config', f]); assert.equal(r.rc, 0, r.out); assert.match(r.out, /newer than the settings/)
-  r = runIn(h, ['install', '--config', f]); assert.equal(r.rc, 0, r.out)
+  writeFileSync(bundleOf(h), 'console.log("NEWER signed bundle")\n') // what self-update leaves behind (or a tamperer)
+  // whatever sits in release-state.json (nothing, garbage, a folder) changes nothing about the decision
+  for (const make of [() => {}, () => writeFileSync(path.join(stateOf(h), 'release-state.json'), ''), () => { rmSync(path.join(stateOf(h), 'release-state.json'), { force: true }); mkdirSync(path.join(stateOf(h), 'release-state.json')) }]) {
+    make()
+    let r = runIn(h, ['check', '--config', f]); assert.equal(r.rc, 1, r.out); assert.match(r.out, /3pa bundle is not the one in the settings/)
+    r = runIn(h, ['install', '--config', f]); assert.equal(r.rc, 0, r.out); assert.match(r.out, /kept .* \(it differs from the settings/)
+    assert.match(readFileSync(bundleOf(h), 'utf8'), /NEWER signed bundle/, 'not rolled back')
+  }
+  // --pins-only ignores the files, not the trust setup
+  assert.equal(runIn(h, ['check', '--config', f, '--pins-only']).rc, 0)
+  assert.equal(runIn(h, ['check', '--config', conf({ ROOT_PUB: OTHER }, 'd2-other.conf'), '--pins-only']).rc, 1)
+  // the explicit way back
+  const r = runIn(h, ['install', '--config', f, '--force-artifacts']); assert.equal(r.rc, 0, r.out)
+  assert.equal(sha(bundleOf(h)), CLI_SHA); assert.equal(runIn(h, ['check', '--config', f]).rc, 0)
+})
+
+test('D9: a MISSING file is installed from the settings (the bootstrap version); a present newer one beside it is kept', { skip: isRoot }, () => {
+  const h = fresh('d9'); const herdr = path.join(T, WIN ? 'herdr.exe' : 'herdr'); copyFileSync(process.execPath, herdr)
+  const f = conf({ HERDR_FILE: path.basename(herdr), HERDR_SHA256: sha(herdr) }, 'd9.conf')
+  assert.equal(runIn(h, ['install', '--config', f]).rc, 0)
+  writeFileSync(bundleOf(h), 'console.log("NEWER signed bundle")\n')
+  rmSync(path.join(libOf(h), WIN ? 'herdr.exe' : 'herdr'))
+  const r = runIn(h, ['install', '--config', f]); assert.equal(r.rc, 0, r.out)
+  assert.ok(existsSync(path.join(libOf(h), WIN ? 'herdr.exe' : 'herdr')), 'the missing binary came back')
   assert.match(readFileSync(bundleOf(h), 'utf8'), /NEWER signed bundle/, 'the newer bundle was kept')
-  // without that history, a different bundle IS drift and is put back
-  const g = fresh('d2b'); assert.equal(runIn(g, ['install', '--config', f]).rc, 0)
-  writeFileSync(bundleOf(g), 'tampered\n')
-  assert.equal(runIn(g, ['check', '--config', f]).rc, 1)
-  assert.equal(runIn(g, ['install', '--config', f]).rc, 0); assert.equal(sha(bundleOf(g)), CLI_SHA)
-  // --pins-only ignores bundle differences but not the trust setup
-  writeFileSync(bundleOf(g), 'tampered again\n')
-  assert.equal(runIn(g, ['check', '--config', f, '--pins-only']).rc, 0)
-  assert.equal(runIn(g, ['check', '--config', conf({ ROOT_PUB: OTHER }, 'd2-other.conf'), '--pins-only']).rc, 1)
+})
+
+test('D10: a missing or damaged entry script is non-compliant and is repaired', { skip: isRoot }, () => {
+  const h = fresh('d10'); const herdr = path.join(T, WIN ? 'herdr.exe' : 'herdr'); copyFileSync(process.execPath, herdr)
+  const f = conf({ HERDR_FILE: path.basename(herdr), HERDR_SHA256: sha(herdr) }, 'd10.conf')
+  assert.equal(runIn(h, ['install', '--config', f]).rc, 0); assert.equal(runIn(h, ['check', '--config', f]).rc, 0)
+  const bin = path.dirname(WIN ? path.join(h.LOCALAPPDATA, '3pa', 'bin', 'x') : path.join(h.HOME, '.local', 'bin', 'x'))
+  const wrapper = path.join(bin, WIN ? '3pa.cmd' : '3pa'), launcher = path.join(bin, WIN ? 'herdr-fab.cmd' : 'herdr-fab')
+  rmSync(wrapper)
+  let r = runIn(h, ['check', '--config', f]); assert.equal(r.rc, 1); assert.match(r.out, /3pa entry script/)
+  assert.equal(runIn(h, ['install', '--config', f]).rc, 0); assert.ok(existsSync(wrapper))
+  writeFileSync(launcher, '')
+  r = runIn(h, ['check', '--config', f]); assert.equal(r.rc, 1); assert.match(r.out, /launcher/)
+  writeFileSync(launcher, readFileSync(launcher, 'utf8') + 'echo extra\n')
+  assert.equal(runIn(h, ['check', '--config', f]).rc, 1)
+  assert.equal(runIn(h, ['install', '--config', f]).rc, 0); assert.equal(runIn(h, ['check', '--config', f]).rc, 0)
 })
 
 test('D3: the release URL is compared in the installer\'s own normal form', { skip: isRoot }, () => {
@@ -150,7 +177,6 @@ test('D4: a Herdr binary added to the settings later is installed (and detected)
   const r = runIn(h, ['install', '--config', f]); assert.equal(r.rc, 0, r.out); assert.doesNotMatch(r.out, /already installed/)
   assert.ok(existsSync(path.join(libOf(h), WIN ? 'herdr.exe' : 'herdr')))
   assert.equal(runIn(h, ['check', '--config', f]).rc, 0)
-  // a different Herdr hash is drift too
   assert.equal(runIn(h, ['check', '--config', conf({ HERDR_FILE: path.basename(herdr), HERDR_SHA256: 'f'.repeat(64) }, 'd4c.conf')]).rc, 1)
 })
 
@@ -174,6 +200,15 @@ test('D5/D6: deploy.sh passes the config path untouched and keeps a home directo
   if (!isRoot) { // (as root the user rule answers first; D6 below covers that branch)
     const r = spawnSync('sh', [sh, 'check', '--config', path.join(T, 'settings\n')], { encoding: 'utf8', env: ENV })
     assert.equal(r.status, 2, r.stdout + r.stderr); assert.match(r.stdout + r.stderr, /control characters/)
+  }
+  // D11: the helper next to deploy.sh is found even when the script's folder name ends in a newline
+  const wrong = path.join(T, 'scripts'); const lf = path.join(T, 'scripts\n'); mkdirSync(wrong, { recursive: true }); mkdirSync(lf, { recursive: true })
+  writeFileSync(path.join(wrong, 'deploy.mjs'), 'console.log("WRONG-SIBLING-HELPER")\n')
+  copyFileSync(sh, path.join(lf, 'deploy.sh')); writeFileSync(path.join(lf, 'deploy.mjs'), 'console.log("RIGHT-HELPER")\n')
+  if (!isRoot) {
+    const o2 = spawnSync('sh', [path.join(lf, 'deploy.sh'), 'check', '--config', a], { encoding: 'utf8', env: ENV })
+    assert.doesNotMatch(o2.stdout, /WRONG-SIBLING-HELPER/, o2.stdout + o2.stderr)
+    assert.match(o2.stdout, /RIGHT-HELPER/, o2.stdout + o2.stderr)
   }
   // D6: a macOS-style home with a space, with every system tool replaced by a recording shim
   const shim = path.join(T, 'shims'); mkdirSync(shim, { recursive: true })

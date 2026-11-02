@@ -21,6 +21,7 @@ import {
 } from 'node:fs'
 import { homedir, hostname, tmpdir } from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const WIN = process.platform === 'win32'
 const P = WIN ? path.win32 : path.posix
@@ -124,7 +125,7 @@ function checkLocations(o) {
   }
 }
 
-function checkUrl(raw, what, allowQueryPath) {
+export function checkUrl(raw, what, allowQueryPath) {
   let u
   try { u = new URL(raw) } catch { die(`${what} is not a valid platform URL (no credentials, query or fragment)`) }
   const loop = u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '[::1]'
@@ -249,6 +250,39 @@ const OURS = [/^root\.pub$/, /^state\.json$/, /^state\.json\.replaced-\d+$/, /^s
 const sq = (s) => `'${s.replace(/'/g, "'\\''")}'`
 const q = (s) => `"${s}"` // paths cannot contain " or % (checkRaw), so this is safe in a .cmd file
 
+// ── what is written (exported so a deployment check can compare byte for byte) ──────────────
+export function layout(prefix) {
+  const BIN = P.join(prefix, 'bin'), LIB = P.join(prefix, 'lib', '3pa')
+  return {
+    BIN, LIB, bundle: P.join(LIB, '3pa.mjs'), herdr: P.join(LIB, `herdr${EXE}`),
+    wrapper: P.join(BIN, WIN ? '3pa.cmd' : '3pa'), launcher: P.join(BIN, WIN ? 'herdr-fab.cmd' : 'herdr-fab'),
+  }
+}
+export function defaultLocations(home = homedir(), env = process.env) {
+  const dflt = WIN ? P.join(env.LOCALAPPDATA || P.join(home, 'AppData', 'Local'), '3pa') : P.join(home, '.local')
+  return {
+    prefix: dflt,
+    state: WIN ? P.join(dflt, 'workspace') : P.join(home, '.config', '3pa', 'workspace'),
+    app: WIN ? P.join(env.APPDATA || P.join(home, 'AppData', 'Roaming'), 'herdr-app') : P.join(home, '.config', 'herdr-app'),
+  }
+}
+export function renderWrapper({ state, app, bundle }) {
+  return WIN
+    ? ['@echo off', 'setlocal DisableDelayedExpansion', `if not defined THREEPA_WORKSPACE_DIR set "THREEPA_WORKSPACE_DIR=${state}"`, `if not defined HERDR_APP_HOME set "HERDR_APP_HOME=${app}"`, `node ${q(bundle)} %*`, 'exit /b %errorlevel%', ''].join('\r\n')
+    : ['#!/bin/sh', `[ -n "\${THREEPA_WORKSPACE_DIR:-}" ] || THREEPA_WORKSPACE_DIR=${sq(state)}; export THREEPA_WORKSPACE_DIR`, `[ -n "\${HERDR_APP_HOME:-}" ] || HERDR_APP_HOME=${sq(app)}; export HERDR_APP_HOME`, `exec node ${sq(bundle)} "$@"`, ''].join('\n')
+}
+export function renderLauncher({ base, state, app, wrapper, herdr }) {
+  const url = base.replace(/%/g, '%%')
+  return WIN
+    ? ['@echo off', 'setlocal DisableDelayedExpansion', `set "FABAGENT_BASE_URL=${url}"`, `set "THREEPA_WORKSPACE_DIR=${state}"`, `set "HERDR_APP_HOME=${app}"`,
+      `call ${q(wrapper)} workspace sync`,
+      'if errorlevel 1 (', '  echo herdr-fab: the workspace could not be synced and verified; not starting Herdr. 1>&2', '  exit /b 1', ')',
+      `${q(herdr)} %*`, 'exit /b %errorlevel%', ''].join('\r\n')
+    : ['#!/bin/sh', 'set -eu', `export FABAGENT_BASE_URL=${sq(base)}`, `export THREEPA_WORKSPACE_DIR=${sq(state)}`, `export HERDR_APP_HOME=${sq(app)}`,
+      `${sq(wrapper)} workspace sync || { echo "herdr-fab: the workspace could not be synced and verified; not starting Herdr." >&2; exit 1; }`,
+      `exec ${sq(herdr)} "$@"`, ''].join('\n')
+}
+
 // ── main ─────────────────────────────────────────────────────────────────────
 function main() {
   const a = parseArgs(process.argv.slice(2))
@@ -258,12 +292,8 @@ function main() {
   if (!uninstall && a['--purge-state']) die('--purge-state belongs to --uninstall')
 
   const home = homedir()
-  const dflt = WIN ? P.join(process.env.LOCALAPPDATA || P.join(home, 'AppData', 'Local'), '3pa') : P.join(home, '.local')
-  const raw = {
-    prefix: a['--prefix'] ?? dflt,
-    state: a['--state-dir'] ?? (WIN ? P.join(dflt, 'workspace') : P.join(home, '.config', '3pa', 'workspace')),
-    app: a['--app-home'] ?? (WIN ? P.join(process.env.APPDATA || P.join(home, 'AppData', 'Roaming'), 'herdr-app') : P.join(home, '.config', 'herdr-app')),
-  }
+  const dl = defaultLocations(home)
+  const raw = { prefix: a['--prefix'] ?? dl.prefix, state: a['--state-dir'] ?? dl.state, app: a['--app-home'] ?? dl.app }
   checkRaw('prefix', raw.prefix); checkRaw('state', raw.state); checkRaw('app home', raw.app)
   const o = { prefix: clean(raw.prefix), state: clean(raw.state), app: clean(raw.app) }
   checkLocations(o)
@@ -323,9 +353,7 @@ function main() {
 
   mkdirSync(o.state, { recursive: true }); privateAcl(o.state)
   publish(cliTmp, P.join(LIB, '3pa.mjs')); say(`installed 3pa bundle -> ${P.join(LIB, '3pa.mjs')}`)
-  writeText(wrapper, WIN
-    ? ['@echo off', 'setlocal DisableDelayedExpansion', `if not defined THREEPA_WORKSPACE_DIR set "THREEPA_WORKSPACE_DIR=${o.state}"`, `if not defined HERDR_APP_HOME set "HERDR_APP_HOME=${o.app}"`, `node ${q(P.join(LIB, '3pa.mjs'))} %*`, 'exit /b %errorlevel%', ''].join('\r\n')
-    : ['#!/bin/sh', `[ -n "\${THREEPA_WORKSPACE_DIR:-}" ] || THREEPA_WORKSPACE_DIR=${sq(o.state)}; export THREEPA_WORKSPACE_DIR`, `[ -n "\${HERDR_APP_HOME:-}" ] || HERDR_APP_HOME=${sq(o.app)}; export HERDR_APP_HOME`, `exec node ${sq(P.join(LIB, '3pa.mjs'))} "$@"`, ''].join('\n'), 0o755)
+  writeText(wrapper, renderWrapper({ state: o.state, app: o.app, bundle: P.join(LIB, '3pa.mjs') }), 0o755)
   say(`installed ${wrapper}`)
   writeText(P.join(o.state, 'root.pub'), rootPub + '\n'); say(`pinned root key -> ${P.join(o.state, 'root.pub')}`)
   if (relPub) {
@@ -334,15 +362,7 @@ function main() {
   }
   if (herdrTmp) {
     publish(herdrTmp, herdrDest); say(`installed Herdr -> ${herdrDest}`)
-    const url = base.replace(/%/g, '%%')
-    writeText(launcher, WIN
-      ? ['@echo off', 'setlocal DisableDelayedExpansion', `set "FABAGENT_BASE_URL=${url}"`, `set "THREEPA_WORKSPACE_DIR=${o.state}"`, `set "HERDR_APP_HOME=${o.app}"`,
-        `call ${q(wrapper)} workspace sync`,
-        'if errorlevel 1 (', '  echo herdr-fab: the workspace could not be synced and verified; not starting Herdr. 1>&2', '  exit /b 1', ')',
-        `${q(herdrDest)} %*`, 'exit /b %errorlevel%', ''].join('\r\n')
-      : ['#!/bin/sh', 'set -eu', `export FABAGENT_BASE_URL=${sq(base)}`, `export THREEPA_WORKSPACE_DIR=${sq(o.state)}`, `export HERDR_APP_HOME=${sq(o.app)}`,
-        `${sq(wrapper)} workspace sync || { echo "herdr-fab: the workspace could not be synced and verified; not starting Herdr." >&2; exit 1; }`,
-        `exec ${sq(herdrDest)} "$@"`, ''].join('\n'), 0o755)
+    writeText(launcher, renderLauncher({ base, state: o.state, app: o.app, wrapper, herdr: herdrDest }), 0o755)
     say(`installed launcher ${launcher}`)
   } else say('no Herdr binary given: installed the CLI and the root key only')
   say(`done. First start: ${herdrTmp ? 'herdr-fab' : '3pa workspace sync'} (it asks you to sign in). Add ${BIN} to your PATH if it is not there.`)
@@ -369,9 +389,12 @@ function purge(state) {
   }
 }
 
+const isMain = !!process.argv[1] && P.resolve(process.argv[1]) === P.resolve(fileURLToPath(import.meta.url))
+if (isMain) {
 try { main() } catch (e) {
   for (const t of temps) { try { rmSync(t, { force: true }) } catch { /* best effort */ } }
   if (e instanceof Fail) { console.error(`install: ${e.message}`); process.exit(1) }
   throw e
 }
 for (const t of temps) { try { rmSync(t, { force: true }) } catch { /* best effort */ } }
+}

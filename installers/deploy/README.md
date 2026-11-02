@@ -35,15 +35,18 @@ Needs Node.js 20+ on the machine (deploy it first; `3pa` needs it anyway).
 ## Detect (the MDM "is it compliant?" rule)
 
 `deploy.sh check --config ...` / `deploy.ps1 check -Config ...` change nothing and exit **0 only if**
-this user has the intended bundle (and Herdr + launcher, when configured; by SHA-256) and the
-intended pinned root key, release key and release URL; otherwise 1, with the reason on stdout
-(2 = the settings themselves are invalid). `install` is idempotent: when the check would
-pass, it does nothing.
+this user has the intended bundle (and Herdr, when configured) by SHA-256, the two entry scripts
+exactly as the installer writes them, and the intended pinned root key, release key and release
+URL; otherwise 1, with the reasons on stdout (2 = the settings themselves are invalid).
+`install` is idempotent: when the check would pass, it does nothing.
 
-A user who ran `3pa self-update` has a *newer signed* bundle than `deploy.conf` names. `check` notes
-that and stays compliant; `install` never puts the older bootstrap bundle back over it (it re-installs
-the installed file onto itself and only adds what is missing). To detect on the trust setup alone,
-use `check --pins-only` (PowerShell: `-PinsOnly`).
+**Self-updating fleets:** after `3pa self-update` the bundle differs from `deploy.conf` (which names
+the *first* bundle), so the full `check` reports it. Either use `check --pins-only` (PowerShell
+`-PinsOnly`) as the detection rule, or update `deploy.conf` to the new bundle's hash. `install` never
+overwrites a file that differs from the settings - it keeps it, says so, and adds only what is
+missing; `--force-artifacts` (`-ForceArtifacts`) is the explicit way to put the settings' files back.
+A file that is *missing* is installed from the settings (the bootstrap version): run
+`3pa self-update` afterwards.
 
 The helper supports the platform default install location only (`~/.local`, `%LOCALAPPDATA%\3pa`) and
 honours `THREEPA_WORKSPACE_DIR` for the state folder in both `install` and `check`.

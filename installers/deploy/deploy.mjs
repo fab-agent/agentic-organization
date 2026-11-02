@@ -13,7 +13,7 @@
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { existsSync, lstatSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { checkUrl, defaultLocations, layout, renderLauncher, renderWrapper } from '../user/windows/install.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -73,81 +73,73 @@ function keyValue(dir, v, what = 'key') {
 }
 
 function locations() {
-  const l = WIN ? path.join(process.env.LOCALAPPDATA || path.join(homedir(), 'AppData', 'Local'), '3pa') : path.join(homedir(), '.local')
-  return {
-    lib: path.join(l, 'lib', '3pa'), bin: path.join(l, 'bin'),
-    bundle: path.join(l, WIN ? 'lib\\3pa\\3pa.mjs' : 'lib/3pa/3pa.mjs'),
-    state: process.env.THREEPA_WORKSPACE_DIR || (WIN ? path.join(l, 'workspace') : path.join(homedir(), '.config', '3pa', 'workspace')),
-  }
+  const dl = defaultLocations()
+  const state = process.env.THREEPA_WORKSPACE_DIR || dl.state
+  return { ...dl, state, ...layout(dl.prefix) }
 }
 
-/** What differs from the settings. `selfUpdated` = a signed release was accepted on this machine
- * (release-state.json exists): then a bundle/binary that differs from the BOOTSTRAP hashes is the
- * product of `3pa self-update`, not drift, and an install must never put the old one back. */
+/** What differs from the settings. Artifacts are compared by hash, the two entry scripts byte for
+ * byte against what the installer would write (it exports the same generators). */
 function problems(cfg, dir) {
-  const loc = locations(), bad = [], keep = []
-  const read = (f) => { try { return lstatSync(f).isFile() ? readFileSync(f, 'utf8').replace(/[\r\n ]/g, '') : null } catch { return null } }
+  const loc = locations(), bad = [], differs = []
+  const read = (f) => { try { return lstatSync(f).isFile() ? readFileSync(f, 'utf8') : null } catch { return null } }
   const hashOf = (f) => { try { return lstatSync(f).isFile() ? sha(f) : null } catch { return null } }
-  const selfUpdated = existsSync(path.join(loc.state, 'release-state.json'))
+  const pins = (s) => (s === null ? null : s.replace(/[\r\n ]/g, ''))
   const artifact = (label, file, want) => {
     const have = hashOf(file)
     if (have === null) bad.push(`${label} is not installed`)
-    else if (have !== want) (selfUpdated ? keep : bad).push(selfUpdated ? `${label} is newer than the settings (installed by 3pa self-update); kept` : `the installed ${label} is not the intended one`)
+    else if (have !== want) { bad.push(`the installed ${label} is not the one in the settings`); differs.push(file) }
   }
-  artifact('the 3pa bundle', loc.bundle, cfg.CLI_SHA256)
+  artifact('3pa bundle', loc.bundle, cfg.CLI_SHA256)
+  if (read(loc.wrapper) !== renderWrapper({ state: loc.state, app: loc.app, bundle: loc.bundle })) bad.push('the 3pa entry script is missing or differs')
   if (cfg.HERDR_FILE) {
-    artifact('Herdr', path.join(loc.lib, WIN ? 'herdr.exe' : 'herdr'), cfg.HERDR_SHA256)
-    if (hashOf(path.join(loc.bin, WIN ? 'herdr-fab.cmd' : 'herdr-fab')) === null) bad.push('the herdr-fab launcher is not installed')
+    artifact('Herdr binary', loc.herdr, cfg.HERDR_SHA256)
+    if (read(loc.launcher) !== renderLauncher({ base: checkUrl(cfg.BASE_URL, 'BASE_URL', false), state: loc.state, app: loc.app, wrapper: loc.wrapper, herdr: loc.herdr })) bad.push('the herdr-fab launcher is missing or differs')
   }
-  if (read(path.join(loc.state, 'root.pub')) !== keyValue(dir, cfg.ROOT_PUB, 'ROOT_PUB')) bad.push('the pinned root key is missing or differs')
+  if (pins(read(path.join(loc.state, 'root.pub'))) !== keyValue(dir, cfg.ROOT_PUB, 'ROOT_PUB')) bad.push('the pinned root key is missing or differs')
   if (cfg.RELEASE_PUB) {
-    if (read(path.join(loc.state, 'release.pub')) !== keyValue(dir, cfg.RELEASE_PUB, 'RELEASE_PUB')) bad.push('the pinned release key is missing or differs')
-    if (read(path.join(loc.state, 'release-url')) !== cfg.RELEASE_URL) bad.push('the release URL is missing or differs')
+    if (pins(read(path.join(loc.state, 'release.pub'))) !== keyValue(dir, cfg.RELEASE_PUB, 'RELEASE_PUB')) bad.push('the pinned release key is missing or differs')
+    if (pins(read(path.join(loc.state, 'release-url'))) !== cfg.RELEASE_URL) bad.push('the release URL is missing or differs')
   }
-  return { bad, keep, selfUpdated }
+  return { bad, differs }
 }
 
 function main() {
   const [cmd, ...rest] = process.argv.slice(2)
   const ci = rest.indexOf('--config')
-  if (!['install', 'check'].includes(cmd) || ci < 0 || !rest[ci + 1]) die('usage: deploy.mjs install|check --config FILE [--pins-only] [--allow-elevated]', 2)
+  if (!['install', 'check'].includes(cmd) || ci < 0 || !rest[ci + 1]) die('usage: deploy.mjs install|check --config FILE [--pins-only] [--force-artifacts] [--allow-elevated]', 2)
   if (/[\x00-\x1f\x7f]/.test(rest[ci + 1])) die('the settings file path must not contain control characters', 2)
   const confPath = path.resolve(rest[ci + 1]), dir = path.dirname(confPath)
-  let cfg
-  try { cfg = parseConfig(readFileSync(confPath, 'utf8')) } catch (e) { die(`${confPath}: ${e.message}`, 2) }
-  let state
-  try { state = problems(cfg, dir) } catch (e) { die(`${confPath}: ${e.message}`, 2) }
+  let cfg, state
+  try { cfg = parseConfig(readFileSync(confPath, 'utf8')); state = problems(cfg, dir) } catch (e) { die(`${confPath}: ${e.message}`, 2) }
 
   if (cmd === 'check') {
-    // --pins-only: the trust setup only (keys, release URL); a newer or different bundle is not drift
+    // --pins-only: the trust setup only (keys, release URL); the files themselves are not compared
     const bad = rest.includes('--pins-only') ? state.bad.filter((b) => /pinned|release URL/.test(b)) : state.bad
     if (bad.length) { for (const b of bad) console.log(`not compliant: ${b}`); process.exit(1) }
-    for (const k of state.keep) console.log(`note: ${k}`)
     console.log('compliant'); return
   }
 
-  if (state.bad.length === 0) { console.log('already installed as intended; nothing to do'); for (const k of state.keep) console.log(`note: ${k}`); return }
+  if (state.bad.length === 0) { console.log('already installed as intended; nothing to do'); return }
   const abs = (f) => path.resolve(dir, f)
   const cli = abs(cfg.CLI_FILE)
   if (!existsSync(cli)) die(`${cli} does not exist`, 2)
   const loc = locations()
-  const herdrPath = path.join(loc.lib, WIN ? 'herdr.exe' : 'herdr')
-  const installedOk = (f) => { try { return lstatSync(f).isFile() } catch { return false } }
-  // After a signed update, the INSTALLED bundle/binary is the source (re-installed onto itself, so
-  // only the missing pieces change); otherwise the ones named in the settings.
-  const keepBundle = state.selfUpdated && installedOk(loc.bundle)
-  const keepHerdr = state.selfUpdated && installedOk(herdrPath)
+  // The settings name the FIRST files to install. A file that is already there but different
+  // (most likely moved forward by `3pa self-update`, possibly damaged or replaced) is not
+  // overwritten unless --force-artifacts is given: it is re-installed onto itself, so nothing is
+  // rolled back by a repeated run, and `check` keeps reporting the difference. A MISSING file is
+  // installed from the settings (the bootstrap version) - run `3pa self-update` afterwards.
+  const force = rest.includes('--force-artifacts')
+  const keep = (file, hash) => !force && state.differs.includes(file) ? { file, hash: sha(file) } : null
+  const kb = keep(loc.bundle), kh = cfg.HERDR_FILE ? keep(loc.herdr) : null
   const args = [path.join(HERE, '..', 'user', 'windows', 'install.mjs'), '--base-url', cfg.BASE_URL, '--root-pub', keyValue(dir, cfg.ROOT_PUB, 'ROOT_PUB'),
-    '--cli', keepBundle ? loc.bundle : cli, '--cli-sha256', keepBundle ? sha(loc.bundle) : cfg.CLI_SHA256,
+    '--cli', kb ? kb.file : cli, '--cli-sha256', kb ? kb.hash : cfg.CLI_SHA256,
     '--state-dir', loc.state] // the same place `check` looks at, even when THREEPA_WORKSPACE_DIR is set
-  if (cfg.HERDR_FILE) args.push('--herdr-bin', keepHerdr ? herdrPath : abs(cfg.HERDR_FILE), '--herdr-sha256', keepHerdr ? sha(herdrPath) : cfg.HERDR_SHA256)
+  if (cfg.HERDR_FILE) args.push('--herdr-bin', kh ? kh.file : abs(cfg.HERDR_FILE), '--herdr-sha256', kh ? kh.hash : cfg.HERDR_SHA256)
   if (cfg.RELEASE_PUB) args.push('--release-pub', keyValue(dir, cfg.RELEASE_PUB, 'RELEASE_PUB'), '--release-url', cfg.RELEASE_URL)
   if (rest.includes('--allow-elevated')) args.push('--allow-elevated')
-  if (state.selfUpdated) {
-    // Never put an older bootstrap bundle over one that `3pa self-update` installed. Only what is
-    // MISSING is added; to go back, publish a newer signed release.
-    console.error('deploy: a signed update is already installed here; installing only what is missing (an existing newer bundle/binary is not replaced)')
-  }
+  for (const f of [kb?.file, kh?.file]) if (f) console.error(`deploy: kept ${f} (it differs from the settings; --force-artifacts replaces it)`)
   const r = spawnSync(process.execPath, args, { stdio: 'inherit' })
   process.exit(r.status ?? 1)
 }

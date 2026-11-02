@@ -6,7 +6,8 @@ param(
   [Parameter(Mandatory = $true, Position = 0)][ValidateSet('install', 'check')][string]$Command,
   [Parameter(Mandatory = $true)][string]$Config,
   [switch]$AllowElevated,
-  [switch]$PinsOnly
+  [switch]$PinsOnly,
+  [switch]$ForceArtifacts
 )
 $ErrorActionPreference = 'Stop'
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Error 'Node.js 20 or newer is required (not found).'; exit 2 }
@@ -15,5 +16,6 @@ if ($me.IsSystem) { Write-Error 'Running as SYSTEM: run this in the logged-on us
 $args2 = @((Join-Path $PSScriptRoot 'deploy.mjs'), $Command, '--config', (Resolve-Path $Config).Path)
 if ($AllowElevated) { $args2 += '--allow-elevated' }
 if ($PinsOnly) { $args2 += '--pins-only' }
+if ($ForceArtifacts) { $args2 += '--force-artifacts' }
 & node @args2
 exit $LASTEXITCODE
