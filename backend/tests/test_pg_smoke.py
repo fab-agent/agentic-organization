@@ -251,3 +251,70 @@ def test_harness_activation_race_has_one_winner(pg):
     with Session(database.engine) as check:
         rows = check.query(HarnessArtifact).filter_by(company_id=company_id).all()
         assert [(r.version, r.status) for r in rows] == [(1, "active")]
+
+
+def test_drift_report_race_has_one_winner(pg):
+    """ADR-0035: several requests that all saw an old report - or none - write at most one."""
+    import threading
+    from datetime import datetime, timedelta
+
+    from sqlmodel import Session, select
+
+    import database
+    from api.me_workspace import store_report
+    from models import Company, Personnel, WorkspaceClientReport
+
+    with Session(database.engine) as setup:
+        co = Company(name="R Co", slug="r-co")
+        setup.add(co)
+        setup.flush()
+        p = Personnel(
+            company_id=co.id, name="P", slug="p-r", title="t", role="r", type="human"
+        )
+        setup.add(p)
+        setup.commit()
+        cid, pid = co.id, p.id
+
+    def base(n):
+        return dict(
+            client_version="1.0",
+            epoch=1,
+            generation=n,
+            missing=n,
+            modified=0,
+            extra=0,
+            unmanaged=0,
+            interrupted=False,
+        )
+
+    def race(n_threads, now):
+        results, barrier = [], threading.Barrier(n_threads)
+
+        def worker(i):
+            with Session(database.engine) as s:
+                barrier.wait()
+                results.append((i, store_report(s, cid, pid, base(i + 1), now)))
+
+        ts = [threading.Thread(target=worker, args=(i,)) for i in range(n_threads)]
+        [t.start() for t in ts]
+        [t.join() for t in ts]
+        return results
+
+    now = datetime.utcnow()
+    first = race(8, now)  # no row yet
+    assert sum(1 for _, ok in first if ok) == 1
+    with Session(database.engine) as s:
+        rows = s.exec(
+            select(WorkspaceClientReport).where(WorkspaceClientReport.person_id == pid)
+        ).all()
+        assert len(rows) == 1
+        winner = [i for i, ok in first if ok][0]
+        assert rows[0].missing == winner + 1
+    later = now + timedelta(seconds=45)  # the row is old now
+    second = race(8, later)
+    assert sum(1 for _, ok in second if ok) == 1
+    with Session(database.engine) as s:
+        row = s.exec(
+            select(WorkspaceClientReport).where(WorkspaceClientReport.person_id == pid)
+        ).one()
+        assert row.missing == [i for i, ok in second if ok][0] + 1

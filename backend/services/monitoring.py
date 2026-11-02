@@ -379,13 +379,25 @@ def _clients(company_id: str, now: datetime) -> dict:
         }
     # Only people who were issued a workspace count; a report from anyone else is ignored.
     mine = {pid: reports[pid] for pid in issued if pid in reports}
-    out: dict = {"self_reported": True, "issued": len(issued), "reporting": len(mine)}
+    cutoff = now - timedelta(days=STALE_DAYS)
+    out: dict = {
+        "self_reported": True,
+        "issued": len(issued),
+        "reporting": len(mine),
+        # never reported: no clock can say "silent" about someone who was never heard from
+        "never_reported": len(issued) - len(mine),
+        # reported before, but not within the last STALE_DAYS (a missing heartbeat)
+        "silent": sum(1 for r in mine.values() if r.received_at < cutoff),
+        "not_reported_for_days": STALE_DAYS,
+    }
     if not mine:
         return {**out, "status": "unknown", "reason": "no_reports"}
-    cutoff = now - timedelta(days=STALE_DAYS)
-    behind = sum(1 for pid, r in mine.items() if r.generation < issued[pid].generation)
-    stale = sum(
-        1 for pid in issued if pid not in mine or mine[pid].received_at < cutoff
+    # Versions order by (epoch, generation): a new signing epoch restarts the generation count,
+    # so a high generation of an older epoch is still behind.
+    behind = sum(
+        1
+        for pid, r in mine.items()
+        if (r.epoch, r.generation) < (issued[pid].epoch, issued[pid].generation)
     )
     drifting = [
         (pid, r)
@@ -395,8 +407,6 @@ def _clients(company_id: str, now: datetime) -> dict:
     drifting.sort(key=lambda t: names.get(t[0]) or "")
     out.update(
         behind=behind,
-        not_reported_for_days=STALE_DAYS,
-        silent=stale,
         drifting=len(drifting),
         drifting_people=[
             {

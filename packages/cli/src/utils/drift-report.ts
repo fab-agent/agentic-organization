@@ -59,6 +59,8 @@ export interface SendOptions {
   stateDir: string
   clientVersion: string
   fetchImpl?: typeof fetch
+  /** How long to wait for the platform (default 20 s; the automatic report after a sync uses 5 s). */
+  timeoutMs?: number
 }
 
 /** 'sent', 'too_soon' (the platform allows one report per 30 seconds) or 'nothing_installed'. */
@@ -75,7 +77,7 @@ export async function sendReport(o: SendOptions): Promise<'sent' | 'too_soon' | 
       headers: { Authorization: `Bearer ${o.webToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       redirect: 'error', // the token goes nowhere else
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(o.timeoutMs ?? 20_000),
     })
   } catch (e) {
     const n = (e as Error)?.name

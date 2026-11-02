@@ -252,3 +252,113 @@ def test_the_migration_matches_the_model(tmp_path):
     text = open("migrations/versions/b7e3a9c1d452_workspace_client_report.py").read()
     for col in M.__table__.columns.keys():
         assert re.search(rf'"{col}"', text), col
+
+
+def test_a_new_signing_epoch_restarts_generations_so_an_old_epoch_is_behind(
+    client, db_session, world
+):
+    """DRIFT-2: (epoch, generation) is the order; 99 of epoch 1 is behind 1 of epoch 2."""
+    db_session.add(
+        WorkspaceManifestState(
+            company_id=world.a.id, person_id=world.p_alice.id, epoch=2, generation=1
+        )
+    )
+    db_session.add(
+        WorkspaceManifestState(
+            company_id=world.a.id, person_id=world.p_bob.id, epoch=2, generation=3
+        )
+    )
+    db_session.commit()
+    assert (
+        post(client, world.alice, {**GOOD, "epoch": 1, "generation": 99}).status_code
+        == 204
+    )  # old epoch
+    assert (
+        post(client, world.bob, {**GOOD, "epoch": 2, "generation": 3}).status_code
+        == 204
+    )  # current
+    c = _clients(client, world)
+    assert c["behind"] == 1
+    # the same epoch: a lower generation is behind, equal or higher is not
+    for r in rows(db_session):
+        r.epoch, r.generation = 2, 2
+        db_session.add(r)
+    db_session.commit()
+    # alice issued (2,1) and reports (2,2): ahead. bob issued (2,3) and reports (2,2): behind.
+    assert _clients(client, world)["behind"] == 1
+
+
+def test_never_reported_and_silent_are_different_counts(client, db_session, world):
+    """DRIFT-3: someone never heard from is not 'silent for 7 days'; the counts exist even
+    when nobody has reported."""
+    _issue(db_session, world.a, world.p_alice, 1)
+    _issue(db_session, world.a, world.p_bob, 1)
+    c = _clients(client, world)
+    assert (c["never_reported"], c["silent"], c["reporting"]) == (2, 0, 0)
+    assert post(client, world.alice).status_code == 204
+    c = _clients(client, world)
+    assert (c["never_reported"], c["silent"], c["reporting"]) == (
+        1,
+        0,
+        1,
+    )  # Bob is new, not silent
+    row = rows(db_session)[0]
+    row.received_at = datetime.utcnow() - timedelta(days=7, seconds=5)
+    db_session.add(row)
+    db_session.commit()
+    c = _clients(client, world)
+    assert (c["never_reported"], c["silent"]) == (1, 1)
+    row.received_at = datetime.utcnow() - timedelta(days=6, hours=23)
+    db_session.add(row)
+    db_session.commit()
+    assert _clients(client, world)["silent"] == 0  # just inside the window
+
+
+def test_store_report_is_a_single_conditional_write(db_session, world):
+    """DRIFT-1: the time check is the write itself, in this order of events."""
+    from api.me_workspace import store_report
+
+    now = datetime.utcnow()
+    vals = dict(GOOD)
+    assert (
+        store_report(
+            db_session, world.a.id, world.p_alice.id, {**vals, "missing": 1}, now
+        )
+        is True
+    )
+    # 29 s later: refused, nothing written
+    assert (
+        store_report(
+            db_session,
+            world.a.id,
+            world.p_alice.id,
+            {**vals, "missing": 2},
+            now + timedelta(seconds=29),
+        )
+        is False
+    )
+    assert rows(db_session)[0].missing == 1
+    # exactly 30 s later: allowed
+    assert (
+        store_report(
+            db_session,
+            world.a.id,
+            world.p_alice.id,
+            {**vals, "missing": 3},
+            now + timedelta(seconds=30),
+        )
+        is True
+    )
+    assert rows(db_session)[0].missing == 3 and len(rows(db_session)) == 1
+    # a stale writer cannot overwrite a newer report with an older one
+    assert (
+        store_report(
+            db_session,
+            world.a.id,
+            world.p_alice.id,
+            {**vals, "missing": 4},
+            now + timedelta(seconds=10),
+        )
+        is False
+    )
+    assert rows(db_session)[0].missing == 3

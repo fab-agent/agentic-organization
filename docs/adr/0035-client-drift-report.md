@@ -31,17 +31,23 @@ diagnostic signal.
 3. **Bounded and cheap.** Counts are integers `0..100000`, `generation`/`epoch` are bounded, the
    version string is a short fixed alphabet. A second report from the same person within 30 seconds
    is refused (`429`, `Retry-After`) without writing, so a loop cannot churn the table; the row count
-   is bounded by people, not by reports.
-4. **The CLI reports after a successful sync** (best effort: a failure to report never fails or
-   delays the sync, and says so in one line) and on demand with `3pa workspace report`
-   (`--no-report` / `THREEPA_NO_REPORT=1` turn the automatic one off). The report is built from
+   is bounded by people, not by reports. The time check **is** the write (one conditional UPDATE
+   `... WHERE received_at <= now - 30 s`; the first INSERT is protected by the unique key), so
+   concurrent requests that all saw an old row cannot all pass; a PostgreSQL test races eight writers
+   and requires exactly one winner.
+4. **The CLI reports after a successful sync** (best effort: a failure to report never changes the
+   sync's result or exit code and says so in one line; the sync command waits for the report for at
+   most 5 seconds, plus the local comparison, which is the same scan as `status`) and on demand with `3pa workspace report`
+   (`--no-report` / any non-empty `THREEPA_NO_REPORT` turn the automatic one off). The report is built from
    `scanDrift` and the installed record - it adds no new scanning.
 5. **The `clients` section of the monitoring summary** (ADR-0034) stops saying "not reported": for
    the people who were issued a workspace it shows how many have reported, how many are **behind**
-   (reported generation below the generation last issued - normal between syncs), how many have **not
-   reported for 7 days** (a missing heartbeat is the only signal a silent client gives; leave is
-   normal, so it is information, not a warning), and which people report drift (name and counts, at
-   most 20). Status: `warn` when anyone reports drift or an interrupted update; `unknown` when
+   (ordered by `(epoch, generation)`: a new signing epoch restarts the generation count, so a high
+   generation of an old epoch is still behind; normal between syncs), how many have **never
+   reported**, and how many reported before but **not within 7 days** (a missing heartbeat is the
+   only signal a silent client gives; there is no clock for someone never heard from, so the two
+   are counted apart; leave is normal, so it is information, not a warning), and which people report drift (name and counts, at
+   most 20). Status: `warn` when anyone reports drift or an interrupted update; `unknown` (with the counts) when
    nobody has reported yet; otherwise `ok`. Everything is labelled self-reported.
 
 ## What this does not do

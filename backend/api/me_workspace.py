@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
@@ -154,6 +155,45 @@ class DriftReport(BaseModel):
     interrupted: bool
 
 
+def store_report(session, company_id: str, person_id: str, values: dict, now) -> bool:
+    """Write the person's latest report unless one was stored less than REPORT_MIN_INTERVAL ago.
+    True = stored, False = too soon. The time check IS the write (one conditional UPDATE), so
+    several requests that all saw an old row cannot all pass; the first INSERT is protected by
+    the unique key. Commits on success, rolls back otherwise."""
+    done = session.exec(
+        update(WorkspaceClientReport)
+        .where(
+            WorkspaceClientReport.company_id == company_id,
+            WorkspaceClientReport.person_id == person_id,
+            WorkspaceClientReport.received_at <= now - REPORT_MIN_INTERVAL,
+        )
+        .values(**values, received_at=now)
+    )
+    if done.rowcount == 1:
+        session.commit()
+        return True
+    session.rollback()
+    exists = session.exec(
+        select(WorkspaceClientReport.id).where(
+            WorkspaceClientReport.company_id == company_id,
+            WorkspaceClientReport.person_id == person_id,
+        )
+    ).first()
+    if exists:
+        return False  # a report is already on file and it is recent
+    session.add(
+        WorkspaceClientReport(
+            company_id=company_id, person_id=person_id, received_at=now, **values
+        )
+    )
+    try:
+        session.commit()
+    except IntegrityError:  # two first reports at once: the other one won
+        session.rollback()
+        return False
+    return True
+
+
 @router.post("/report", status_code=204)
 def report_drift(
     body: DriftReport,
@@ -162,35 +202,15 @@ def report_drift(
 ):
     """Store the caller's own latest drift claim. The person and company come from the
     session, never from the body. A claim: it feeds a diagnostic view and nothing else."""
-    now = datetime.utcnow()
     with get_session() as session:
         person, cid = person_for_user(session, user, company_id)
-        row = session.exec(
-            select(WorkspaceClientReport).where(
-                WorkspaceClientReport.company_id == cid,
-                WorkspaceClientReport.person_id == person.id,
-            )
-        ).first()
-        if row and now - row.received_at < REPORT_MIN_INTERVAL:
-            raise HTTPException(
-                status_code=429,
-                detail="Reports are limited to one every 30 seconds",
-                headers={"Retry-After": "30"},
-            )
-        row = row or WorkspaceClientReport(company_id=cid, person_id=person.id)
-        for k, v in body.model_dump().items():
-            setattr(row, k, v)
-        row.received_at = now
-        session.add(row)
-        try:
-            session.commit()
-        except (
-            IntegrityError
-        ):  # two first reports at once: the other one won; this is "too soon"
-            session.rollback()
-            raise HTTPException(
-                status_code=429,
-                detail="Reports are limited to one every 30 seconds",
-                headers={"Retry-After": "30"},
-            ) from None
+        stored = store_report(
+            session, cid, person.id, body.model_dump(), datetime.utcnow()
+        )
+    if not stored:
+        raise HTTPException(
+            status_code=429,
+            detail="Reports are limited to one every 30 seconds",
+            headers={"Retry-After": "30"},
+        )
     return Response(status_code=204)

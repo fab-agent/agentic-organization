@@ -98,7 +98,7 @@ async function sync(args: string[]): Promise<void> {
     // Best effort and never part of the sync's result: a report that cannot be sent is one dim line.
     if (!args.includes('--no-report') && !process.env.THREEPA_NO_REPORT) {
       try {
-        const out = await sendReport({ baseUrl: base, webToken, companyId: flag(args, '--company'), appHome: appHome(args), stateDir: workspaceStateDir(), clientVersion: process.env.THREEPA_VERSION || '1.0.0' })
+        const out = await sendReport({ baseUrl: base, webToken, companyId: flag(args, '--company'), appHome: appHome(args), stateDir: workspaceStateDir(), clientVersion: process.env.THREEPA_VERSION || '1.0.0', timeoutMs: 5000 })
         console.log(chalk.dim(out === 'sent' ? '  status report sent' : out === 'too_soon' ? '  status report skipped (sent a moment ago)' : '  nothing installed, nothing to report'))
       } catch (e) {
         console.log(chalk.dim(`  status report not sent [${e instanceof ReportError ? e.code : 'error'}]`))

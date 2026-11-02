@@ -44,6 +44,7 @@ export type Monitoring = {
 			issued?: number;
 			reporting?: number;
 			behind?: number;
+			never_reported?: number;
 			silent?: number;
 			not_reported_for_days?: number;
 			drifting?: number;
