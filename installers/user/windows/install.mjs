@@ -6,7 +6,7 @@
  *   node install.mjs --base-url URL --root-pub FILE|BASE64 --cli FILE --cli-sha256 HEX
  *        [--herdr-bin FILE --herdr-sha256 HEX] [--release-pub FILE|BASE64 --release-url URL]
  *        [--replace-release-key] [--prefix DIR] [--app-home DIR] [--state-dir DIR]
- *        [--replace-root] [--dry-run]
+ *        [--replace-root] [--dry-run] [--allow-elevated]
  *   node install.mjs --uninstall [--prefix DIR] [--state-dir DIR] [--purge-state]
  *
  * Same contract as install.sh: it downloads nothing, checks every hash on the COPY, pins the
@@ -32,7 +32,7 @@ const say = (m) => console.log('  ' + m)
 
 // ── arguments ────────────────────────────────────────────────────────────────
 const VALUE_OPTS = ['--base-url', '--root-pub', '--cli', '--cli-sha256', '--herdr-bin', '--herdr-sha256', '--release-pub', '--release-url', '--prefix', '--app-home', '--state-dir']
-const FLAG_OPTS = ['--replace-root', '--replace-release-key', '--dry-run', '--uninstall', '--purge-state']
+const FLAG_OPTS = ['--allow-elevated', '--replace-root', '--replace-release-key', '--dry-run', '--uninstall', '--purge-state']
 
 function parseArgs(argv) {
   const o = {}
@@ -181,7 +181,8 @@ function privateAcl(dir) {
   execFileSync('icacls', [dir, '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`], { stdio: 'ignore' })
 }
 
-function notElevated() {
+function notElevated(allow) {
+  if (allow) return // explicit: CI runners and deliberate installs into an administrator's own profile
   if (WIN) {
     let g = ''
     try { g = execFileSync('whoami', ['/groups'], { encoding: 'utf8' }) } catch { return }
@@ -199,7 +200,7 @@ const q = (s) => `"${s}"` // paths cannot contain " or % (checkRaw), so this is 
 // ── main ─────────────────────────────────────────────────────────────────────
 function main() {
   const a = parseArgs(process.argv.slice(2))
-  notElevated()
+  notElevated(!!a['--allow-elevated'])
   const uninstall = !!a['--uninstall']
   if (uninstall && a['--dry-run']) die('--dry-run applies to installing only; nothing was removed')
   if (!uninstall && a['--purge-state']) die('--purge-state belongs to --uninstall')

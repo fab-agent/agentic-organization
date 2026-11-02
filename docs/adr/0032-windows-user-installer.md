@@ -30,7 +30,10 @@ program.
    Windows is assumed; it must be confirmed against Herdr's own documentation or a real
    install before relying on the default - `--app-home` overrides it.*
 4. **Refuses an elevated prompt** (integrity level check), as install.sh refuses root: the
-   workspace is one person's.
+   workspace is one person's, and an install from an administrator prompt would go into the wrong
+   profile. `--allow-elevated` is the explicit override (hosted CI runners are elevated; so is a
+   deliberate install into an administrator's own profile). It is a named flag, not an
+   environment variable, so it cannot be set by accident.
 5. **Path rules** (raw text is judged before it is normalised): absolute with a drive letter
    (no UNC, no `\\?\`); no control characters, no `..`; none of `< > " | ? * %`; no `:` after
    the drive (alternate data streams); no reserved device names (`CON`, `NUL`, `COM1`...) and no

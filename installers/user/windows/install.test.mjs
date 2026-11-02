@@ -26,6 +26,7 @@ const ENV = { ...process.env, HOME, USERPROFILE: HOME, LOCALAPPDATA: path.join(H
 function run(args, extra = {}) {
   const cmd = asRoot ? 'setpriv' : nodeBin
   const argv = asRoot ? ['--reuid=65534', '--regid=65534', '--clear-groups', nodeBin, INST, ...args] : [INST, ...args]
+  if (WIN) argv.push('--allow-elevated') // hosted Windows runners are elevated; a test below checks the refusal
   const r = spawnSync(cmd, argv, { encoding: 'utf8', env: { ...ENV, ...extra } })
   return { rc: r.status, out: (r.stdout ?? '') + (r.stderr ?? '') }
 }
@@ -200,4 +201,12 @@ test('windows only: drive-letter paths, reserved names, streams, trailing dots, 
   ok(run(base(l)))
   const acl = spawnSync('icacls', [l.state], { encoding: 'utf8' }).stdout
   assert.doesNotMatch(acl, /Everyone|BUILTIN\\Users|Authenticated Users/i, acl)
+})
+
+test('windows only: an elevated prompt is refused unless --allow-elevated is given', { skip: !WIN }, () => {
+  const l = loc()
+  const elevated = spawnSync('whoami', ['/groups'], { encoding: 'utf8' }).stdout.includes('S-1-16-12288')
+  const r = spawnSync(nodeBin, [INST, ...base(l)], { encoding: 'utf8', env: ENV }) // no flag
+  if (elevated) { assert.notEqual(r.status, 0); assert.match(r.stdout + r.stderr, /elevated/); assert.ok(!existsSync(l.prefix)) }
+  else assert.equal(r.status, 0, r.stdout + r.stderr)
 })
