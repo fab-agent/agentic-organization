@@ -40,14 +40,17 @@ program.
    component ending in a dot or space. Locations are compared **case-insensitively** after links,
    junctions and 8.3 short names are resolved (`realpath.native`); never a drive root, the
    home directory or a parent of it; bin, lib, state and app home must not overlap.
-6. **The state folder is private through its ACL**: the installer removes inheritance, grants
-   the current user (by SID, via `icacls`), removes every other entry except SYSTEM and
-   Administrators, and then **reads the result back as SDDL** (locale independent): an entry
-   it cannot interpret or cannot remove stops the install. This also repairs a pre-existing folder
-   that had explicit grants for Everyone or Users. `whoami.exe` and `icacls.exe` are run by
-   absolute path from System32, because a first CI run showed that a `whoami` from Git for
-   Windows can come first on PATH and answers differently. The CLI cannot check mode bits there
-   (ADR-0029) and does not try.
+6. **The state folder is private through its ACL**: the folder's whole DACL is *replaced*
+   (`icacls /restore` of a descriptor the installer writes: protected, current user + SYSTEM +
+   Administrators), so no other principal has to be named to be removed - this also repairs a
+   pre-existing folder with explicit grants for Everyone or Users. The result is then **read back
+   as SDDL** (locale independent): any other entry, or one the installer cannot interpret, stops
+   the install. Only aliases whose SID is the same on every machine are interpreted; `LA`/`LG`
+   (local Administrator/Guest) are not, because their SID belongs to the machine and cannot be
+   derived from a domain user's, so they are refused rather than guessed. `whoami.exe` and
+   `icacls.exe` are run by absolute path from System32, because a first CI run showed that a
+   `whoami` from Git for Windows can come first on PATH and answers differently. The CLI cannot
+   check mode bits there (ADR-0029) and does not try.
 7. **Launcher and wrapper are `.cmd` files**, both starting with `setlocal
    DisableDelayedExpansion` so that `!` in a path or URL stays literal even when the caller runs
    `cmd /v:on` (tested under `/v:on` and `/v:off`). Because a path can contain neither `"` nor

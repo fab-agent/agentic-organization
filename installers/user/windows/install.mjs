@@ -181,10 +181,11 @@ function writeText(dest, text, mode = 0o644) {
 const ALIASES = { WD: 'S-1-1-0', SY: 'S-1-5-18', BA: 'S-1-5-32-544', BU: 'S-1-5-32-545', AU: 'S-1-5-11', IU: 'S-1-5-4', NU: 'S-1-5-2', LS: 'S-1-5-19', NS: 'S-1-5-20', AN: 'S-1-5-7', CO: 'S-1-3-0', PS: 'S-1-5-10' }
 
 /** The ACEs of a folder as [type, sid] pairs, read as SDDL (locale independent). */
-function readAces(dir, userSid) {
-  // LA/LG are the local Administrator/Guest accounts: the current account's own domain/machine id plus -500/-501
-  const dom = /^(S-1-5-21-\d+-\d+-\d+)-\d+$/.exec(userSid)?.[1]
-  const aliases = { ...ALIASES, ...(dom ? { LA: `${dom}-500`, LG: `${dom}-501` } : {}) }
+function readAces(dir) {
+  // Only aliases whose SID is the same on every machine are known. LA/LG (local Administrator /
+  // Guest) are NOT: their SID belongs to the machine, and cannot be derived from a domain user's.
+  // They, and anything else unknown, are refused instead of guessed.
+  const aliases = ALIASES
   const out = P.join(tmpdir(), `3pa-acl-${process.pid}-${randomBytes(4).toString('hex')}.txt`)
   try {
     execFileSync(sys('icacls.exe'), [dir, '/save', out, '/q'], { stdio: 'ignore' })
@@ -201,21 +202,25 @@ function readAces(dir, userSid) {
   } finally { rmSync(out, { force: true }) }
 }
 
-/** Windows has no 0700. The folder's permissions are rebuilt for the current user (plus SYSTEM and
- * the Administrators group, which the system itself keeps), every other entry is removed, and the
- * result is READ BACK: anything left over stops the install. */
+/** Windows has no 0700. The folder's whole DACL is REPLACED (icacls /restore of a descriptor we
+ * write: protected, current user + SYSTEM + Administrators only), so nothing has to be named in
+ * order to be removed, and the result is READ BACK: any other entry, or one that cannot be
+ * interpreted, stops the install. */
 function privateAcl(dir) {
   if (!WIN) { chmodSync(dir, 0o700); return }
   const sid = execFileSync(sys('whoami.exe'), ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8' }).trim().split(',')[1]?.replace(/"/g, '')
   if (!sid || !/^S-1-[0-9-]+$/.test(sid)) die('could not determine the current user to restrict the state folder')
-  const icacls = (...a) => execFileSync(sys('icacls.exe'), a, { stdio: 'ignore' })
   const keep = new Set([sid, 'S-1-5-18', 'S-1-5-32-544'])
-  icacls(dir, '/inheritance:r')
-  icacls(dir, '/grant:r', `*${sid}:(OI)(CI)F`)
-  for (const [, who] of readAces(dir, sid)) if (!keep.has(who)) icacls(dir, '/remove', `*${who}`)
-  const left = readAces(dir, sid).filter(([, who]) => !keep.has(who))
+  const file = P.join(tmpdir(), `3pa-acl-restore-${process.pid}-${randomBytes(4).toString('hex')}.txt`)
+  try {
+    const sddl = `D:P(A;OICI;FA;;;${sid})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)`
+    writeFileSync(file, '\uFEFF' + `${P.basename(dir)}\r\n${sddl}\r\n\r\n`, 'utf16le')
+    execFileSync(sys('icacls.exe'), [P.dirname(dir), '/restore', file, '/q'], { stdio: 'ignore' })
+  } finally { rmSync(file, { force: true }) }
+  const aces = readAces(dir)
+  const left = aces.filter(([, who]) => !keep.has(who))
   if (left.length) die(`the state folder still grants access to ${left.map(([, w]) => w).join(', ')}; nothing was installed`)
-  if (!readAces(dir, sid).some(([t, who]) => t === 'A' && who === sid)) die('the current user has no access to the state folder after restricting it')
+  if (!aces.some(([t, who]) => t === 'A' && who === sid)) die('the current user has no access to the state folder after restricting it')
 }
 
 function notElevated(allow) {
