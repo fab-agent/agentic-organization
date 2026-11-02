@@ -96,7 +96,7 @@ function checkRaw(label, v) {
     if (v.slice(2).includes(':')) die(`${label} path must not contain ":" (alternate data streams)`)
     for (const c of v.slice(3).split(/[\\/]+/).filter(Boolean)) {
       if (RESERVED.test(c)) die(`${label} path contains a reserved device name (${c})`)
-      if (/[. ]$/.test(c)) die(`${label} path components must not end with a dot or a space`)
+      if (c !== '.' && /[. ]$/.test(c)) die(`${label} path components must not end with a dot or a space`)
     }
   }
 }
