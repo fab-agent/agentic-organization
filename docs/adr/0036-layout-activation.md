@@ -80,6 +80,10 @@ role layout themselves. Facts about Herdr, read from the pinned source of `herdr
 ## What this does not do (stated plainly)
 
 - If no window is ever open while the record is valid, nothing is switched; it expires.
+- Reclaiming a dead worker's claim assumes the wall clock does not jump forward by more than the 5-minute stale
+  limit while a worker is running (a run is bounded to about 2.5 minutes). After such a jump a live worker's
+  claim can be taken over and the older worker may still send its switch; the effect is one repeated switch to
+  the same layout, not a different action. No fencing of the outside command is attempted.
 - It does not choose between layouts, force the layout, or change it again after the first honoured switch.
 - It relies on `herdr-app status` printing JSON with a `layout` string and on the `do layout.switch --name`
   form of the documented command; a Herdr that changes these makes activation report `failed` and leaves
