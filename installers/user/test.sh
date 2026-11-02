@@ -230,5 +230,19 @@ base --prefix "$T/lf/pfx" --state-dir "$T/lf/st2" >/dev/null 2>&1; chmod 555 "$T
 expect_fail "lib rmdir permission" "could not remove the empty folder" sh "$INST" --uninstall --prefix "$T/lf/pfx" --state-dir "$T/lf/st2"
 chmod 755 "$T/lf/pfx/lib"
 
+# ── Codex round 5 (I19-I20) ──────────────────────────────────────────────────
+# I19: non-ASCII folder names are fine (only control characters and backslashes are not)
+U="$T/Çağrı-東京"; mkdir -p "$U"
+base --prefix "$U/p" --state-dir "$U/s" --app-home "$U/a" >/dev/null 2>&1 && [ -f "$U/s/root.pub" ] && ok || bad "unicode paths refused"
+sh "$INST" --uninstall --purge-state --prefix "$U/p" --state-dir "$U/s" >/dev/null 2>&1 && [ ! -e "$U/s" ] && ok || bad "unicode uninstall"
+# I20: a file named only by a newline keeps the folder with the right message; a link is kept, not an error
+rm -rf "$T/i20"; base --prefix "$T/i20" --state-dir "$T/i20s" >/dev/null 2>&1
+printf x > "$T/i20/lib/3pa/$NL"
+out="$(sh "$INST" --uninstall --prefix "$T/i20" --state-dir "$T/i20s" 2>&1)"; rc=$?
+[ $rc -eq 0 ] && printf %s "$out" | grep -q "files that are not ours" && ok || bad "newline-named file in lib: rc=$rc $out"
+rm -rf "$T/i20" "$T/i20t"; mkdir -p "$T/i20/lib" "$T/i20t"; ln -s "$T/i20t" "$T/i20/lib/3pa"
+out="$(sh "$INST" --uninstall --prefix "$T/i20" --state-dir "$T/i20s" 2>&1)"; rc=$?
+[ $rc -eq 0 ] && printf %s "$out" | grep -q "a link" && [ -d "$T/i20t" ] && ok || bad "lib link: rc=$rc $out"
+
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

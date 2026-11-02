@@ -83,7 +83,7 @@ workspace has been verified. ADR-0026 lists user installers as the third deliver
 
 ## Verification
 
-`installers/user/test.sh` (111 checks, run in CI on Linux and macOS): every refusal above,
+`installers/user/test.sh` (115 checks, run in CI on Linux and macOS): every refusal above,
 a hash mismatch leaving nothing behind, a full install, launcher flow and fail-closed
 behaviour, quote-in-path, root replacement, idempotence, uninstall and `--purge-state`.
 A CI step also installs the real bundle and runs `3pa workspace status`.

@@ -79,10 +79,11 @@ norm() {
 }
 # Judge the raw text first: command substitution below would silently drop a trailing newline,
 # turning the named folder into a different one.
-for v in "$PREFIX" "$STATE_DIR" "$APP_HOME"; do
-  [ "$(printf '%s' "$v" | LC_ALL=C tr -d '[:print:]' | wc -c | tr -d ' ')" = "0" ] || die "paths must not contain control characters (newline, tab, ...)"
-  case "$v" in *\\*) die "paths must not contain backslashes" ;; esac
-done
+P_PREFIX="$PREFIX" P_STATE="$STATE_DIR" P_APP="$APP_HOME" node -e '
+  for (const v of [process.env.P_PREFIX, process.env.P_STATE, process.env.P_APP]) {
+    if (/[\x00-\x1f\x7f]/.test(v)) { process.stderr.write("paths must not contain control characters (newline, tab, ...)\n"); process.exit(1) }
+    if (v.includes("\\")) { process.stderr.write("paths must not contain backslashes\n"); process.exit(1) }
+  }' || die "unsafe location (see above)"
 PREFIX="$(norm "$PREFIX")"; STATE_DIR="$(norm "$STATE_DIR")"; APP_HOME="$(norm "$APP_HOME")"
 
 # One place decides what a path may be. It works on the real locations (links resolved up to
@@ -156,11 +157,15 @@ if [ "$UNINSTALL" -eq 1 ]; then
   done
   # Only files this installer creates are removed, by name; folders go only if they end up empty.
   rm -f -- "$LIB/3pa.mjs" "$LIB/herdr"
-  if [ -d "$LIB" ]; then
-    if rmdir "$LIB" 2>/dev/null; then say "removed $LIB"
-    elif [ -n "$(ls -A "$LIB" 2>/dev/null)" ]; then say "kept $LIB (it holds files that are not ours)"
-    else die "could not remove the empty folder $LIB (permissions?)"; fi
-  fi
+  LIB="$LIB" node -e '
+    const fs = require("fs")
+    const lib = process.env.LIB
+    let s; try { s = fs.lstatSync(lib) } catch (e) { if (e.code === "ENOENT" || e.code === "ENOTDIR") process.exit(0); console.error("install.sh: cannot inspect " + lib + " (" + e.code + ")"); process.exit(1) }
+    if (s.isSymbolicLink()) { console.log("  kept " + lib + " (a link; its target was not removed, remove the link yourself if you want)"); process.exit(0) }
+    if (!s.isDirectory()) { console.log("  kept " + lib + " (not a folder)"); process.exit(0) }
+    try { fs.rmdirSync(lib); console.log("  removed " + lib) } catch (e) {
+      if (e.code === "ENOTEMPTY" || e.code === "EEXIST") console.log("  kept " + lib + " (it holds files that are not ours)")
+      else { console.error("install.sh: could not remove the empty folder " + lib + " (" + e.code + ")"); process.exit(1) } }' || exit 1
   if [ "$PURGE" -eq 1 ]; then
     # Exact names only, as the CLI and this installer create them; anything else in the folder
     # is somebody else's and stays. An unreadable folder is an error, not "nothing to do".
