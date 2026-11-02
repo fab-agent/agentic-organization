@@ -6,7 +6,7 @@ import {
   existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, isAbsolute } from 'node:path'
 import { afterEach, test } from 'node:test'
 
 import {
@@ -152,7 +152,7 @@ test('installs the layout and mods, records what it manages, and turns telemetry
   assert.deepEqual(st.identity, { company_id: 'co1', person_id: 'p1' })
   assert.equal(st.installed?.generation, 1)
   assert.deepEqual(leftovers(appHome), [])
-  assert.equal(lstatSync(join(stateDir, 'state.json')).mode & 0o777, 0o600)
+  if (process.platform !== 'win32') assert.equal(lstatSync(join(stateDir, 'state.json')).mode & 0o777, 0o600)
   assert.deepEqual(scanDrift(appHome), { missing: [], modified: [], unmanagedMods: [], extraFiles: [], interrupted: false })
 })
 
@@ -356,7 +356,7 @@ test('the bearer token is never sent anywhere else (redirects are errors)', asyn
 test('state is written atomically with private permissions and a lock keeps a second run out', async () => {
   const { stateDir } = setup()
   saveState(stateDir, freshState())
-  assert.equal(lstatSync(stateDir).mode & 0o777, 0o700)
+  if (process.platform !== 'win32') assert.equal(lstatSync(stateDir).mode & 0o777, 0o700)
   const events: string[] = []
   const first = withLock(stateDir, async () => {
     events.push('first-in')
@@ -1010,7 +1010,7 @@ test('N4: a relative --app-home is made absolute, so an interrupted update recov
     const fsOps = { rename: (a: string, b: string) => { n++; if (n >= 4) throw Object.assign(new Error('x'), { code: 'EIO' }); renameReal(a, b) } }
     assert.equal(await code(syncWorkspace(opts({ appHome: 'app', stateDir: 'state', fsOps }))), 'recovery_required')
     const journal = JSON.parse(rf(join(base, 'app', '.3pa-journal.json'), 'utf8'))
-    assert.ok(journal.trash.startsWith('/'), 'absolute in the journal')
+    assert.ok(isAbsolute(journal.trash), 'absolute in the journal')
     process.chdir(tmpdir())
     assert.equal(recoverInterrupted(join(base, 'app')), true)
     assert.equal(read(join(base, 'app', 'mods', 'finance-dashboard', 'main.js')), 'export default 1;\n')

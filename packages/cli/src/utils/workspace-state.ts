@@ -60,7 +60,10 @@ export function ensurePrivateDir(dir: string): void {
   const st = lstatSync(dir)
   if (st.isSymbolicLink() || !st.isDirectory()) throw new StateError('state_dir_unsafe')
   if (typeof process.getuid === 'function' && st.uid !== process.getuid()) throw new StateError('state_dir_unsafe')
-  if ((st.mode & 0o077) !== 0) throw new StateError('state_dir_unsafe', 'state directory must be 0700')
+  // Windows has no 0700 and Node reports made-up mode bits there, so nothing is checked: neither
+  // bits nor the ACL. The folder is expected to sit in the user's own profile or to have been
+  // restricted by the installer (ADR-0032); a custom location is the administrator's duty.
+  if (process.platform !== 'win32' && (st.mode & 0o077) !== 0) throw new StateError('state_dir_unsafe', 'state directory must be 0700')
 }
 
 // ── strict shape ─────────────────────────────────────────────────────────────
