@@ -343,6 +343,10 @@ TMP1="$BIN/.3pa.$$.tmp"
   printf '#!/bin/sh\n'
   printf '[ -n "${THREEPA_WORKSPACE_DIR:-}" ] || THREEPA_WORKSPACE_DIR=%s; export THREEPA_WORKSPACE_DIR\n' "$(sq "$STATE_DIR")"
   printf '[ -n "${HERDR_APP_HOME:-}" ] || HERDR_APP_HOME=%s; export HERDR_APP_HOME\n' "$(sq "$APP_HOME")"
+  # `3pa workspace activate` finds the Herdr this install put in place (ADR-0036)
+  if [ -n "$HERDR" ]; then
+    printf '[ -n "${THREEPA_HERDR_BIN:-}" ] || THREEPA_HERDR_BIN=%s; export THREEPA_HERDR_BIN\n' "$(sq "$LIB/herdr")"
+  fi
   printf 'exec node %s "$@"\n' "$(sq "$LIB/3pa.mjs")"
 } > "$TMP1"
 chmod 755 "$TMP1"; mv -f -- "$TMP1" "$BIN/3pa"; TMP1=""
@@ -375,6 +379,8 @@ if [ -n "$HERDR" ]; then
     printf 'export THREEPA_WORKSPACE_DIR=%s\n' "$(sq "$STATE_DIR")"
     printf 'export HERDR_APP_HOME=%s\n' "$(sq "$APP_HOME")"
     printf '%s workspace sync || { echo "herdr-fab: the workspace could not be synced and verified; not starting Herdr." >&2; exit 1; }\n' "$(sq "$BIN/3pa")"
+    # show the person their layout once the window is up (ADR-0036): background, silent
+    printf '( %s workspace activate --wait 60 --quiet >/dev/null 2>&1 & )\n' "$(sq "$BIN/3pa")"
     printf 'exec %s "$@"\n' "$(sq "$LIB/herdr")"
   } > "$TMP1"
   chmod 755 "$TMP1"; mv -f -- "$TMP1" "$BIN/herdr-fab"; TMP1=""

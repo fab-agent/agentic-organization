@@ -255,3 +255,15 @@ test('windows only: an existing state folder with explicit grants for other prin
   assert.doesNotMatch(sddl, /;;;WD\)|;;;BU\)|;;;AU\)|S-1-1-0\)|S-1-5-32-545\)/, sddl)
   assert.ok(existsSync(path.join(l.state, 'root.pub')))
 })
+
+test('ADR-0036: the wrapper names the installed Herdr only when there is one; the launcher starts the layout switch in the background before Herdr', () => {
+  const withH = loc(); ok(run(base(withH, withHerdr)))
+  const wr = readFileSync(W3PA(withH), 'utf8'), la = readFileSync(LAUNCH(withH), 'utf8')
+  assert.match(wr, /THREEPA_HERDR_BIN/); assert.ok(wr.includes(path.join(LIB(withH), WIN ? 'herdr.exe' : 'herdr')))
+  assert.match(la, /workspace activate --wait 60 --quiet/)
+  assert.ok(la.indexOf('workspace sync') < la.indexOf('workspace activate'), 'sync first')
+  assert.ok(la.indexOf('workspace activate') < la.lastIndexOf(WIN ? 'herdr.exe' : 'herdr'), 'the switch is started before Herdr runs')
+  assert.match(la, WIN ? />nul 2>&1/ : />\/dev\/null 2>&1 &/, 'silent and in the background')
+  const without = loc(); ok(run(base(without)))
+  assert.doesNotMatch(readFileSync(W3PA(without), 'utf8'), /THREEPA_HERDR_BIN/)
+})

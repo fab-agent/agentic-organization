@@ -1427,3 +1427,20 @@ test('N4: a timeout after an interrupted update was rolled back does not claim "
   assert.match(err!.message, /no new update was applied/)
   assert.equal(read(join(s.appHome, 'mods', 'finance-dashboard', 'main.js')), 'export default 1;\n') // the rollback that came first is complete
 })
+
+// ═══ ADR-0036: the layout the person has not been shown yet ═══════════════════
+
+test('layoutChanged: true for a first install and for a different layout id, false for content-only changes and no-ops', async () => {
+  const { w, opts } = setup()
+  assert.equal((await syncWorkspace(opts())).layoutChanged, true) // first install
+  assert.equal((await syncWorkspace(opts())).layoutChanged, false) // nothing changed
+  w.content.layout = '{"id":"finance","v":2}' // same id, new bytes: Herdr reloads the file live
+  const r = await syncWorkspace(opts())
+  assert.equal(r.status, 'updated'); assert.equal(r.layoutChanged, false)
+  w.content.mods['finance-dashboard']!['main.js'] = 'export default 2;\n'
+  assert.equal((await syncWorkspace(opts())).layoutChanged, false)
+  w.layoutId = 'finance-v3' // a different id
+  const r3 = await syncWorkspace(opts())
+  assert.equal(r3.layoutChanged, true); assert.equal(r3.layout, 'finance-v3')
+  assert.equal((await syncWorkspace(opts())).layoutChanged, false)
+})

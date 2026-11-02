@@ -81,7 +81,7 @@ def live(monkeypatch, tmp_path, db_session):
         p.stop()
 
 
-def sync(live, *extra, root_pub=None, token=None, sub="sync"):
+def sync(live, *extra, root_pub=None, token=None, sub="sync", herdr=None):
     home = live["tmp"]
     cmd = [
         str(TSX),
@@ -102,6 +102,8 @@ def sync(live, *extra, root_pub=None, token=None, sub="sync"):
         "THREEPA_WORKSPACE_DIR": str(home / "state"),
         "HERDR_APP_HOME": str(home / "app"),
     }
+    if herdr:
+        env["THREEPA_HERDR_BIN"] = str(herdr)
     return subprocess.run(
         cmd, cwd=CLI, env=env, capture_output=True, text=True, timeout=90
     )
@@ -259,3 +261,68 @@ def test_a_failed_report_never_fails_the_sync_and_can_be_turned_off(
     # and the explicit command says so and fails (that is its whole job)
     again = sync(live, sub="report")
     assert again.returncode == 1 and "http_500" in again.stdout + again.stderr
+
+
+def _fake_herdr(tmp, shown="main"):
+    """A stand-in for the app: `status` prints the layout it shows, `do layout.switch --name X`
+    changes it. Calls are logged."""
+    home, log, state = tmp / "fake-herdr", tmp / "herdr-calls.log", tmp / "shown.txt"
+    state.write_text(shown)
+    home.write_text(
+        f"""#!/bin/sh
+echo "$*" >> '{log}'
+case "$1" in
+  status) printf '{{"layout":"%s","errors":[]}}' "$(cat '{state}')" ;;
+  do) [ "$2" = layout.switch ] && [ "$3" = --name ] && printf '%s' "$4" > '{state}' ;;
+  *) exit 2 ;;
+esac
+"""
+    )
+    home.chmod(0o755)
+    return home, log, state
+
+
+def test_a_changed_layout_is_shown_once_through_the_apps_own_command(live):
+    herdr, log, shown = _fake_herdr(live["tmp"])
+    r = sync(live, herdr=herdr)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "now showing the finance-v2 layout" in r.stdout
+    assert shown.read_text() == "finance-v2"
+    assert log.read_text().splitlines() == [
+        "status",
+        "do layout.switch --name finance-v2",
+        "status",
+    ]
+    # nothing changed: the app is left alone (a person who moved elsewhere is not fought)
+    shown.write_text("win98")
+    again = sync(live, herdr=herdr)
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert "now showing" not in again.stdout and "will be shown" not in again.stdout
+    assert shown.read_text() == "win98"
+    assert len(log.read_text().splitlines()) == 3  # no further calls
+
+
+def test_without_an_open_window_the_switch_waits_and_the_sync_still_succeeds(live):
+    herdr = live["tmp"] / "closed-herdr"
+    herdr.write_text("#!/bin/sh\necho no window >&2\nexit 1\n")
+    herdr.chmod(0o755)
+    r = sync(live, herdr=herdr)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "will be shown when Herdr starts" in r.stdout
+    (req,) = list((live["tmp"] / "state").glob("activation.req.*"))
+    assert json.loads(req.read_text())["layout"] == "finance-v2"
+    # later, with the window open, the explicit command does it
+    herdr2, log, shown = _fake_herdr(live["tmp"])
+    out = sync(live, "--quiet", sub="activate", herdr=herdr2)
+    assert out.returncode == 0, out.stdout + out.stderr
+    assert shown.read_text() == "finance-v2"
+    assert not list((live["tmp"] / "state").glob("activation.req.*"))
+    assert not list((live["tmp"] / "state").glob("activation.claim.*"))
+
+
+def test_a_wrong_herdr_path_never_fails_the_sync(live):
+    r = sync(live, herdr=live["tmp"] / "no-such-herdr")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "layout not switched [herdr_bin_missing]" in r.stdout
+    r2 = sync(live, "--no-activate", herdr=live["tmp"] / "no-such-herdr")
+    assert r2.returncode == 0 and "layout not switched" not in r2.stdout

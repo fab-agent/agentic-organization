@@ -293,5 +293,12 @@ printf 'console.log(process.env.THREEPA_WORKSPACE_DIR + "|" + process.env.HERDR_
 [ "$(PATH="$(dirname "$(command -v node)"):$PATH" "$WRAP")" = "$T/wr s|$T/it's app" ] && ok || bad "wrapper does not export the locations"
 [ "$(THREEPA_WORKSPACE_DIR=/x PATH="$(dirname "$(command -v node)"):$PATH" "$WRAP" | cut -d'|' -f1)" = "/x" ] && ok || bad "explicit environment must win"
 
+# ADR-0036: the wrapper knows the installed Herdr; the launcher starts the layout switch in the background
+rm -rf "$T/ac"; base --prefix "$T/ac" --state-dir "$T/acs" --herdr-bin "$T/herdr" --herdr-sha256 "$HS" >/dev/null 2>&1
+grep -q "THREEPA_HERDR_BIN='$T/ac/lib/3pa/herdr'" "$T/ac/bin/3pa" && ok || bad "wrapper does not name the Herdr binary"
+grep -q 'workspace activate --wait 60 --quiet >/dev/null 2>&1 &' "$T/ac/bin/herdr-fab" && ok || bad "launcher does not start the layout switch"
+rm -rf "$T/ac2"; base --prefix "$T/ac2" --state-dir "$T/ac2s" >/dev/null 2>&1
+! grep -q THREEPA_HERDR_BIN "$T/ac2/bin/3pa" && ok || bad "wrapper names a Herdr that was not installed"
+
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
