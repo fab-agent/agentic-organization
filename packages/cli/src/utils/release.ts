@@ -31,7 +31,7 @@ export class ReleaseError extends Error {
   }
 }
 
-export type Os = 'linux' | 'macos'
+export type Os = 'linux' | 'macos' | 'windows'
 export type Arch = 'x64' | 'arm64'
 export interface Artifact { name: '3pa' | 'herdr'; os: Os; arch: Arch; url: string; size: number; sha256: string }
 export interface ReleaseBody {
@@ -92,7 +92,7 @@ function validateBody(b: unknown, now: number): ReleaseBody {
   for (const a of b.artifacts) {
     if (!isObj(a) || !sameKeys(a, ART_KEYS)) throw bad('unexpected artifact fields')
     if (a.name !== '3pa' && a.name !== 'herdr') throw bad('unknown artifact name')
-    if (a.os !== 'linux' && a.os !== 'macos') throw bad('unknown os')
+    if (a.os !== 'linux' && a.os !== 'macos' && a.os !== 'windows') throw bad('unknown os')
     if (a.arch !== 'x64' && a.arch !== 'arm64') throw bad('unknown arch')
     if (!int(a.size, 1, MAX_ARTIFACT_BYTES)) throw bad('bad size')
     if (typeof a.sha256 !== 'string' || !HEX64.test(a.sha256)) throw bad('bad hash')
@@ -186,7 +186,7 @@ export function verifyRelease(wire: string | Uint8Array, o: { pub: string; now: 
 
 // ── self-update ──────────────────────────────────────────────────────────────
 
-export const DEST: Record<Artifact['name'], string> = { '3pa': '3pa.mjs', herdr: 'herdr' }
+export const destName = (name: Artifact['name'], os: Os): string => (name === '3pa' ? '3pa.mjs' : os === 'windows' ? 'herdr.exe' : 'herdr')
 export const releaseHooks: { afterStage?: () => void } = {}
 
 export interface UpdateOptions {
@@ -272,7 +272,7 @@ export async function selfUpdate(o: UpdateOptions): Promise<UpdateResult> {
     if (mine.length === 0) throw new ReleaseError('no_artifact_for_platform')
 
     const todo: Artifact[] = []
-    for (const a of mine) if (fileSha(join(o.libDir, DEST[a.name])) !== a.sha256) todo.push(a)
+    for (const a of mine) if (fileSha(join(o.libDir, destName(a.name, o.os))) !== a.sha256) todo.push(a)
     const result = (status: UpdateResult['status']): UpdateResult => ({ status, version: body.version, seq: body.seq, changed: todo.map((a) => a.name) })
     if (o.check) return result(todo.length ? 'available' : 'up_to_date')
 
@@ -294,8 +294,8 @@ export async function selfUpdate(o: UpdateOptions): Promise<UpdateResult> {
         if (data.length !== a.size || createHash('sha256').update(data).digest('hex') !== a.sha256) {
           throw new ReleaseError('artifact_mismatch', `the downloaded ${a.name} does not match the signed size/hash; nothing was replaced`)
         }
-        const dest = join(o.libDir, DEST[a.name])
-        const tmp = join(o.libDir, `.${DEST[a.name]}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`)
+        const dest = join(o.libDir, destName(a.name, o.os))
+        const tmp = join(o.libDir, `.${destName(a.name, o.os)}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`)
         try {
           createFileExclusive(tmp, data, 0o755)
         } catch (e) {
@@ -312,7 +312,14 @@ export async function selfUpdate(o: UpdateOptions): Promise<UpdateResult> {
       // the helper first, then 3pa itself
       staged.sort((x, y) => (x.dest.endsWith('3pa.mjs') ? 1 : 0) - (y.dest.endsWith('3pa.mjs') ? 1 : 0))
       for (const s of staged) {
-        renameSync(s.tmp, s.dest)
+        try {
+          renameSync(s.tmp, s.dest)
+        } catch (e) {
+          // Windows will not replace a program that is running, and any system can refuse for
+          // permissions: say what to do instead of a raw error
+          const c = (e as NodeJS.ErrnoException).code
+          throw new ReleaseError('replace_failed', `${s.dest} could not be replaced (${c}); close Herdr and any other program using it, then run the update again`)
+        }
         s.tmp = ''
       }
       fsyncDir(o.libDir)

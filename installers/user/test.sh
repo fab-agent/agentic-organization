@@ -285,5 +285,13 @@ expect_fail "release-url is a folder" "not a plain file" base --prefix "$T/r3" -
 rm -rf "$T/r3s"; mkdir -p "$T/r3s" "$T/r3t"; ln -s "$T/r3t" "$T/r3s/release-url"
 expect_fail "release-url is a link" "not a plain file" base --prefix "$T/r3" --state-dir "$T/r3s" --release-pub "$RK" --release-url "$RU"
 
+# the wrapper carries this install's own state/app locations (custom --state-dir must work with self-update)
+rm -rf "$T/wr"; base --prefix "$T/wr" --state-dir "$T/wr s" --app-home "$T/it's app" >/dev/null 2>&1
+WRAP="$T/wr/bin/3pa"
+grep -q "THREEPA_WORKSPACE_DIR='$T/wr s'" "$WRAP" && grep -q "HERDR_APP_HOME='$T/it'\\\\''s app'" "$WRAP" && ok || bad "wrapper env: $(cat "$WRAP")"
+printf 'console.log(process.env.THREEPA_WORKSPACE_DIR + "|" + process.env.HERDR_APP_HOME)\n' > "$T/wr/lib/3pa/3pa.mjs"
+[ "$(PATH="$(dirname "$(command -v node)"):$PATH" "$WRAP")" = "$T/wr s|$T/it's app" ] && ok || bad "wrapper does not export the locations"
+[ "$(THREEPA_WORKSPACE_DIR=/x PATH="$(dirname "$(command -v node)"):$PATH" "$WRAP" | cut -d'|' -f1)" = "/x" ] && ok || bad "explicit environment must win"
+
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

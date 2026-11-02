@@ -46,6 +46,7 @@ const MESSAGES: Record<string, string> = {
   fs_error: 'A file could not be written completely; nothing was replaced.',
   response_too_large: 'The server sent more data than the signed release allows. Nothing was replaced.',
   release_state_full: 'This machine already tracks the maximum number of release channels. Nothing was changed.',
+  replace_failed: 'A file could not be replaced (is Herdr still running?). Close it and run the update again.',
   locked: 'Another update or sync is already running.',
 }
 
@@ -64,7 +65,7 @@ export async function selfUpdateCommand(args: string[]): Promise<void> {
       if (basename(self) !== '3pa.mjs') throw new ReleaseError('bad_url', 'run this from the installed 3pa, or pass --lib-dir')
       libDir = dirname(self)
     }
-    const os: Os | null = process.platform === 'linux' ? 'linux' : process.platform === 'darwin' ? 'macos' : null
+    const os: Os | null = process.platform === 'linux' ? 'linux' : process.platform === 'darwin' ? 'macos' : process.platform === 'win32' ? 'windows' : null
     const arch: Arch | null = process.arch === 'x64' ? 'x64' : process.arch === 'arm64' ? 'arm64' : null
     if (!os || !arch) throw new ReleaseError('no_artifact_for_platform')
     const r = await selfUpdate({
