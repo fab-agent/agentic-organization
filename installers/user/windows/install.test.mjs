@@ -223,15 +223,23 @@ test('windows only: an elevated prompt is refused unless --allow-elevated is giv
   else assert.equal(r.status, 0, r.stdout + r.stderr)
 })
 
-test('windows only: .cmd files keep ! ^ & and spaces literal even under cmd /v:on', { skip: !WIN }, () => {
-  const l = loc(); const odd = { prefix: path.join(l.d, 'p!X!^&y z'), state: path.join(l.d, 's!X!'), app: path.join(l.d, 'a^b') }
-  ok(run(base(odd, withHerdr)))
-  for (const flagv of ['/v:on', '/v:off']) {
-    const w = spawnSync('cmd.exe', ['/d', flagv, '/c', path.join(odd.prefix, 'bin', '3pa.cmd'), 'workspace', 'status'], { encoding: 'utf8', env: { ...ENV, X: 'EXPANDED' } })
-    assert.match(w.stdout, /3pa-stub workspace status/, `${flagv}: ${w.stdout}${w.stderr}`)
-    const h = spawnSync('cmd.exe', ['/d', flagv, '/c', path.join(odd.prefix, 'bin', 'herdr-fab.cmd'), '-e', 'console.log("HERDR-RAN " + process.env.HERDR_APP_HOME)'], { encoding: 'utf8', env: { ...ENV, X: 'EXPANDED' } })
-    assert.ok(h.stdout.includes('HERDR-RAN ' + odd.app), `${flagv}: ${h.stdout}${h.stderr}`)
-  }
+test('windows only: .cmd files keep ! ^ & and spaces literal even when the caller has delayed expansion ON', { skip: !WIN }, () => {
+  // A caller with delayed expansion enabled calls our scripts; the "!X!" sits in the state folder
+  // name, which the scripts write into their `set` lines. (It cannot sit on the outer command line:
+  // cmd would expand it there before our code ever runs.)
+  const l = loc(); const odd = { prefix: path.join(l.d, 'p^&y z'), state: path.join(l.d, 's!X!'), app: path.join(l.d, 'a^b') }
+  const cli = path.join(T, 'env-cli.mjs'); writeFileSync(cli, 'console.log("STATE=" + process.env.THREEPA_WORKSPACE_DIR + "|APP=" + process.env.HERDR_APP_HOME)\n')
+  const args = ['--base-url', B, '--root-pub', KEY, '--cli', cli, '--cli-sha256', sha(cli), '--prefix', odd.prefix, '--state-dir', odd.state, '--app-home', odd.app, ...withHerdr]
+  ok(run(args))
+  const driver = path.join(l.d, 'driver.cmd')
+  writeFileSync(driver, ['@echo off', 'setlocal EnableDelayedExpansion', 'set "X=EXPANDED"', `call "${path.join(odd.prefix, 'bin', '3pa.cmd')}" workspace status`, ''].join('\r\n'))
+  const w = spawnSync('cmd.exe', ['/d', '/c', driver], { encoding: 'utf8', env: { ...ENV, THREEPA_WORKSPACE_DIR: '', HERDR_APP_HOME: '' } })
+  assert.ok(w.stdout.includes(`STATE=${odd.state}|APP=${odd.app}`), `wrapper: ${w.stdout}${w.stderr}`)
+  assert.ok(!w.stdout.includes('EXPANDED'))
+  const driver2 = path.join(l.d, 'driver2.cmd')
+  writeFileSync(driver2, ['@echo off', 'setlocal EnableDelayedExpansion', 'set "X=EXPANDED"', `call "${path.join(odd.prefix, 'bin', 'herdr-fab.cmd')}" -e "console.log('HERDR-RAN ' + process.env.HERDR_APP_HOME + ' ' + process.env.THREEPA_WORKSPACE_DIR)"`, ''].join('\r\n'))
+  const h = spawnSync('cmd.exe', ['/d', '/c', driver2], { encoding: 'utf8', env: ENV })
+  assert.ok(h.stdout.includes(`HERDR-RAN ${odd.app} ${odd.state}`), `launcher: ${h.stdout}${h.stderr}`)
 })
 
 test('windows only: an existing state folder with explicit grants for other principals is rebuilt, or the install stops', { skip: !WIN }, () => {
