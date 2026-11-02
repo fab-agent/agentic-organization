@@ -1,0 +1,17 @@
+# Deployment settings for installers/deploy (ADR-0033). Plain KEY=VALUE lines; no quotes, no
+# shell, no secrets: everything here is a PUBLIC key, a URL, a file name or a hash.
+# File names are relative to the folder this file is in.
+
+# the platform people sign in to
+BASE_URL=https://platform.example.com
+# the workspace root PUBLIC key (ADR-0027), base64 or a file name
+ROOT_PUB=root.pub
+# the release PUBLIC key and where the signed release document is published (ADR-0031); optional
+RELEASE_PUB=release.pub
+RELEASE_URL=https://downloads.example.com/3pa/release.json
+# the first bundle to install, and its SHA-256 (later versions arrive through `3pa self-update`)
+CLI_FILE=3pa.mjs
+CLI_SHA256=0000000000000000000000000000000000000000000000000000000000000000
+# optional: the Herdr app binary and its SHA-256
+HERDR_FILE=
+HERDR_SHA256=

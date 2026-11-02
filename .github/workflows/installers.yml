@@ -10,6 +10,7 @@ on:
       - "docs/adr/0030-*.md"
       - "docs/adr/0031-*.md"
       - "docs/adr/0032-*.md"
+      - "docs/adr/0033-*.md"
       - "packages/cli/**"
       - ".github/workflows/installers.yml"
   pull_request:
@@ -92,3 +93,18 @@ jobs:
           .\installers\user\windows\install.ps1 --base-url https://platform.example --root-pub ([Convert]::ToBase64String([byte[]](,7 * 32))) --cli packages\cli\dist\3pa.mjs --cli-sha256 (Get-FileHash packages\cli\dist\3pa.mjs -Algorithm SHA256).Hash.ToLower() --prefix "$env:RUNNER_TEMP\ps" --state-dir "$env:RUNNER_TEMP\pss" --app-home "$env:RUNNER_TEMP\psa" --allow-elevated
           if ($LASTEXITCODE -ne 0) { exit 1 }
           if (-not (Test-Path "$env:RUNNER_TEMP\ps\bin\3pa.cmd")) { throw "wrapper missing" }
+
+  deploy-helper:
+    name: Deployment helper (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test installers/deploy/deploy.test.mjs
