@@ -87,11 +87,13 @@ function problems(cfg, dir) {
   const runnable = (f) => WIN || (() => { try { return (lstatSync(f).mode & 0o100) !== 0 } catch { return false } })()
   const hashOf = (f) => { try { return lstatSync(f).isFile() ? sha(f) : null } catch { return null } }
   const pins = (s) => (s === null ? null : s.replace(/[\r\n ]/g, ''))
+  // missing, different content and lost execute permission are three separate facts: a permission
+  // problem must never hide a content difference (that is what `install` keeps from being overwritten)
   const artifact = (label, file, want) => {
     const have = hashOf(file)
-    if (have === null) bad.push(`${label} is not installed`)
-    else if (label === 'Herdr binary' && !runnable(file)) bad.push('the Herdr binary is not executable')
-    else if (have !== want) { bad.push(`the installed ${label} is not the one in the settings`); differs.push(file) }
+    if (have === null) { bad.push(`${label} is not installed`); return }
+    if (have !== want) { bad.push(`the installed ${label} is not the one in the settings`); differs.push(file) }
+    if (label === 'Herdr binary' && !runnable(file)) bad.push('the Herdr binary is not executable')
   }
   artifact('3pa bundle', loc.bundle, cfg.CLI_SHA256)
   if (read(loc.wrapper) !== renderWrapper({ state: loc.state, app: loc.app, bundle: loc.bundle }) || !runnable(loc.wrapper)) bad.push('the 3pa entry script is missing, differs or is not executable')

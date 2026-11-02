@@ -252,3 +252,22 @@ test('D13: an entry point or Herdr binary that lost its execute permission is no
     assert.notEqual(statSync(file).mode & 0o100, 0, file); assert.equal(runIn(h, ['check', '--config', f]).rc, 0)
   }
 })
+
+test('D14: execute permission and content are independent: repairing one never replaces a different file', { skip: isRoot || WIN }, () => {
+  const h = fresh('d14'); const herdr = path.join(T, 'herdr'); copyFileSync(process.execPath, herdr)
+  const f = conf({ HERDR_FILE: 'herdr', HERDR_SHA256: sha(herdr) }, 'd14.conf')
+  assert.equal(runIn(h, ['install', '--config', f]).rc, 0)
+  const file = path.join(libOf(h), 'herdr')
+  // same content, lost permission: repaired
+  chmodSync(file, 0o644); assert.equal(runIn(h, ['check', '--config', f]).rc, 1)
+  assert.equal(runIn(h, ['install', '--config', f]).rc, 0); assert.equal(sha(file), sha(herdr)); assert.notEqual(statSync(file).mode & 0o100, 0)
+  // different content AND lost permission: both reported, permission repaired, content kept
+  writeFileSync(file, '#!/bin/sh\necho NEWER herdr\n'); chmodSync(file, 0o644)
+  const r = runIn(h, ['check', '--config', f]); assert.equal(r.rc, 1); assert.match(r.out, /not the one in the settings/); assert.match(r.out, /not executable/)
+  assert.equal(runIn(h, ['install', '--config', f]).rc, 0)
+  assert.match(readFileSync(file, 'utf8'), /NEWER herdr/, 'content kept')
+  assert.notEqual(statSync(file).mode & 0o100, 0, 'permission repaired')
+  // different content, executable: kept; and only an explicit force puts the settings' file back
+  assert.equal(runIn(h, ['install', '--config', f]).rc, 0); assert.match(readFileSync(file, 'utf8'), /NEWER herdr/)
+  assert.equal(runIn(h, ['install', '--config', f, '--force-artifacts']).rc, 0); assert.equal(sha(file), sha(herdr))
+})
