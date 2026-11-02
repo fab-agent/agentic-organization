@@ -74,7 +74,7 @@ test('happy path: both files replaced, executable, accepted release recorded', a
   const r = await selfUpdate(s.opts())
   assert.equal(r.status, 'updated'); assert.deepEqual(r.changed.sort(), ['3pa', 'herdr']); assert.equal(r.version, '1.1.0')
   assert.equal(read(join(s.lib, '3pa.mjs')), A3PA.toString()); assert.equal(read(join(s.lib, 'herdr')), AHERDR.toString())
-  assert.equal(statSync(join(s.lib, 'herdr')).mode & 0o777, 0o755)
+  if (process.platform !== 'win32') assert.equal(statSync(join(s.lib, 'herdr')).mode & 0o777, 0o755)
   assert.equal(loadReleaseState(s.state).channels.stable!.seq, 5)
   assert.deepEqual(readdirSync(s.lib).sort(), ['3pa.mjs', 'herdr'])
   assert.ok(s.seen.every((x) => x.init?.redirect === 'error'), 'redirects are refused on every request')
@@ -249,10 +249,10 @@ test('real HTTP server: update works, and a redirect is refused', async () => {
 
 test('signing tool: keygen, sign, verify round trip; refuses to overwrite a key and to sign what the client would refuse', () => {
   const dir = mkdtempSync(join(tmpdir(), 'sign-'))
-  const run = (...a: string[]) => execFileSync('npx', ['tsx', 'scripts/release-sign.ts', ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  const run = (...a: string[]) => execFileSync(process.execPath, ['--import', 'tsx', 'scripts/release-sign.ts', ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
   const out = run('keygen', '--out', dir)
   assert.match(out, /public key/)
-  assert.equal(statSync(join(dir, 'release.key')).mode & 0o777, 0o600)
+  if (process.platform !== 'win32') assert.equal(statSync(join(dir, 'release.key')).mode & 0o777, 0o600)
   assert.throws(() => run('keygen', '--out', dir), /refusing to overwrite/)
   const nowS = Math.floor(Date.now() / 1000)
   writeFileSync(join(dir, 'body.json'), JSON.stringify(body({ issued_at: nowS - 10, expires_at: nowS + 3600 })))
@@ -306,7 +306,7 @@ test('R5: the artifact url must be text', async () => {
 })
 
 test('R4: the signing tool never overwrites or follows a link for any output', () => {
-  const run = (...a: string[]) => execFileSync('npx', ['tsx', 'scripts/release-sign.ts', ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  const run = (...a: string[]) => execFileSync(process.execPath, ['--import', 'tsx', 'scripts/release-sign.ts', ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
   const fails = (...a: string[]) => { try { run(...a) } catch (e) { return String((e as { stderr?: string }).stderr) } return null }
   // keygen: a link where release.pub goes (to a note, or dangling to release.key) leaves everything intact
   const d1 = mkdtempSync(join(tmpdir(), 'sg1-')); writeFileSync(join(d1, 'note'), 'mine'); symlinkSync(join(d1, 'note'), join(d1, 'release.pub'))

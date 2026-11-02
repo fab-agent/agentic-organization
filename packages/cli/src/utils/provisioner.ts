@@ -483,12 +483,13 @@ function activate(
     const hadLive = lexists(join(appHome, liveRel))
     ops.push({ live: liveRel, hadLive, aside: hadLive ? join(trash, tag) : null, staged: stagedRel ? join(staging, stagedRel) : null })
   }
+  // names in the journal are always '/'-separated (they are validated against that grammar)
   for (const old of Object.keys(managed.mods)) {
-    if (!b.mods.some((m) => m.name === old)) plan(join('mods', old), null, `mod-${old}`)
+    if (!b.mods.some((m) => m.name === old)) plan(`mods/${old}`, null, `mod-${old}`)
   }
-  if (managed.layout && managed.layout.name !== b.layout.id) plan(join('layouts', `${managed.layout.name}.json`), null, `layout-${managed.layout.name}`)
-  plan(join('layouts', `${b.layout.id}.json`), join('layouts', `${b.layout.id}.json`), `layout-${b.layout.id}`)
-  for (const m of b.mods) plan(join('mods', m.name), join('mods', m.name), `mod-${m.name}`)
+  if (managed.layout && managed.layout.name !== b.layout.id) plan(`layouts/${managed.layout.name}.json`, null, `layout-${managed.layout.name}`)
+  plan(`layouts/${b.layout.id}.json`, `layouts/${b.layout.id}.json`, `layout-${b.layout.id}`)
+  for (const m of b.mods) plan(`mods/${m.name}`, `mods/${m.name}`, `mod-${m.name}`)
 
   const journal: Journal = { v: 1, trash, staging, ops, prevManaged: hadManagedFile ? managed : null }
   writeFileAtomic(join(appHome, JOURNAL_FILE), JSON.stringify(journal, null, 2)) // durable before the first rename
