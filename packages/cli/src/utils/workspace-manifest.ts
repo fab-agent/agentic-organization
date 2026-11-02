@@ -336,6 +336,22 @@ function verifySig(publicB64: unknown, kind: Kind, payload: unknown, sig: unknow
   if (!ok) throw new ManifestError('bad_signature')
 }
 
+/** Detached Ed25519 check for other signed documents that reuse the same canonical JSON and
+ * strict key encoding (ADR-0031). The domain string keeps a signature of one kind from ever
+ * being accepted as another. Returns false for every malformed input; it never throws. */
+export function verifyDetached(publicB64: unknown, domain: string, payload: unknown, sig: unknown): boolean {
+  try {
+    const message = Buffer.concat([Buffer.from(domain, 'ascii'), canonicalBytes(payload)])
+    const pub = b64(publicB64)
+    const sg = b64(sig)
+    if (!pub || !sg || pub.length !== 32 || sg.length !== 64) return false
+    const key = createPublicKey({ key: Buffer.concat([SPKI_PREFIX, pub]), format: 'der', type: 'spki' })
+    return edVerify(null, message, key, sg)
+  } catch {
+    return false
+  }
+}
+
 // ── body validation (same rules as the server) ───────────────────────────────
 
 const BODY_KEYS = ['typ', 'v', 'epoch', 'company_id', 'person_id', 'aud', 'generation', 'issued_at', 'expires_at', 'min_client_version', 'gateway_url', 'layout', 'mods']

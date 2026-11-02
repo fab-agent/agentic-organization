@@ -8,6 +8,7 @@ on:
     paths:
       - "installers/**"
       - "docs/adr/0030-*.md"
+      - "docs/adr/0031-*.md"
       - "packages/cli/**"
       - ".github/workflows/installers.yml"
   pull_request:
@@ -15,6 +16,7 @@ on:
     paths:
       - "installers/**"
       - "docs/adr/0030-*.md"
+      - "docs/adr/0031-*.md"
       - "packages/cli/**"
       - ".github/workflows/installers.yml"
   workflow_dispatch:
@@ -48,3 +50,5 @@ jobs:
           sh ../../installers/user/install.sh --base-url https://platform.example \
             --root-pub "$KEY" --cli dist/3pa.mjs --cli-sha256 "$SHA" --prefix "$RUNNER_TEMP/p" --state-dir "$RUNNER_TEMP/s"
           THREEPA_WORKSPACE_DIR="$RUNNER_TEMP/s" "$RUNNER_TEMP/p/bin/3pa" workspace status | grep "No workspace installed yet"
+      - name: Signed self-update end to end (ADR-0031)
+        run: sh installers/user/e2e-update.sh

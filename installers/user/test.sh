@@ -255,5 +255,35 @@ expect_fail "invalid UTF-8 purge path" "valid UTF-8" sh "$INST" --uninstall --pu
 U2="$T/i21/state-$(printf '\357\277\275')"; ln -s "$T/i21/real" "$U2"
 expect_fail "U+FFFD state link" "link or not a folder" base --state-dir "$U2"
 
+# ── Release chain options (ADR-0031) ─────────────────────────────────────────
+rm -rf "$T/rc"; RK="$(node -e 'process.stdout.write(Buffer.alloc(32,3).toString("base64"))')"; RK2="$(node -e 'process.stdout.write(Buffer.alloc(32,4).toString("base64"))')"
+RU="https://dl.example/release.json"
+expect_fail "release key without url" "go together" base --prefix "$T/rc" --state-dir "$T/rcs" --release-pub "$RK"
+expect_fail "release url without key" "go together" base --prefix "$T/rc" --state-dir "$T/rcs" --release-url "$RU"
+expect_fail "release key short" "release-pub is not a valid" base --prefix "$T/rc" --state-dir "$T/rcs" --release-pub AAAA --release-url "$RU"
+expect_fail "release url http remote" "release-url must be https" base --prefix "$T/rc" --state-dir "$T/rcs" --release-pub "$RK" --release-url http://dl.example/r.json
+expect_fail "release url credentials" "release-url must be https" base --prefix "$T/rc" --state-dir "$T/rcs" --release-pub "$RK" --release-url https://u:p@dl.example/r.json
+[ ! -e "$T/rcs" ] && ok || bad "state created before release options were refused"
+base --prefix "$T/rc" --state-dir "$T/rcs" --release-pub "$RK" --release-url "$RU" >/dev/null 2>&1 && ok || bad "release install"
+[ "$(cat "$T/rcs/release.pub")" = "$RK" ] && [ "$(cat "$T/rcs/release-url")" = "$RU" ] && ok || bad "release files"
+[ "$(perm "$T/rcs/release.pub")" = "644" ] && ok || bad "release.pub mode"
+expect_fail "release key swap" "different release key" base --prefix "$T/rc" --state-dir "$T/rcs" --release-pub "$RK2" --release-url "$RU"
+[ "$(cat "$T/rcs/release.pub")" = "$RK" ] && ok || bad "release key replaced without flag"
+base --prefix "$T/rc" --state-dir "$T/rcs" --release-pub "$RK2" --release-url "$RU" --replace-release-key >/dev/null 2>&1 && [ "$(cat "$T/rcs/release.pub")" = "$RK2" ] && ok || bad "explicit release key replacement"
+# the release files and the update state go with --purge-state; nothing else does
+echo mine > "$T/rcs/notes.txt"; echo '{}' > "$T/rcs/release-state.json"
+sh "$INST" --uninstall --purge-state --prefix "$T/rc" --state-dir "$T/rcs" >/dev/null 2>&1
+[ "$(ls -A "$T/rcs")" = "notes.txt" ] && ok || bad "purge of release files: $(ls -A "$T/rcs" | tr '\n' ' ')"
+# an installed bundle can find the pinned key and URL it was given
+rm -rf "$T/rc" "$T/rcs"; base --prefix "$T/rc" --state-dir "$T/rcs" --release-pub "$RK" --release-url "$RU" >/dev/null 2>&1
+[ -f "$T/rcs/release.pub" ] && [ -f "$T/rcs/release-url" ] && ok || bad "release files after reinstall"
+
+# R3: the release-url destination must be absent or a plain file
+rm -rf "$T/r3" "$T/r3s"; mkdir -p "$T/r3s/release-url"
+expect_fail "release-url is a folder" "not a plain file" base --prefix "$T/r3" --state-dir "$T/r3s" --release-pub "$RK" --release-url "$RU"
+[ ! -e "$T/r3/lib/3pa/3pa.mjs" ] && [ -z "$(find "$T/r3s" -name '*.tmp')" ] && ok || bad "changes after release-url refusal"
+rm -rf "$T/r3s"; mkdir -p "$T/r3s" "$T/r3t"; ln -s "$T/r3t" "$T/r3s/release-url"
+expect_fail "release-url is a link" "not a plain file" base --prefix "$T/r3" --state-dir "$T/r3s" --release-pub "$RK" --release-url "$RU"
+
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

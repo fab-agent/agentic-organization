@@ -10,6 +10,7 @@ import { run     } from './commands/run.js'
 import { signal  } from './commands/stop.js'
 import { start   } from './commands/start.js'
 import { status  } from './commands/status.js'
+import { selfUpdateCommand } from './commands/self-update.js'
 import { workspace } from './commands/workspace.js'
 
 // Injected by scripts/bundle.mjs from package.json; plain `tsx` runs have no bundle.
@@ -53,6 +54,10 @@ switch (cmd) {
 
   case 'signal':
     await signal(args)
+    break
+
+  case 'self-update':
+    await selfUpdateCommand(args)
     break
 
   case 'doctor':
