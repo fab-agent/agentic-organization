@@ -50,12 +50,20 @@ workspace has been verified. ADR-0026 lists user installers as the third deliver
    and a space). Without a Herdr binary only the CLI and the key are installed.
 8. **Uninstall removes only what the installer creates, by name.** The wrappers, `3pa.mjs` and
    `herdr` in its lib folder; the folder goes only if it ends up empty. `--purge-state` removes
-   the pinned key and the sync state/lock/backup files (`root.pub`, `state.json*`,
-   `sync.lock*`) and then the folder only if it is empty, so a state folder that already held
-   other files (even one the installer was pointed at) keeps them; there is no recursive
-   delete and no marker file to forge. `--dry-run` with `--uninstall` is refused rather than
-   ignored. Sync history is kept without `--purge-state`, because deleting it would let an old
-   workspace be replayed (ADR-0029). The Herdr app home is never touched.
+   the pinned key and the sync files **by exact name** (`root.pub`, `state.json`,
+   `state.json.replaced-<digits>`, `state.json.<12 hex>.tmp`, `sync.lock`, `sync.lock.takeover`,
+   `sync.lock[.takeover].tmp-<12 hex>`, `.root.pub.<pid>.tmp`; the grammar mirrors what the CLI
+   and installer write) and then the folder only if it is empty. Anything else in it stays,
+   including files that merely start with those names. There is no recursive delete and no
+   marker file to forge; a file with an exact name that someone else put there would still be
+   removed, because name is all there is to go on. The state folder is inspected first (link,
+   owner, readable); an unreadable one is an error, never "nothing to do". `--dry-run` with
+   `--uninstall` is refused rather than ignored. Sync history is kept without `--purge-state`,
+   because deleting it would let an old workspace be replayed (ADR-0029). The Herdr app home is
+   never touched. Paths are normalised (repeated, trailing and `.` components dropped) so that
+   `link/` and `link/.` cannot slip past the link check. Every file the installer publishes
+   must be absent or a plain file beforehand; a folder or link there stops the install before
+   anything changes.
 
 ## What this does not do (stated plainly)
 
@@ -75,7 +83,7 @@ workspace has been verified. ADR-0026 lists user installers as the third deliver
 
 ## Verification
 
-`installers/user/test.sh` (80 checks, run in CI on Linux and macOS): every refusal above,
+`installers/user/test.sh` (104 checks, run in CI on Linux and macOS): every refusal above,
 a hash mismatch leaving nothing behind, a full install, launcher flow and fail-closed
 behaviour, quote-in-path, root replacement, idempotence, uninstall and `--purge-state`.
 A CI step also installs the real bundle and runs `3pa workspace status`.

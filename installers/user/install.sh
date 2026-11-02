@@ -72,6 +72,13 @@ node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)
 [ -n "$STATE_DIR" ] || STATE_DIR="$HOME/.config/3pa/workspace"
 [ -n "$APP_HOME" ] || APP_HOME="$HOME/.config/herdr-app"
 
+# `link/` and `link/.` make the operating system follow a link that `link` would not; drop
+# repeated, trailing and `.` components so every check and every write names the same thing.
+norm() {
+  printf '%s' "$1" | sed -e 's://*:/:g' -e 's:/\(\./\)\{1,\}:/:g' -e 's:/\.$::' -e 's:\(.\)/$:\1:'
+}
+PREFIX="$(norm "$PREFIX")"; STATE_DIR="$(norm "$STATE_DIR")"; APP_HOME="$(norm "$APP_HOME")"
+
 # One place decides what a path may be. It works on the real locations (links resolved up to
 # the deepest part that exists), so `..` and symlinks cannot disguise a dangerous target.
 # Rules: absolute, no control characters or backslashes, never `/` or the home directory or a
@@ -146,14 +153,33 @@ if [ "$UNINSTALL" -eq 1 ]; then
   rmdir "$LIB" 2>/dev/null && say "removed $LIB" || true
   [ ! -d "$LIB" ] || say "kept $LIB (it holds files that are not ours)"
   if [ "$PURGE" -eq 1 ]; then
-    if [ -d "$STATE_DIR" ] && [ ! -L "$STATE_DIR" ]; then
-      # the pinned key, the sync state and its lock/backup files; nothing else in that folder
-      for f in "$STATE_DIR"/root.pub "$STATE_DIR"/.root.pub.* "$STATE_DIR"/state.json* "$STATE_DIR"/sync.lock*; do
-        if [ -f "$f" ] && [ ! -L "$f" ]; then rm -f -- "$f"; fi
-      done
-      rmdir "$STATE_DIR" 2>/dev/null && say "removed $STATE_DIR (root key and sync history)" \
-        || say "removed the key and sync history in $STATE_DIR; kept the folder (it holds other files)"
-    fi
+    # Exact names only, as the CLI and this installer create them; anything else in the folder
+    # is somebody else's and stays. An unreadable folder is an error, not "nothing to do".
+    STATE_DIR="$STATE_DIR" node -e '
+      const fs = require("fs"), path = require("path")
+      const dir = process.env.STATE_DIR
+      const bad = (m) => { process.stderr.write("install.sh: " + m + "\n"); process.exit(1) }
+      let d; try { d = fs.lstatSync(dir) } catch (e) {
+        if (e.code === "ENOENT" || e.code === "ENOTDIR") { console.log("  no state folder at " + dir); process.exit(0) }
+        bad("cannot inspect " + dir + " (" + e.code + "); nothing was removed") }
+      if (d.isSymbolicLink() || !d.isDirectory()) bad(dir + " is a link or not a folder; nothing was removed")
+      if (typeof process.getuid === "function" && d.uid !== process.getuid()) bad(dir + " belongs to someone else; nothing was removed")
+      const OURS = [/^root\.pub$/, /^state\.json$/, /^state\.json\.replaced-\d+$/, /^state\.json\.[0-9a-f]{12}\.tmp$/,
+        /^sync\.lock$/, /^sync\.lock\.takeover$/, /^sync\.lock(\.takeover)?\.tmp-[0-9a-f]{12}$/, /^\.root\.pub\.\d+\.tmp$/]
+      let names; try { names = fs.readdirSync(dir) } catch (e) { bad("cannot read " + dir + " (" + e.code + "); nothing was removed") }
+      let removed = 0, left = 0
+      for (const n of names) {
+        if (!OURS.some((r) => r.test(n))) { left++; continue }
+        const p = path.join(dir, n)
+        let s; try { s = fs.lstatSync(p) } catch (e) { bad("cannot inspect " + p + " (" + e.code + ")") }
+        if (!s.isFile()) { left++; console.log("  left " + p + " (not a regular file)"); continue }
+        try { fs.unlinkSync(p); removed++ } catch (e) { bad("cannot remove " + p + " (" + e.code + ")") }
+      }
+      try { fs.rmdirSync(dir); console.log("  removed " + dir + " (" + removed + " files: root key and sync history)") }
+      catch (e) {
+        if (e.code === "ENOTEMPTY" || e.code === "EEXIST") console.log("  removed " + removed + " file(s) of ours from " + dir + "; kept the folder (" + left + " other entries)")
+        else bad("removed " + removed + " file(s) but could not remove the folder " + dir + " (" + e.code + ")")
+      }' || exit 1
   else
     say "kept $STATE_DIR (root key and sync history; --purge-state removes it)"
   fi
@@ -221,6 +247,12 @@ EXISTING="$(STATE_DIR="$STATE_DIR" node -e '
 if [ -n "$EXISTING" ] && [ "$EXISTING" != "$ROOT_PUB" ] && [ "$REPLACE_ROOT" -ne 1 ]; then
   die "a different root key is already pinned in $ROOT_FILE; pass --replace-root only if the change is intended"
 fi
+
+# Every file we publish must be absent or a plain file: `mv` into a folder (or a link to one)
+# would move the new file INSIDE it and still report success.
+for f in "$LIB/3pa.mjs" "$LIB/herdr" "$BIN/3pa" "$BIN/herdr-fab"; do
+  if [ -L "$f" ] || { [ -e "$f" ] && [ ! -f "$f" ]; }; then die "$f exists and is not a plain file; nothing was changed"; fi
+done
 
 if [ "$DRY" -eq 1 ]; then
   say "dry run on $OS: would install into $PREFIX (cli$( [ -n "$HERDR" ] && printf ', herdr, launcher')), state $STATE_DIR"

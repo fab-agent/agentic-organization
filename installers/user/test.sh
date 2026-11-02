@@ -182,5 +182,38 @@ expect_fail "bin linked to home" "may not be" base --prefix "$T/p3"
 # I12: the URL is judged after the same normalisation the CLI applies
 sh "$INST" --base-url "$(printf 'https://platform.example\t')" --root-pub "$KEY" --cli "$T/3pa.mjs" --cli-sha256 "$CS" --dry-run >/dev/null 2>&1 && ok || bad "tab-padded url"
 
+# ── Codex round 3 (I13-I16) ──────────────────────────────────────────────────
+rm -rf "$HOME/.local" "$HOME/.config/3pa" "$T/st13"
+# I13: only exact names are ours
+mkdir -p "$T/st13"
+for n in personal.txt state.json.notes state.jsonl sync.locksmith sync.lock-notes .root.pub.notes root.pub.bak; do echo mine > "$T/st13/$n"; done
+for n in root.pub state.json state.json.replaced-1730000000000 sync.lock sync.lock.takeover sync.lock.tmp-0123456789ab state.json.0123456789ab.tmp; do echo ours > "$T/st13/$n"; done
+sh "$INST" --uninstall --purge-state --state-dir "$T/st13" >/dev/null 2>&1
+[ "$(ls -A "$T/st13" | sort | tr '\n' ' ')" = ".root.pub.notes personal.txt root.pub.bak state.json.notes state.jsonl sync.lock-notes sync.locksmith " ] && ok || bad "purge grammar: $(ls -A "$T/st13" | tr '\n' ' ')"
+rm -rf "$T/st13"
+# I14: link/ and link/. are the same link
+mkdir -p "$T/tgt14"; chmod 755 "$T/tgt14"; echo key > "$T/tgt14/root.pub"; ln -s "$T/tgt14" "$T/lnk14"
+for s in "" "/" "/." "//" "/./"; do
+  expect_fail "state link$s" "link or not a folder" base --state-dir "$T/lnk14$s"
+  expect_fail "purge state link$s" "link or not a folder" sh "$INST" --uninstall --purge-state --state-dir "$T/lnk14$s"
+done
+[ "$(perm "$T/tgt14")" = "755" ] && [ -f "$T/tgt14/root.pub" ] && ok || bad "link target touched"
+# I15: an unreadable state folder is an error, never success
+mkdir -p "$T/st15"; echo k > "$T/st15/root.pub"; echo s > "$T/st15/state.json"; chmod 000 "$T/st15"
+expect_fail "purge unreadable state" "nothing was removed" sh "$INST" --uninstall --purge-state --state-dir "$T/st15"
+chmod 700 "$T/st15"; [ -f "$T/st15/root.pub" ] && [ -f "$T/st15/state.json" ] && ok || bad "unreadable purge"
+# a root.pub that is a folder is left, and said so
+rm -rf "$T/st15"; mkdir -p "$T/st15/root.pub"
+out="$(sh "$INST" --uninstall --purge-state --state-dir "$T/st15" 2>&1)"
+[ -d "$T/st15/root.pub" ] && printf %s "$out" | grep -q "not a regular file" && ok || bad "folder root.pub purge: $out"
+# I16: a folder where a file is to be published stops the install before anything changes
+for n in lib/3pa/3pa.mjs lib/3pa/herdr bin/3pa bin/herdr-fab; do
+  rm -rf "$T/p16"; mkdir -p "$T/p16/$n"
+  expect_fail "dest is a folder: $n" "not a plain file" base --herdr-bin "$T/herdr" --herdr-sha256 "$HS" --prefix "$T/p16" --state-dir "$T/p16s"
+  [ ! -e "$T/p16s/root.pub" ] && [ -z "$(find "$T/p16" -name '*.tmp')" ] && ok || bad "changes after dest-folder refusal: $n"
+done
+rm -rf "$T/p16"; mkdir -p "$T/p16/bin"; ln -s "$T" "$T/p16/bin/3pa"
+expect_fail "dest is a link" "not a plain file" base --prefix "$T/p16" --state-dir "$T/p16s"
+
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
