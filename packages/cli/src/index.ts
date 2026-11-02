@@ -10,6 +10,7 @@ import { run     } from './commands/run.js'
 import { signal  } from './commands/stop.js'
 import { start   } from './commands/start.js'
 import { status  } from './commands/status.js'
+import { workspace } from './commands/workspace.js'
 
 // Injected by scripts/bundle.mjs from package.json; plain `tsx` runs have no bundle.
 declare const __CLI_VERSION__: string | undefined
@@ -66,6 +67,10 @@ switch (cmd) {
     await status()
     break
 
+  case 'workspace':
+    await workspace(args)
+    break
+
   case '--version':
   case '-v':
     console.log(CLI_VERSION)
@@ -89,6 +94,7 @@ switch (cmd) {
     console.log('  ' + chalk.cyan('3pa doctor') + '   Sandbox ön koşullarını kontrol et')
     console.log('  ' + chalk.cyan('3pa start ') + '   Platformu Docker ile başlat')
     console.log('  ' + chalk.cyan('3pa status') + '   Platform durumunu göster')
+    console.log('  ' + chalk.cyan('3pa workspace') + ' Rolüne ait imzalı Herdr çalışma alanını kur (sync) / farkları göster (status)')
     console.log()
     if (cmd && cmd !== '--help' && cmd !== '-h') process.exit(1)
   }

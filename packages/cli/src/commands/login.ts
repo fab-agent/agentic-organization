@@ -72,6 +72,31 @@ async function api(base: string, path: string, init?: RequestInit): Promise<any>
   return body
 }
 
+/**
+ * A short-lived web session token: an OIDC id_token exchange (`--oidc <token>`), or email +
+ * password. Used by `3pa login` (to mint a persona token) and `3pa workspace sync` (to read
+ * this person's own signed workspace). It is held in memory only and never written to disk.
+ * Returns `null` if the person cancelled.
+ */
+export async function webSignIn(base: string, args: string[]): Promise<string | null> {
+  const oidcIdx = args.indexOf('--oidc')
+  if (oidcIdx !== -1 && args[oidcIdx + 1]) {
+    const res = await api(base, '/workstation/oidc/exchange', {
+      method: 'POST',
+      body: JSON.stringify({ id_token: args[oidcIdx + 1] }),
+    })
+    return res.access_token
+  }
+  const email = String(await p.text({ message: 'Email' }))
+  const password = String(await p.password({ message: 'Password' }))
+  if (p.isCancel(email) || p.isCancel(password)) return null
+  const res = await api(base, '/auth/token', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  })
+  return res.access_token
+}
+
 export async function login(args: string[]): Promise<void> {
   p.intro(chalk.bold('3pa login'))
 
@@ -86,24 +111,8 @@ export async function login(args: string[]): Promise<void> {
   if (p.isCancel(base)) return p.cancel('cancelled')
 
   // 1. Get a web session token — password or OIDC.
-  let webToken: string
-  const oidcIdx = args.indexOf('--oidc')
-  if (oidcIdx !== -1 && args[oidcIdx + 1]) {
-    const res = await api(base, '/workstation/oidc/exchange', {
-      method: 'POST',
-      body: JSON.stringify({ id_token: args[oidcIdx + 1] }),
-    })
-    webToken = res.access_token
-  } else {
-    const email = String(await p.text({ message: 'Email' }))
-    const password = String(await p.password({ message: 'Password' }))
-    if (p.isCancel(email) || p.isCancel(password)) return p.cancel('cancelled')
-    const res = await api(base, '/auth/token', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    })
-    webToken = res.access_token
-  }
+  const webToken = await webSignIn(base, args)
+  if (webToken === null) return p.cancel('cancelled')
 
   // 2. Pick a persona.
   const { personas } = await api(base, '/workstation/personas', {
