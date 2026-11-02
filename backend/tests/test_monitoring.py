@@ -354,6 +354,9 @@ def test_certificate_days_left_come_from_the_verified_payload(
         ("signing_key_revoked", "signing_key_revoked"),
         ("/fixture/private/signing.key example-sensitive", "signing_unavailable"),
         ("x" * 200, "signing_unavailable"),
+        ("secret_internal_detail", "signing_unavailable"),
+        ("0123456789abcdef0123456789abcdef", "signing_unavailable"),
+        ("signing_cert_expired", "signing_cert_expired"),
         ("", "signing_unavailable"),
         ("Signing Key Revoked", "signing_unavailable"),
     ],
@@ -372,3 +375,24 @@ def test_workspace_reason_is_a_code_or_a_fixed_code(
     w = r.json()["sections"]["workspace"]
     assert w["status"] == "fail" and w["reason"] == expected
     assert "private" not in r.text and "sensitive" not in r.text
+
+
+def test_every_reason_the_signer_loader_can_give_is_on_the_list():
+    """If workspace_service gains a new code, this fails until monitoring lists it (or it is
+    deliberately shown as `signing_unavailable`)."""
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parent.parent / "services"
+    ws = (root / "workspace_service.py").read_text()
+    wm = (root / "workspace_manifest.py").read_text()
+    literal = set(re.findall(r'WorkspaceUnavailable\("([a-z0-9_]+)"\)', ws))
+    manifest = set(re.findall(r'ManifestError\("([a-z0-9_]+)"', wm))
+    assert literal and manifest
+    expected = (
+        literal
+        | {f"signing_{c}" for c in manifest}
+        | {f"manifest_{c}" for c in manifest}
+    )
+    assert expected <= monitoring._REASONS, sorted(expected - monitoring._REASONS)
+    assert monitoring._safe_code("catalog_symlink") == "catalog_symlink"

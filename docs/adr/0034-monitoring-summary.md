@@ -41,9 +41,10 @@ on one screen, explicitly without inventing a metrics stack.
      (ADR-0026 decision 4). It says so instead of guessing.
 3. **A failing section never fails the response and never leaks.** An unexpected error in one section
    yields `{status: unknown, reason: section_failed}` (the detail goes to the server log); the
-   workspace section exposes only an identifier-shaped code (`[a-z0-9_]{1,48}`); any other message is
-   replaced by the fixed code `signing_unavailable`, so no path, key material or exception text can
-   reach the response.
+   workspace section shows a reason only if it is on an explicit list of the codes the signer loader
+   can raise (its own codes and the `signing_` / `manifest_` families of manifest error codes); any
+   other text - a message, a path, hex that merely looks like a code - becomes the fixed code
+   `signing_unavailable`. A test scans the sources and fails when a new code is not on the list.
 4. **A page in the web app** (`/monitoring`, shown only to a **company-wide** founder or executive of
    the active company, the same rule as the endpoint) renders the sections in
    Turkish, with a refresh and a "verify the whole chain" button. It adds no new measurements. Only the newest request for the company that is active now may
