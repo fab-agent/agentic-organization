@@ -29,7 +29,7 @@
 
 import { createHash } from 'node:crypto'
 import {
-  lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync,
+  constants as fsConstants, copyFileSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync,
 } from 'node:fs'
 import { dirname, join, resolve, sep } from 'node:path'
 
@@ -345,11 +345,20 @@ interface Journal {
 
 const LIVE_PATH = /^(layouts\/[a-z0-9][a-z0-9._-]{0,63}\.json|mods\/[a-z0-9][a-z0-9._-]{0,63})$/
 
-/** `p` is a direct child of the app home whose name starts with `prefix`. */
-function insideHome(appHome: string, p: string, prefix: string): boolean {
+/** `p` is a direct child of the app home whose name starts with `prefix`, and is a real
+ * folder (never a link) or not there at all. */
+function realChild(appHome: string, p: string, prefix: string): boolean {
   const home = resolve(appHome)
   const abs = resolve(p)
-  return dirname(abs) === home && abs.slice(home.length + 1).startsWith(prefix)
+  if (dirname(abs) !== home || !abs.slice(home.length + 1).startsWith(prefix)) return false
+  if (!lexists(abs)) return true
+  const st = lstatSync(abs)
+  return st.isDirectory() && !st.isSymbolicLink()
+}
+
+/** The name an old item is given inside the trash folder (the same rule as `plan()`). */
+function trashTag(live: string): string {
+  return live.startsWith('mods/') ? `mod-${live.slice(5)}` : `layout-${live.slice(8, -5)}`
 }
 
 /** Put everything an interrupted or failed activation moved back where it was. Idempotent;
@@ -392,11 +401,17 @@ function readJournal(appHome: string): Journal | null {
     throw bad()
   }
   if (j?.v !== 1 || !Array.isArray(j.ops) || typeof j.trash !== 'string' || typeof j.staging !== 'string') throw bad()
-  if (!insideHome(appHome, j.trash, '.3pa-trash-') || !insideHome(appHome, j.staging, '.3pa-staging-')) throw bad()
+  if (!realChild(appHome, j.trash, '.3pa-trash-') || !realChild(appHome, j.staging, '.3pa-staging-')) throw bad()
+  const seen = new Set<string>()
   for (const op of j.ops) {
-    const okAside = op.aside === null || (typeof op.aside === 'string' && resolve(op.aside).startsWith(resolve(j.trash) + sep))
-    const okStaged = op.staged === null || (typeof op.staged === 'string' && resolve(op.staged).startsWith(resolve(j.staging) + sep))
-    if (typeof op.live !== 'string' || !LIVE_PATH.test(op.live) || typeof op.hadLive !== 'boolean' || !okAside || !okStaged) throw bad()
+    if (typeof op?.live !== 'string' || !LIVE_PATH.test(op.live) || typeof op.hadLive !== 'boolean' || seen.has(op.live)) throw bad()
+    seen.add(op.live)
+    // Exactly what activate() writes: an old item has a fixed place in the trash, a new one a
+    // fixed place in staging, and nothing else is acted on. A journal that says otherwise is
+    // refused before anything is moved or deleted.
+    const wantAside = op.hadLive ? join(j.trash, trashTag(op.live)) : null
+    if (op.aside !== wantAside) throw bad()
+    if (op.staged !== null && op.staged !== join(j.staging, op.live)) throw bad()
   }
   if (j.prevManaged !== null && !cleanManaged(j.prevManaged)) throw bad()
   return j
@@ -404,7 +419,17 @@ function readJournal(appHome: string): Journal | null {
 
 /** A previous run died (or could not roll back) in the middle of an activation: finish
  * the rollback now, before anything else, so the app home is exactly as it was. */
-export function recoverInterrupted(appHome: string, fsOps: FsOps = realFs): boolean {
+const TMP_LEFTOVER = /^(\.3pa-managed\.json|settings\.json)\.[0-9a-f]{12}\.tmp$/
+
+function sweepTempFiles(appHome: string): void {
+  for (const e of readdirSync(appHome, { withFileTypes: true })) {
+    if (e.isFile() && TMP_LEFTOVER.test(e.name)) rmSync(join(appHome, e.name), { force: true })
+  }
+}
+
+export function recoverInterrupted(appHomeIn: string, fsOps: FsOps = realFs): boolean {
+  const appHome = resolve(appHomeIn)
+  sweepTempFiles(appHome) // a crash can leave a half-written temp file next to a file we replace
   const j = readJournal(appHome)
   if (!j) return false
   if (undoOps(appHome, j.ops, fsOps) > 0) {
@@ -476,7 +501,10 @@ function activate(
 const isId = (x: unknown): x is string => typeof x === 'string' && ID.test(x)
 const isCount = (x: unknown): x is number => Number.isSafeInteger(x) && (x as number) >= 0
 
-export async function syncWorkspace(o: SyncOptions): Promise<SyncResult> {
+export async function syncWorkspace(opts: SyncOptions): Promise<SyncResult> {
+  // Absolute paths, once: the journal and every later step must mean the same folder even if
+  // the next run starts from another working directory.
+  const o: SyncOptions = { ...opts, appHome: resolve(opts.appHome), stateDir: resolve(opts.stateDir) }
   const now = o.now ?? (() => Math.floor(Date.now() / 1000))
   const fsOps = o.fsOps ?? realFs
   const base = checkBaseUrl(o.baseUrl)
@@ -485,7 +513,8 @@ export async function syncWorkspace(o: SyncOptions): Promise<SyncResult> {
   ensureTelemetryOff(o.appHome)
 
   return withLock(o.stateDir, async (assertOwned) => {
-    // A crashed or half-rolled-back earlier run is finished first.
+    // A crashed or half-rolled-back earlier run is finished first (while we hold the lock).
+    assertOwned()
     recoverInterrupted(o.appHome, fsOps)
 
     let state: WorkspaceState
@@ -501,7 +530,9 @@ export async function syncWorkspace(o: SyncOptions): Promise<SyncResult> {
     const persist = (s: WorkspaceState) => {
       assertOwned()
       if (replaceOld) {
-        renameSync(join(o.stateDir, 'state.json'), join(o.stateDir, `state.json.replaced-${Date.now()}`))
+        // Keep a copy of the old file, but leave it IN PLACE: the new state replaces it in one
+        // atomic rename below, so a failed write cannot leave the machine with no state.
+        copyFileSync(join(o.stateDir, 'state.json'), join(o.stateDir, `state.json.replaced-${Date.now()}`), fsConstants.COPYFILE_EXCL)
         replaceOld = false
       }
       saveState(o.stateDir, s)

@@ -800,3 +800,253 @@ test('re-enroll: a failed attempt leaves the existing state exactly where it was
   assert.equal(rf(join(stateDir, 'state.json'), 'utf8'), before)
   assert.ok(!rd(stateDir).some((n) => n.startsWith('state.json.replaced-')))
 })
+
+// ═══ CODEX-PROVISIONER round 2 ═══════════════════════════════════════════════
+
+import { stateHooks } from '../src/utils/workspace-state.ts'
+import { utimesSync } from 'node:fs'
+
+/** An app home with a real interrupted update, plus the pieces of its journal. */
+async function interrupted() {
+  const s = setup()
+  await syncWorkspace(s.opts())
+  s.w.content.mods['finance-dashboard']!['main.js'] = 'v2'
+  let n = 0
+  const fsOps = { rename: (a: string, b: string) => { n++; if (n >= 4) throw Object.assign(new Error('x'), { code: 'EIO' }); renameReal(a, b) } }
+  assert.equal(await code(syncWorkspace(s.opts({ fsOps }))), 'recovery_required')
+  const journalPath = join(s.appHome, '.3pa-journal.json')
+  return { ...s, journalPath, journal: JSON.parse(rf(journalPath, 'utf8')) as any }
+}
+
+// N1 ── a journal that does not describe a plan this program makes is refused ────
+
+test('N1: a contradictory journal (hadLive false but an aside) deletes nothing', async () => {
+  const s = await interrupted()
+  const j = s.journal
+  const op = j.ops.find((o: any) => o.live === 'mods/finance-dashboard')
+  op.hadLive = false // contradicts the aside that is still set
+  wf(s.journalPath, JSON.stringify(j))
+  assert.throws(() => recoverInterrupted(s.appHome), (e: ProvisionError) => e.code === 'recovery_required')
+  const trash = rd(s.appHome).find((x) => x.startsWith('.3pa-trash-'))!
+  assert.ok(rd(join(s.appHome, trash)).includes('mod-finance-dashboard'), 'the saved old mod is still there')
+  assert.ok(ex(s.journalPath))
+})
+
+test('N1: a trash folder that is a link is refused, and nothing outside is moved', async () => {
+  const s = await interrupted()
+  const outside = join(s.base, 'outside-backup')
+  mk(join(outside, 'mod-finance-dashboard'), { recursive: true })
+  wf(join(outside, 'mod-finance-dashboard', 'OUTSIDE'), 'x')
+  const link = join(s.appHome, '.3pa-trash-link')
+  sl(outside, link)
+  const j = s.journal
+  j.trash = link
+  for (const op of j.ops) if (op.aside) op.aside = join(link, op.aside.split('/').pop())
+  wf(s.journalPath, JSON.stringify(j))
+  assert.throws(() => recoverInterrupted(s.appHome), (e: ProvisionError) => e.code === 'recovery_required')
+  assert.ok(ex(join(outside, 'mod-finance-dashboard', 'OUTSIDE')), 'the folder behind the link was not touched')
+})
+
+test('N1: every part of an operation has to be the place this program would have chosen', async () => {
+  const mutate: [string, (j: any) => void][] = [
+    ['aside elsewhere in the trash', (j) => { const o = j.ops.find((x: any) => x.aside); o.aside = join(j.trash, 'other-name') }],
+    ['staged outside staging', (j) => { const o = j.ops.find((x: any) => x.staged); o.staged = join(j.trash, 'x') }],
+    ['staged for another item', (j) => { const o = j.ops.find((x: any) => x.staged); o.staged = join(j.staging, 'mods/other') }],
+    ['duplicate live path', (j) => { j.ops.push({ ...j.ops[0] }) }],
+    ['live is a path with ..', (j) => { j.ops[0].live = 'mods/../x' }],
+    ['staging is not under the app home', (j) => { j.staging = '/tmp/.3pa-staging-x' }],
+    ['hadLive not a boolean', (j) => { j.ops[0].hadLive = 'yes' }],
+  ]
+  for (const [name, f] of mutate) {
+    const s = await interrupted()
+    const j = s.journal
+    f(j)
+    wf(s.journalPath, JSON.stringify(j))
+    assert.throws(() => recoverInterrupted(s.appHome), (e: ProvisionError) => e.code === 'recovery_required', name)
+    assert.ok(rd(s.appHome).some((x) => x.startsWith('.3pa-trash-')), `${name}: the trash must survive`)
+  }
+})
+
+test('N1: the real journal of a failed rollback is accepted and finishes the recovery', async () => {
+  const s = await interrupted()
+  assert.equal(recoverInterrupted(s.appHome), true)
+  assert.equal(read(join(s.appHome, 'mods', 'finance-dashboard', 'main.js')), 'export default 1;\n')
+  assert.deepEqual(leftovers(s.appHome), [])
+})
+
+test('N1: a crash that left a half-written temp file next to a record is cleaned up', async () => {
+  const { appHome, opts } = setup()
+  await syncWorkspace(opts())
+  wf(join(appHome, '.3pa-managed.json.0123456789ab.tmp'), '{half')
+  wf(join(appHome, 'settings.json.0123456789ab.tmp'), '{half')
+  wf(join(appHome, 'keep-me.tmp'), 'not ours')
+  recoverInterrupted(appHome)
+  assert.ok(!ex(join(appHome, '.3pa-managed.json.0123456789ab.tmp')))
+  assert.ok(!ex(join(appHome, 'settings.json.0123456789ab.tmp')))
+  assert.ok(ex(join(appHome, 'keep-me.tmp')))
+})
+
+// N2 ── the lock: stale-ness is judged again under the takeover mutex ───────────
+
+function deadLock(stateDir: string) {
+  wf(join(stateDir, 'sync.lock'), JSON.stringify({ pid: 999999999, token: 'dead' }))
+}
+
+test('N2: the paused-reader scenario - a live owner that appeared meanwhile is never removed', async () => {
+  const { stateDir } = setup()
+  saveState(stateDir, freshState())
+  deadLock(stateDir)
+  const lock = join(stateDir, 'sync.lock')
+  lockHooks.afterReadStale = () => {
+    rm(lock) // another run took over completely while this one was paused ...
+    wf(lock, JSON.stringify({ pid: process.pid, token: 'B-LIVE' })) // ... and is alive and writing
+  }
+  try {
+    assert.equal(await code(withLock(stateDir, async () => 'must not run')), 'locked')
+  } finally {
+    lockHooks.afterReadStale = undefined
+  }
+  assert.equal(JSON.parse(rf(lock, 'utf8')).token, 'B-LIVE')
+  assert.ok(!ex(`${lock}.takeover`), 'the takeover mutex was released')
+  rm(lock)
+})
+
+test('N2: a normal acquirer that wins the gap after the stale lock was removed keeps the lock', async () => {
+  const { stateDir } = setup()
+  saveState(stateDir, freshState())
+  deadLock(stateDir)
+  const lock = join(stateDir, 'sync.lock')
+  lockHooks.afterRemoveStale = () => wf(lock, JSON.stringify({ pid: process.pid, token: 'C-FIRST' }))
+  try {
+    assert.equal(await code(withLock(stateDir, async () => 'must not run')), 'locked')
+  } finally {
+    lockHooks.afterRemoveStale = undefined
+  }
+  assert.equal(JSON.parse(rf(lock, 'utf8')).token, 'C-FIRST')
+  assert.ok(!ex(`${lock}.takeover`))
+  rm(lock)
+})
+
+test('N2: while one run is taking a stale lock over, another backs off instead of racing', async () => {
+  const { stateDir } = setup()
+  saveState(stateDir, freshState())
+  deadLock(stateDir)
+  wf(join(stateDir, 'sync.lock.takeover'), JSON.stringify({ pid: process.pid, token: 'OTHER-TAKEOVER' })) // live, fresh
+  assert.equal(await code(withLock(stateDir, async () => 'must not run')), 'locked')
+  assert.ok(ex(join(stateDir, 'sync.lock.takeover')), "the other run's mutex was not removed")
+  rm(join(stateDir, 'sync.lock.takeover'))
+  rm(join(stateDir, 'sync.lock'))
+})
+
+test('N2: a takeover mutex left by a dead process is cleared and the stale lock taken over', async () => {
+  const { stateDir } = setup()
+  saveState(stateDir, freshState())
+  deadLock(stateDir)
+  const mutex = join(stateDir, 'sync.lock.takeover')
+  wf(mutex, JSON.stringify({ pid: 999999999, token: 'dead' }))
+  let ran = false
+  await withLock(stateDir, async () => { ran = true })
+  assert.ok(ran)
+  assert.ok(!ex(mutex))
+})
+
+test('N2: a lock whose pid is alive but which is far older than any sync is treated as stale (pid reuse)', async () => {
+  const { stateDir } = setup()
+  saveState(stateDir, freshState())
+  const lock = join(stateDir, 'sync.lock')
+  wf(lock, JSON.stringify({ pid: process.pid, token: 'ancient' })) // "alive": it is this very process
+  const old = new Date(Date.now() - 2 * 60 * 60 * 1000)
+  utimesSync(lock, old, old)
+  let ran = false
+  await withLock(stateDir, async () => { ran = true })
+  assert.ok(ran)
+})
+
+test('N2: a fresh lock held by a live process is respected', async () => {
+  const { stateDir } = setup()
+  saveState(stateDir, freshState())
+  wf(join(stateDir, 'sync.lock'), JSON.stringify({ pid: process.pid, token: 'live' }))
+  assert.equal(await code(withLock(stateDir, async () => 'no')), 'locked')
+  rm(join(stateDir, 'sync.lock'))
+})
+
+// N3 ── a failed re-enrol leaves the old state in place ─────────────────────────
+
+test('N3: if the new state cannot be written, the old active state is still there', async () => {
+  const { stateDir, opts } = setup()
+  await syncWorkspace(opts())
+  const before = rf(join(stateDir, 'state.json'), 'utf8')
+  stateHooks.beforeSave = () => { throw Object.assign(new Error('EIO'), { code: 'EIO' }) }
+  try {
+    assert.equal(await code(syncWorkspace(opts({ reEnroll: true }))), 'EIO')
+  } finally {
+    stateHooks.beforeSave = undefined
+  }
+  assert.equal(rf(join(stateDir, 'state.json'), 'utf8'), before, 'active state untouched')
+  assert.deepEqual(loadState(stateDir)?.installed?.generation, 1)
+})
+
+test('N3: a successful re-enrol keeps a copy of the old state and replaces it atomically', async () => {
+  const { stateDir, opts } = setup()
+  await syncWorkspace(opts())
+  const before = rf(join(stateDir, 'state.json'), 'utf8')
+  await syncWorkspace(opts({ reEnroll: true }))
+  const copy = rd(stateDir).find((n) => n.startsWith('state.json.replaced-'))!
+  assert.equal(rf(join(stateDir, copy), 'utf8'), before)
+  assert.ok(loadState(stateDir))
+})
+
+// N4 ── relative paths mean the same folder from any working directory ──────────
+
+test('N4: a relative --app-home is made absolute, so an interrupted update recovers from elsewhere', async () => {
+  const { w, base, opts } = setup()
+  const cwd = process.cwd()
+  try {
+    process.chdir(base)
+    await syncWorkspace(opts({ appHome: 'app', stateDir: 'state' }))
+    w.content.mods['finance-dashboard']!['main.js'] = 'v2'
+    let n = 0
+    const fsOps = { rename: (a: string, b: string) => { n++; if (n >= 4) throw Object.assign(new Error('x'), { code: 'EIO' }); renameReal(a, b) } }
+    assert.equal(await code(syncWorkspace(opts({ appHome: 'app', stateDir: 'state', fsOps }))), 'recovery_required')
+    const journal = JSON.parse(rf(join(base, 'app', '.3pa-journal.json'), 'utf8'))
+    assert.ok(journal.trash.startsWith('/'), 'absolute in the journal')
+    process.chdir(tmpdir())
+    assert.equal(recoverInterrupted(join(base, 'app')), true)
+    assert.equal(read(join(base, 'app', 'mods', 'finance-dashboard', 'main.js')), 'export default 1;\n')
+  } finally {
+    process.chdir(cwd)
+  }
+})
+
+// N5 / N6 ── state file entries ───────────────────────────────────────────────────
+
+test('N5: a dangling or odd state.json entry is corrupt, never "no state yet"', () => {
+  const { stateDir, base } = setup()
+  saveState(stateDir, freshState())
+  rm(join(stateDir, 'state.json'))
+  sl(join(base, 'nowhere'), join(stateDir, 'state.json'))
+  assert.throws(() => loadState(stateDir), (e: StateError) => e.code === 'state_corrupt')
+  rm(join(stateDir, 'state.json'))
+  mk(join(stateDir, 'state.json'))
+  assert.throws(() => loadState(stateDir), (e: StateError) => e.code === 'state_corrupt')
+  rm(join(stateDir, 'state.json'), { recursive: true })
+  assert.equal(loadState(stateDir), null) // only a genuinely missing file is "no state yet"
+})
+
+test('N6: both ids in a binding key must be strings', () => {
+  for (const k of ['[123,"p1"]', '[null,"p1"]', '[true,"p1"]', '["co1",{"a":1}]', '["co1"]', '["co1","p1","x"]']) {
+    const s = JSON.parse(JSON.stringify(freshState()))
+    s.client.epoch = 1
+    s.client.generations[k] = { generation: 1, digest: 'a'.repeat(64) }
+    assert.equal(cleanState(s), null, k)
+  }
+})
+
+// N7 ── the loopback list is exactly what the ADR says ──────────────────────────
+
+test('N7: http is accepted for localhost, 127.0.0.1 and [::1] only', () => {
+  for (const ok of ['http://localhost:8000', 'http://127.0.0.1:8000', 'http://[::1]:8000']) assert.doesNotThrow(() => checkBaseUrl(ok), ok)
+  for (const bad of ['http://[::2]:8000', 'http://0.0.0.0:8000', 'http://127.0.0.2:8000', 'http://localhost.:8000x']) {
+    assert.throws(() => checkBaseUrl(bad), (e: ProvisionError) => /^base_url_/.test(e.code), bad)
+  }
+})
