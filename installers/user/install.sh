@@ -306,9 +306,11 @@ fi
 
 # Every file we publish must be absent or a plain file: `mv` into a folder (or a link to one)
 # would move the new file INSIDE it and still report success.
-for f in "$LIB/3pa.mjs" "$LIB/herdr" "$BIN/3pa" "$BIN/herdr-fab"; do
-  if [ -L "$f" ] || { [ -e "$f" ] && [ ! -f "$f" ]; }; then die "$f exists and is not a plain file; nothing was changed"; fi
-done
+check_plain() {
+  if [ -L "$1" ] || { [ -e "$1" ] && [ ! -f "$1" ]; }; then die "$1 exists and is not a plain file; nothing was changed"; fi
+}
+check_plain "$LIB/3pa.mjs"; check_plain "$LIB/herdr"; check_plain "$BIN/3pa"; check_plain "$BIN/herdr-fab"
+[ -z "$RELEASE_URL" ] || check_plain "$STATE_DIR/release-url"
 
 if [ "$DRY" -eq 1 ]; then
   say "dry run on $OS: would install into $PREFIX (cli$( [ -n "$HERDR" ] && printf ', herdr, launcher')), state $STATE_DIR"

@@ -278,5 +278,12 @@ sh "$INST" --uninstall --purge-state --prefix "$T/rc" --state-dir "$T/rcs" >/dev
 rm -rf "$T/rc" "$T/rcs"; base --prefix "$T/rc" --state-dir "$T/rcs" --release-pub "$RK" --release-url "$RU" >/dev/null 2>&1
 [ -f "$T/rcs/release.pub" ] && [ -f "$T/rcs/release-url" ] && ok || bad "release files after reinstall"
 
+# R3: the release-url destination must be absent or a plain file
+rm -rf "$T/r3" "$T/r3s"; mkdir -p "$T/r3s/release-url"
+expect_fail "release-url is a folder" "not a plain file" base --prefix "$T/r3" --state-dir "$T/r3s" --release-pub "$RK" --release-url "$RU"
+[ ! -e "$T/r3/lib/3pa/3pa.mjs" ] && [ -z "$(find "$T/r3s" -name '*.tmp')" ] && ok || bad "changes after release-url refusal"
+rm -rf "$T/r3s"; mkdir -p "$T/r3s" "$T/r3t"; ln -s "$T/r3t" "$T/r3s/release-url"
+expect_fail "release-url is a link" "not a plain file" base --prefix "$T/r3" --state-dir "$T/r3s" --release-pub "$RK" --release-url "$RU"
+
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -9,7 +9,7 @@
  * body.json is the unsigned document (see docs/architecture/release-chain.md).
  */
 import { createPrivateKey, createPublicKey, generateKeyPairSync, sign as edSign } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { RELEASE_DOMAIN, verifyRelease, emptyReleaseState } from '../src/utils/release.js'
@@ -23,11 +23,16 @@ if (cmd === 'keygen') {
   const out = flag('--out') ?? die('--out DIR is required')
   mkdirSync(out, { recursive: true, mode: 0o700 })
   const keyPath = join(out, 'release.key')
-  if (existsSync(keyPath)) die(`${keyPath} already exists; refusing to overwrite a release key`)
+  const pubPath = join(out, 'release.pub')
+  // look at BOTH outputs first (lstat: a dangling link counts as "there"), then create each
+  // exclusively, which also refuses to follow a link
+  for (const f of [keyPath, pubPath]) {
+    try { lstatSync(f); die(`${f} already exists; refusing to overwrite a release key or its public half`) } catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e }
+  }
   const { privateKey, publicKey } = generateKeyPairSync('ed25519')
   writeFileSync(keyPath, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600, flag: 'wx' })
   const raw = (publicKey.export({ type: 'spki', format: 'der' }) as Buffer).subarray(-32).toString('base64')
-  writeFileSync(join(out, 'release.pub'), raw + '\n')
+  writeFileSync(pubPath, raw + '\n', { flag: 'wx' })
   console.log(`public key (give this to installers): ${raw}\nkey id: ${keyId(raw)}`)
 } else if (cmd === 'sign') {
   const body = JSON.parse(readFileSync(flag('--body') ?? die('--body is required'), 'utf8'))
@@ -37,7 +42,11 @@ if (cmd === 'keygen') {
   const doc = JSON.stringify({ body, kid: keyId(pub), sig }, null, 2) + '\n'
   // refuse to emit something this client would not accept
   verifyRelease(doc, { pub, now: Math.floor(Date.now() / 1000), state: emptyReleaseState() })
-  writeFileSync(flag('--out') ?? die('--out is required'), doc)
+  // exclusive: never overwrite the key, the body or an earlier release document, and never follow a link
+  try { writeFileSync(flag('--out') ?? die('--out is required'), doc, { flag: 'wx' }) } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'EEXIST') die(`${flag('--out')} already exists; refusing to overwrite it`)
+    throw e
+  }
   console.log('signed; verified against its own key')
 } else if (cmd === 'verify') {
   const p = flag('--pub') ?? die('--pub is required')

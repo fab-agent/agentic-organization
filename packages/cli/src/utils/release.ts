@@ -42,7 +42,8 @@ export interface ReleaseState { v: 1; channels: Record<string, { seq: number; ve
 
 const KEYS = ['typ', 'v', 'channel', 'version', 'seq', 'issued_at', 'expires_at', 'artifacts']
 const ART_KEYS = ['name', 'os', 'arch', 'url', 'size', 'sha256']
-const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
+// at most 15 digits per part: every part is then an exact safe integer
+const SEMVER = /^(0|[1-9]\d{0,14})\.(0|[1-9]\d{0,14})\.(0|[1-9]\d{0,14})$/
 const HEX64 = /^[0-9a-f]{64}$/
 const MAX_SAFE = Number.MAX_SAFE_INTEGER
 
@@ -52,16 +53,17 @@ const sameKeys = (o: Record<string, unknown>, keys: string[]) =>
 const int = (x: unknown, min: number, max = MAX_SAFE): x is number => typeof x === 'number' && Number.isSafeInteger(x) && x >= min && x <= max
 
 export function cmpVersion(a: string, b: string): number {
-  const pa = a.split('.').map(Number), pb = b.split('.').map(Number)
+  const pa = a.split('.').map(BigInt), pb = b.split('.').map(BigInt)
   for (let i = 0; i < 3; i++) if (pa[i] !== pb[i]) return pa[i]! < pb[i]! ? -1 : 1
   return 0
 }
 
 /** https anywhere; http only for the loopback host names. No credentials or fragment. */
 export function checkReleaseUrl(raw: unknown, what = 'url'): string {
+  if (typeof raw !== 'string') throw new ReleaseError('bad_url', `the ${what} must be text`)
   let u: URL
   try {
-    u = new URL(String(raw))
+    u = new URL(raw)
   } catch {
     throw new ReleaseError('bad_url', `the ${what} is not a valid URL`)
   }
@@ -114,15 +116,25 @@ export function cleanReleaseState(x: unknown): ReleaseState | null {
 }
 
 export function loadReleaseState(dir: string): ReleaseState {
-  let raw: string
+  const file = join(dir, 'release-state.json')
+  // Only a file that is really absent means "no history". A link (even a dangling one), a
+  // folder or anything else is not an absent file: the rollback history must not reset to empty.
+  let st
   try {
-    raw = readFileSync(join(dir, 'release-state.json'), 'utf8')
+    st = lstatSync(file)
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return emptyReleaseState()
-    throw new StateError('state_unreadable', 'the release state could not be read')
+    const c = (e as NodeJS.ErrnoException).code
+    if (c === 'ENOENT' || c === 'ENOTDIR') return emptyReleaseState()
+    throw new StateError('state_unreadable', 'the release state could not be inspected')
   }
+  if (!st.isFile()) throw new StateError('state_corrupt', 'the release state is not a regular file')
   let parsed: unknown
-  try { parsed = JSON.parse(raw) } catch { throw new StateError('state_corrupt', 'the release state is damaged') }
+  try {
+    parsed = parseWire(readFileSync(file), 64 * 1024) // size cap, duplicate keys, odd numbers refused
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code && !(e instanceof ManifestError)) throw new StateError('state_unreadable', 'the release state could not be read')
+    throw new StateError('state_corrupt', 'the release state is damaged')
+  }
   const s = cleanReleaseState(parsed)
   if (!s) throw new StateError('state_corrupt', 'the release state is damaged')
   return s

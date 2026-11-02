@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash, createPublicKey, generateKeyPairSync, sign as edSign } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -261,4 +261,71 @@ test('signing tool: keygen, sign, verify round trip; refuses to overwrite a key 
   writeFileSync(join(dir, 'bad.json'), JSON.stringify(body({ version: 'nope' })))
   assert.throws(() => run('sign', '--key', join(dir, 'release.key'), '--body', join(dir, 'bad.json'), '--out', join(dir, 'x.json')))
   assert.ok(!existsSync(join(dir, 'x.json')))
+})
+
+// ═══ CODEX-RELEASE round 1 ═══════════════════════════════════════════════════
+
+test('R1: a damaged, linked or ambiguous release state never resets the history to empty', async () => {
+  const good = { v: 1, channels: { stable: { seq: 99, version: '9.0.0', digest: 'a'.repeat(64) } } }
+  const make = (write: (dir: string) => void) => { const s = setup(); write(s.state); return s }
+  const cases: [string, (dir: string) => void][] = [
+    ['duplicate channels key', (d) => writeFileSync(join(d, 'release-state.json'), `{"v":1,"channels":${JSON.stringify(good.channels)},"channels":{}}`)],
+    ['dangling symlink', (d) => symlinkSync(join(d, 'nowhere'), join(d, 'release-state.json'))],
+    ['symlink to a good file', (d) => { writeFileSync(join(d, 'real.json'), JSON.stringify(good)); symlinkSync(join(d, 'real.json'), join(d, 'release-state.json')) }],
+    ['a folder', (d) => mkdirSync(join(d, 'release-state.json'))],
+    ['not json', (d) => writeFileSync(join(d, 'release-state.json'), 'x')],
+    ['too large', (d) => writeFileSync(join(d, 'release-state.json'), ' '.repeat(70 * 1024))],
+  ]
+  for (const [name, write] of cases) {
+    const s = make(write)
+    s.publish(body({ seq: 1, version: '1.0.0' }))
+    const c = await code(selfUpdate(s.opts()))
+    assert.ok(c === 'state_corrupt' || c === 'state_unreadable', `${name}: ${c}`)
+    assert.equal(s.seen.length, 0, `${name}: no request was made`)
+    assert.equal(read(join(s.lib, '3pa.mjs')), 'old 3pa', name)
+  }
+})
+
+test('R2: versions are compared exactly; parts beyond the safe range are refused', async () => {
+  assert.equal(cmpVersion('999999999999999.0.0', '999999999999998.0.0'), 1)
+  const s = setup(); s.publish(body({ version: '9007199254740993.0.0' }))
+  assert.equal(await code(selfUpdate(s.opts())), 'release_invalid')
+  s.publish(body({ version: '1234567890123456.0.0' })); assert.equal(await code(selfUpdate(s.opts())), 'release_invalid')
+  // near the top of the allowed range, a lower number is still lower
+  const t = setup()
+  t.publish(body({ seq: 5, version: '999999999999999.0.0' })); await selfUpdate(t.opts({ check: false }))
+  t.publish(body({ seq: 6, version: '999999999999998.0.0' })); assert.equal(await code(selfUpdate(t.opts())), 'release_rollback')
+})
+
+test('R5: the artifact url must be text', async () => {
+  const s = setup()
+  const b = body(); (b.artifacts[0] as unknown as { url: unknown }).url = ['https://dl.example/3pa-linux-x64']
+  s.publish(b); assert.equal(await code(selfUpdate(s.opts())), 'release_invalid')
+  assert.throws(() => checkReleaseUrl(['https://dl.example/x']), (e: ReleaseError) => e.code === 'bad_url')
+  assert.throws(() => checkReleaseUrl({ toString: () => 'https://dl.example/x' }), (e: ReleaseError) => e.code === 'bad_url')
+})
+
+test('R4: the signing tool never overwrites or follows a link for any output', () => {
+  const run = (...a: string[]) => execFileSync('npx', ['tsx', 'scripts/release-sign.ts', ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  const fails = (...a: string[]) => { try { run(...a) } catch (e) { return String((e as { stderr?: string }).stderr) } return null }
+  // keygen: a link where release.pub goes (to a note, or dangling to release.key) leaves everything intact
+  const d1 = mkdtempSync(join(tmpdir(), 'sg1-')); writeFileSync(join(d1, 'note'), 'mine'); symlinkSync(join(d1, 'note'), join(d1, 'release.pub'))
+  assert.match(fails('keygen', '--out', d1) ?? '', /refusing to overwrite/)
+  assert.equal(read(join(d1, 'note')), 'mine'); assert.ok(!existsSync(join(d1, 'release.key')))
+  const d2 = mkdtempSync(join(tmpdir(), 'sg2-')); symlinkSync(join(d2, 'release.key'), join(d2, 'release.pub'))
+  assert.match(fails('keygen', '--out', d2) ?? '', /refusing to overwrite/)
+  assert.ok(!existsSync(join(d2, 'release.key')), 'no private key was created next to a link that would destroy it')
+  // sign: the output may not be the key, the body, or an earlier document
+  const d3 = mkdtempSync(join(tmpdir(), 'sg3-')); run('keygen', '--out', d3)
+  const nowS = Math.floor(Date.now() / 1000)
+  writeFileSync(join(d3, 'body.json'), JSON.stringify(body({ issued_at: nowS - 10, expires_at: nowS + 3600 })))
+  const keyBefore = read(join(d3, 'release.key')), bodyBefore = read(join(d3, 'body.json'))
+  assert.match(fails('sign', '--key', join(d3, 'release.key'), '--body', join(d3, 'body.json'), '--out', join(d3, 'release.key')) ?? '', /refusing to overwrite/)
+  assert.match(fails('sign', '--key', join(d3, 'release.key'), '--body', join(d3, 'body.json'), '--out', join(d3, 'body.json')) ?? '', /refusing to overwrite/)
+  assert.equal(read(join(d3, 'release.key')), keyBefore); assert.equal(read(join(d3, 'body.json')), bodyBefore)
+  symlinkSync(join(d3, 'release.key'), join(d3, 'out.json'))
+  assert.match(fails('sign', '--key', join(d3, 'release.key'), '--body', join(d3, 'body.json'), '--out', join(d3, 'out.json')) ?? '', /refusing to overwrite|EEXIST/)
+  assert.equal(read(join(d3, 'release.key')), keyBefore)
+  run('sign', '--key', join(d3, 'release.key'), '--body', join(d3, 'body.json'), '--out', join(d3, 'ok.json'))
+  assert.match(fails('sign', '--key', join(d3, 'release.key'), '--body', join(d3, 'body.json'), '--out', join(d3, 'ok.json')) ?? '', /refusing to overwrite/)
 })

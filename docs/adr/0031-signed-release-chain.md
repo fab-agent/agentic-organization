@@ -15,7 +15,7 @@ back to an older, vulnerable build.
 ## Decision
 
 1. **A release is a document signed offline.** `{body, kid, sig}`; the body has exactly the
-   fields `typ="3pa-release"`, `v=1`, `channel`, `version` (`MAJOR.MINOR.PATCH`), `seq` (a
+   fields `typ="3pa-release"`, `v=1`, `channel`, `version` (`MAJOR.MINOR.PATCH`, each part at most 15 digits so it is an exact integer and is compared exactly), `seq` (a
    positive integer that only increases), `issued_at`, `expires_at` (at most 90 days apart),
    and 1-16 `artifacts` `{name: "3pa"|"herdr", os: linux|macos, arch: x64|arm64, url, size,
    sha256}`. Unknown fields are refused. The signature is Ed25519 over the canonical JSON of the
@@ -24,7 +24,9 @@ back to an older, vulnerable build.
 2. **A separate release key.** It is not the workspace root key (ADR-0027): releasing software
    and vouching for a person's workspace are different powers. It is generated and used offline
    (`packages/cli/scripts/release-sign.ts keygen|sign|verify`), refuses to overwrite a key, and
-   refuses to emit a document the client would reject. It never goes into CI.
+   refuses to emit a document the client would reject. Every output is created exclusively
+   (an existing file, link or dangling link is never overwritten or followed), and both halves
+   of the key pair are checked before either is created. It never goes into CI.
 3. **The installer pins the key and the manifest URL** (`--release-pub`, `--release-url`,
    stored as `<state>/release.pub` and `release-url`). The key is never fetched. Replacing a
    pinned release key needs `--replace-release-key`; purge removes these files by exact name
@@ -35,8 +37,9 @@ back to an older, vulnerable build.
    manifest is limited to 64 KiB and parsed with the strict parser (duplicate keys, floats, odd
    encodings refused).
 5. **Anti-rollback is by sequence and by version.** The last accepted `seq`, `version` and
-   document digest per channel is kept in `<state>/release-state.json` (validated strictly,
-   written atomically, mode 0600 directory). A lower `seq` or a lower version is refused
+   document digest per channel is kept in `<state>/release-state.json` (read through the strict parser with a 64 KiB cap, validated against a closed schema, written
+   atomically in a 0700 directory; only a genuinely absent file means "no history" - a link,
+   a folder, a duplicate key or any damage stops the run before any request is made). A lower `seq` or a lower version is refused
    (`release_rollback`); the same `seq` with different content is refused (`release_conflict`);
    the same document again is fine. The accepted document is recorded **before** any file is
    touched, so a later failure cannot reopen an older release.
@@ -45,7 +48,7 @@ back to an older, vulnerable build.
    written with `O_EXCL` into a temp file in the destination folder, and checked. Only when all
    needed artifacts are good are they renamed into place (Herdr first, `3pa` last). Any mismatch
    leaves the old files, removes the temp files and reports `artifact_mismatch`. Destinations
-   must be absent-or-plain files. Artifact and manifest URLs must be https (http only for
+   must be absent-or-plain files. Artifact and manifest URLs must be text and https (http only for
    loopback), without credentials or fragment.
 7. **One run at a time, bounded.** It takes the same lock as `workspace sync`, with a 20-minute
    cooperative budget (validated like ADR-0029's); each request is capped at 60 seconds.

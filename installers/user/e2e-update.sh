@@ -5,7 +5,10 @@
 set -eu
 HERE="$(cd "$(dirname "$0")" && pwd)"; CLI_DIR="$HERE/../../packages/cli"
 BUNDLE="$CLI_DIR/dist/3pa.mjs"; [ -f "$BUNDLE" ] || { echo "build the bundle first (npm run bundle)"; exit 1; }
-T="$(mktemp -d)"; trap 'kill "${SRV:-0}" 2>/dev/null || true; rm -rf "$T"' EXIT
+T="$(mktemp -d)"; SRV=""
+# only a real, positive server pid is ever signalled (kill 0 would hit the whole process group)
+cleanup() { if [ -n "$SRV" ] && [ "$SRV" -gt 0 ] 2>/dev/null; then kill "$SRV" 2>/dev/null || true; fi; rm -rf "$T"; }
+trap cleanup EXIT
 sha() { if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
 export HOME="$T/home"; mkdir -p "$HOME" "$T/srv"
 
