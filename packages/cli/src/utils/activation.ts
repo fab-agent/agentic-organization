@@ -9,6 +9,8 @@ import { ensurePrivateDir } from './workspace-state.js'
 /**
  * Storage: every request is its OWN immutable file, `activation.<state>.<key>`, with
  * `<key>` = 13 digits of milliseconds + '-' + 16 hex (so names sort in the order requests were made).
+ * The key's time orders requests; it is never lower than an earlier request's, even if the clock
+ * stepped back, so it can run ahead of the record's own `requested_at`, which is the real time.
  * There is no shared mutable record, so no two writers can interleave into a half state:
  *   req    a request nobody has taken
  *   claim  taken by a worker (atomic rename req -> claim)
@@ -17,7 +19,7 @@ import { ensurePrivateDir } from './workspace-state.js'
  */
 const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/
 const ID = /^[0-9a-f]{16}$/
-const FILE_RE = /^activation\.(req|claim|done)\.(\d{13})-([0-9a-f]{16})$/
+const FILE_RE = /^activation\.(req|done)\.(\d{13})-([0-9a-f]{16})$|^activation\.(claim)\.(\d{13})-([0-9a-f]{16})\.([0-9a-f]{16})$/
 const MAX_BYTES = 4096
 const KEEP_MARKERS = 8
 export const PENDING_MAX_AGE_MS = 7 * 24 * 3600 * 1000
@@ -40,16 +42,20 @@ export class ActivationError extends Error {
 }
 
 type State = 'req' | 'claim' | 'done'
-interface Entry { state: State; key: string; ts: number; id: string; path: string }
+/** `token` is only on a claim: every taking of a request has its own path, so a worker that looked at
+ * an older taking can never rename (and so never touch) a newer one. */
+interface Entry { state: State; key: string; ts: number; id: string; path: string; token?: string }
 const keyOf = (ts: number, id: string) => `${String(ts).padStart(13, '0')}-${id}`
-const pathOf = (dir: string, state: State, key: string) => join(dir, `activation.${state}.${key}`)
+const pathOf = (dir: string, state: State, key: string, token?: string) => join(dir, `activation.${state}.${key}${token ? `.${token}` : ''}`)
 
 /** Every request file of the folder, oldest first. Anything else in the folder is ignored. */
 function entries(stateDir: string): Entry[] {
   const out: Entry[] = []
   for (const name of readdirSync(stateDir)) {
     const m = FILE_RE.exec(name)
-    if (m) out.push({ state: m[1] as State, key: `${m[2]}-${m[3]}`, ts: Number(m[2]), id: m[3]!, path: join(stateDir, name) })
+    if (!m) continue
+    if (m[1]) out.push({ state: m[1] as State, key: `${m[2]}-${m[3]}`, ts: Number(m[2]), id: m[3]!, path: join(stateDir, name) })
+    else out.push({ state: 'claim', key: `${m[5]}-${m[6]}`, ts: Number(m[5]), id: m[6]!, path: join(stateDir, name), token: m[7] })
   }
   return out.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
 }
@@ -66,9 +72,9 @@ export function requestActivation(stateDir: string, layout: string, now = Date.n
   // never older than a request already on file (a clock that stepped back must not make a new
   // request look superseded)
   const newest = entries(stateDir).at(-1)
-  const ts = Math.max(now, newest ? newest.ts + 1 : 0)
+  const ts = Math.max(now, newest ? newest.ts + 1 : 0) // ordering only
   const id = randomBytes(8).toString('hex')
-  const rec: Pending = { v: 1, id, layout, requested_at: ts }
+  const rec: Pending = { v: 1, id, layout, requested_at: now } // the real time: age and skew are judged on it
   writeFileAtomic(pathOf(stateDir, 'req', keyOf(ts, id)), JSON.stringify(rec))
   prune(stateDir)
 }
@@ -106,7 +112,8 @@ function parse(e: Entry, now: number): Pending | null {
   if (Object.keys(o).length !== 4 || o.v !== 1) return null
   if (typeof o.id !== 'string' || !ID.test(o.id) || o.id !== e.id) return null
   if (typeof o.layout !== 'string' || !NAME.test(o.layout)) return null
-  if (typeof o.requested_at !== 'number' || !Number.isSafeInteger(o.requested_at) || o.requested_at !== e.ts) return null
+  // the real time may not be later than the ordering time in the name (it can only be earlier)
+  if (typeof o.requested_at !== 'number' || !Number.isSafeInteger(o.requested_at) || o.requested_at < 0 || o.requested_at > e.ts) return null
   if (now - o.requested_at > PENDING_MAX_AGE_MS || o.requested_at > now + FUTURE_SKEW_MS) return null
   return { v: 1, id: o.id, layout: o.layout, requested_at: o.requested_at }
 }
@@ -143,6 +150,8 @@ function recoverStale(stateDir: string, now: number): void {
     if (e.state !== 'claim') continue
     try {
       if (now - lstatSync(e.path).mtimeMs < STALE_CLAIM_MS) continue
+      // one atomic rename of exactly this taking: if another worker already recovered (and maybe
+      // re-took) it, this path no longer exists and nothing of theirs is touched
       if (isNewest(stateDir, e.key) && parse(e, now)) renameSync(e.path, pathOf(stateDir, 'req', e.key))
       else rmSync(e.path, { force: true })
     } catch { /* gone already */ }
@@ -162,14 +171,15 @@ function claimNow(stateDir: string, now: number): Claim | null {
   const newest = all.at(-1)
   if (!newest || newest.state !== 'req') return null
   for (const old of all) if (old.state === 'req' && old.key < newest.key) rmSync(old.path, { force: true }) // superseded
-  const path = pathOf(stateDir, 'claim', newest.key)
+  const token = randomBytes(8).toString('hex')
+  const path = pathOf(stateDir, 'claim', newest.key, token)
   try {
     renameSync(newest.path, path)
   } catch {
     return null // another worker took it
   }
   try { utimesSync(path, now / 1000, now / 1000) } catch { /* only affects staleness */ }
-  const e: Entry = { ...newest, state: 'claim', path }
+  const e: Entry = { ...newest, state: 'claim', path, token }
   const pending = parse(e, now)
   if (!pending) {
     rmSync(path, { force: true })

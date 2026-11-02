@@ -33,9 +33,12 @@ role layout themselves. Facts about Herdr, read from the pinned source of `herdr
    `activation.<state>.<ms>-<random>` (13 digits of milliseconds, so names sort by the time they were
    made), written atomically and never edited. There is no shared record two writers could interleave
    into, so no coordination between writers is needed: whatever order they finish in, the file with the
-   greatest key is the newest. A new request is never given a time below the newest key on file (a clock
-   that stepped back cannot make it look old). States: `req` (waiting), `claim` (taken by a worker),
-   `done` (served or superseded). A worker **claims** the newest `req` by one atomic rename: of several
+   greatest key is the newest. The key's time only orders requests: a new request's is never below the
+   newest key on file, so a clock that stepped back cannot make it look old, while the record keeps the real
+   `requested_at` (age and skew are judged on that, so a rollback of any size neither hides the new request
+   nor weakens the expiry check). States: `req` (waiting), `claim` (taken by a worker),
+   `done` (served or superseded). A worker **claims** the newest `req` by one atomic rename to a path that carries a fresh random token
+   (`activation.claim.<key>.<token>`), so every taking has its own name: of several
    workers (a launcher started three times, a sync and a launcher) exactly one gets it and the others stop
    at once, so a request is never switched twice and waiting workers do not pile up; older `req` files are
    superseded and removed. A `claim` that is given back (no window, refused switch) becomes `req` again
@@ -45,7 +48,10 @@ role layout themselves. Facts about Herdr, read from the pinned source of `herdr
    between that check and the switch is served by its own worker right after.) `done` files are kept as
    markers, only the newest 8 files are retained. A claim whose worker died is restored once it is 5
    minutes old, by **any** worker's ordinary entry (before it looks for work), and only if it is still
-   the newest. A file is trusted only if its name and its content agree (id and time), the folder is the
+   the newest. The restoring is one rename of that exact path: a second worker that observed the same dead
+   claim earlier, after the first has already restored and re-taken it, finds the old path gone and touches
+   nothing of the new holder; a worker returning from the dead can only finish its own, no longer existing,
+   path. A file is trusted only if its name and its content agree (id and time), the folder is the
    caller's own private one (not a link, not shared; on Windows the state folder's ACL is the installer's
    job, ADR-0032), and it is read without following a link and at most 4 KiB.
 4. **Honoured only when it can be verified.** With a window open the switch is done and `status` is read

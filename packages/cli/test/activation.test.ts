@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -294,7 +294,8 @@ test('ACT-5: writers need no coordination: whatever order two requests finish in
   requestActivation(w.stateDir, 'layout-a', NOW) // earlier time, published later: the clock rule lifts it above B
   const p = loadPending(w.stateDir, NOW)!
   assert.equal(p.layout, 'layout-a', 'the last one published is the newest: it never ends up behind an older one')
-  assert.ok(p.requested_at > NOW + 10)
+  assert.equal(p.requested_at, NOW, 'the record keeps the real time; only the ordering key is lifted')
+  assert.ok(reqFiles(w.stateDir).some((f) => f.includes(String(NOW + 11).padStart(13, '0'))), 'the key is just above the older request')
   // same millisecond: two distinct files, a deterministic winner, one switch
   const w2 = world(); requestActivation(w2.stateDir, 'one', NOW); requestActivation(w2.stateDir, 'two', NOW)
   const app = fakeApp('main')
@@ -330,4 +331,50 @@ test('ACT-4: a dead worker\'s claim is recovered by the ordinary entry point, no
   const w3 = world(); requestActivation(w3.stateDir, 'x', NOW); const d3 = claim(w3.stateDir, NOW)!
   writeFileSync(d3.path, 'garbage'); utimesSync(d3.path, old2, old2)
   assert.equal(await activate(base(w3, fakeApp('main').run)), 'nothing'); assert.ok(!existsSync(d3.path))
+})
+
+
+test('ACT-6: two recoverers of one dead claim: the second, acting on an old observation, cannot take the first\'s new hold', async () => {
+  const w = world(); requestActivation(w.stateDir, 'finance-v2', NOW)
+  const dead = claim(w.stateDir, NOW)!
+  const old = new Date(NOW - STALE_CLAIM_MS - 1000); utimesSync(dead.path, old, old)
+  const stale = readdirSync(w.stateDir).filter((f) => f.startsWith('activation.claim.')) // what recoverer B saw
+  assert.equal(stale.length, 1)
+  // A recovers it and takes it again (a fresh hold under a new name)
+  const a = claim(w.stateDir, NOW)!
+  assert.equal(a.pending.layout, 'finance-v2'); assert.notEqual(a.path, dead.path)
+  // B now acts on its OLD observation: renaming that path fails, A's hold is untouched
+  assert.throws(() => renameSync(join(w.stateDir, stale[0]!), join(w.stateDir, 'x')), /ENOENT/)
+  assert.deepEqual(claimFiles(w.stateDir), [a.path.split(/[\\/]/).pop()])
+  // and the original (dead) worker coming back cannot undo A's hold either
+  release(dead, false)
+  assert.deepEqual(claimFiles(w.stateDir), [a.path.split(/[\\/]/).pop()], 'the old holder touched nothing of the new one')
+  release(a, true)
+  assert.deepEqual(liveFiles(w.stateDir), [])
+})
+
+test('ACT-6: with the real entry points, two workers that both find the same stale claim serve it once', async () => {
+  const w = world(); requestActivation(w.stateDir, 'finance-v2', NOW)
+  const dead = claim(w.stateDir, NOW)!
+  const old = new Date(NOW - STALE_CLAIM_MS - 1000); utimesSync(dead.path, old, old)
+  const app = fakeApp('main')
+  const gate = new Promise<void>((r) => setTimeout(r, 20))
+  const slow: Runner = async (b, a, e, t) => { await gate; return app.run(b, a, e, t) }
+  const results = await Promise.all([activate(base(w, slow)), activate(base(w, slow)), activate(base(w, slow))])
+  assert.deepEqual(results.slice().sort(), ['nothing', 'nothing', 'switched'])
+  assert.equal(app.calls.filter((c) => c.args[0] === 'do').length, 1)
+})
+
+test('ACT-7: a clock that stepped back far beyond the skew does not make the new request unreadable', async () => {
+  const w = world()
+  for (let i = 0; i < 3; i++) { requestActivation(w.stateDir, 'a', NOW + i); const c = claim(w.stateDir, NOW + i)!; release(c, true) }
+  // the clock now says 10 minutes EARLIER than the last request
+  const back = NOW - 10 * 60 * 1000
+  requestActivation(w.stateDir, 'after-rollback', back)
+  const p = loadPending(w.stateDir, back)!
+  assert.equal(p.layout, 'after-rollback'); assert.equal(p.requested_at, back, 'the record keeps the real time')
+  const app = fakeApp('main')
+  assert.equal(await activate(base(w, app.run, { now: () => back })), 'switched'); assert.equal(app.state.shown, 'after-rollback')
+  // a small step back works the same
+  requestActivation(w.stateDir, 'next', back - 1000); assert.equal(loadPending(w.stateDir, back - 1000)?.layout, 'next')
 })
