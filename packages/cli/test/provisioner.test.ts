@@ -1242,3 +1242,123 @@ test('every request carries a timeout signal and never follows a redirect', asyn
   await syncWorkspace(opts())
   assert.ok(seen.length > 3 && seen.every((i) => i.signal instanceof AbortSignal && i.redirect === 'error'))
 })
+
+// ═══ CODEX-PROVISIONER round 4 ═══════════════════════════════════════════════
+
+// Q1 ── no unsafe fallback where hard links do not exist ────────────────────────
+
+test('Q1: without hard links the lock is refused outright, never created empty', async () => {
+  const { stateDir } = setup()
+  saveState(stateDir, freshState())
+  const lock = join(stateDir, 'sync.lock')
+  let everVisible = false
+  lockHooks.link = () => {
+    everVisible = ex(lock)
+    throw Object.assign(new Error('no links'), { code: 'EOPNOTSUPP' })
+  }
+  try {
+    assert.equal(await code(withLock(stateDir, async () => 'must not run')), 'locking_unsupported')
+  } finally {
+    lockHooks.link = undefined
+  }
+  assert.equal(everVisible, false)
+  assert.ok(!ex(lock), 'no lock file, empty or otherwise')
+  assert.ok(!rd(stateDir).some((n) => n.includes('.tmp-')), 'no temp leftovers')
+})
+
+// Q2 ── publishing and tidying up are separate facts ────────────────────────────
+
+test('Q2: a failed temp cleanup after the lock was published does not strand the lock', async () => {
+  const { stateDir } = setup()
+  saveState(stateDir, freshState())
+  lockHooks.removeTemp = () => { throw Object.assign(new Error('EIO'), { code: 'EIO' }) }
+  let ran = false
+  try {
+    await withLock(stateDir, async () => { ran = true })
+  } finally {
+    lockHooks.removeTemp = undefined
+  }
+  assert.ok(ran, 'the run that published the lock got to use it')
+  assert.ok(!ex(join(stateDir, 'sync.lock')), 'and released it')
+  await withLock(stateDir, async () => undefined) // a second run is not blocked
+  const left = rd(stateDir).filter((n) => /^sync\.lock\.tmp-/.test(n))
+  assert.equal(left.length, 1, 'the harmless temp file is still there')
+  const old = new Date(Date.now() - 5 * 60 * 1000)
+  utimesSync(join(stateDir, left[0]!), old, old)
+  await withLock(stateDir, async () => undefined) // sweeps old temp files of ours
+  assert.ok(!rd(stateDir).some((n) => /^sync\.lock\.tmp-/.test(n)))
+})
+
+test('Q2: the temp sweep touches only our own old files', async () => {
+  const { stateDir } = setup()
+  saveState(stateDir, freshState())
+  const old = new Date(Date.now() - 5 * 60 * 1000)
+  for (const n of ['sync.lock.tmp-0123456789ab', 'sync.lock.takeover.tmp-0123456789ab', 'sync.lock.tmp-XYZ', 'other.tmp-0123456789ab', 'sync.lock.tmp-0123456789abc']) {
+    wf(join(stateDir, n), '')
+    utimesSync(join(stateDir, n), old, old)
+  }
+  wf(join(stateDir, 'sync.lock.tmp-aaaaaaaaaaaa'), '') // fresh: belongs to a run in progress
+  await withLock(stateDir, async () => undefined)
+  const left = rd(stateDir).sort()
+  assert.ok(!left.includes('sync.lock.tmp-0123456789ab') && !left.includes('sync.lock.takeover.tmp-0123456789ab'))
+  for (const keep of ['sync.lock.tmp-XYZ', 'other.tmp-0123456789ab', 'sync.lock.tmp-0123456789abc', 'sync.lock.tmp-aaaaaaaaaaaa']) assert.ok(left.includes(keep), keep)
+})
+
+// Q3 ── the time limit is also checked before anything irreversible ─────────────
+
+test('Q3: if the budget ran out while the last file was being processed, nothing is activated', async () => {
+  const { w, appHome, stateDir, opts } = setup()
+  const orig = w.fetchImpl
+  let files = 0
+  w.fetchImpl = async (u, i) => {
+    if (new URL(String(u)).pathname.startsWith('/me/workspace/files/')) {
+      files++
+      if (files === 3) await new Promise((r) => setTimeout(r, 150)) // the last download is slow ...
+    }
+    return orig(u, i)
+  }
+  // ... and finishes just inside the request budget, but past the overall one
+  assert.equal(await code(syncWorkspace(opts({ maxDurationMs: 100 }))), 'sync_timeout')
+  assert.ok(!ex(join(appHome, 'layouts', 'finance-v2.json')), 'nothing was activated')
+  assert.ok(!ex(join(appHome, '.3pa-journal.json')))
+  assert.deepEqual(leftovers(appHome), [])
+  assert.ok(loadState(stateDir), 'the accepted state was kept (rollback protection)')
+})
+
+// Q4 ── what the message says is true ───────────────────────────────────────────
+
+test('Q4: a failure to record the state AFTER a committed update says the workspace was updated', async () => {
+  const { appHome, opts } = setup()
+  let saves = 0
+  stateHooks.beforeSave = () => { if (++saves === 2) throw Object.assign(new Error('EIO'), { code: 'EIO' }) }
+  let err: ProvisionError | undefined
+  try {
+    await syncWorkspace(opts())
+  } catch (e) {
+    err = e as ProvisionError
+  } finally {
+    stateHooks.beforeSave = undefined
+  }
+  assert.equal(err?.code, 'state_not_recorded')
+  assert.match(err!.message, /was updated/)
+  assert.ok(ex(join(appHome, 'layouts', 'finance-v2.json')), 'and it really is installed')
+  assert.ok(!ex(join(appHome, '.3pa-journal.json')))
+})
+
+test('Q4: an unexpected file error before the commit never claims the workspace is unchanged', async () => {
+  const { w, opts } = setup()
+  await syncWorkspace(opts())
+  w.content.mods['finance-dashboard']!['main.js'] = 'v2'
+  const restore = failStatOn('finance-dashboard')
+  let err: ProvisionError | undefined
+  try {
+    await syncWorkspace(opts())
+  } catch (e) {
+    err = e as ProvisionError
+  } finally {
+    restore()
+  }
+  assert.equal(err?.code, 'fs_error')
+  assert.ok(!/was not changed/.test(err!.message))
+  assert.match(err!.message, /status/)
+})

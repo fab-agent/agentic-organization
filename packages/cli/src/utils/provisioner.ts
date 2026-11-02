@@ -274,6 +274,13 @@ async function get(o: SyncOptions, base: string, path: string, max: number): Pro
 /** When each sync must be finished by (a stale lock is only taken after an hour). */
 const deadlines = new WeakMap<SyncOptions, number>()
 
+/** Cooperative: checked between steps, before anything irreversible. A blocked disk call
+ * cannot be interrupted from JavaScript, so this is a soft bound, not a watchdog. */
+function assertTime(o: SyncOptions): void {
+  const d = deadlines.get(o)
+  if (d !== undefined && Date.now() > d) throw new ProvisionError('sync_timeout', 'the sync took too long and was stopped; nothing was changed')
+}
+
 /** A short, value-free code. Whatever the server sends is reduced to a fixed alphabet. */
 function failureCode(body: Uint8Array, status: number): string {
   try {
@@ -330,6 +337,7 @@ async function stageFiles(o: SyncOptions, base: string, b: ManifestBody, staging
       if (e instanceof ManifestError) throw new ProvisionError(`file_${e.code}`)
       throw e
     }
+    assertTime(o)
     for (const rel of item.target) {
       const dest = join(staging, rel)
       if (!dest.startsWith(staging + sep)) throw new ProvisionError('path_escape')
@@ -538,7 +546,7 @@ export async function syncWorkspace(opts: SyncOptions): Promise<SyncResult> {
     if (!(e instanceof ProvisionError) && !(e instanceof StateError) && !(e instanceof ManifestError) && typeof errno === 'string' && /^E[A-Z0-9]+$/.test(errno)) {
       // A file operation failed unexpectedly (a disk error, a permission). Say so plainly;
       // nothing was deleted on the strength of a failed look.
-      throw new ProvisionError('fs_error', `a file operation failed (${errno}); the workspace was not changed`)
+      throw new ProvisionError('fs_error', `a file operation failed (${errno}); \`3pa workspace status\` shows where things stand, and running the sync again is safe`)
     }
     throw e
   }
@@ -655,6 +663,7 @@ async function runSync(o: SyncOptions, base: string, now: () => number, fsOps: F
     const staging = mkdtempSync(join(o.appHome, '.3pa-staging-'))
     try {
       await stageFiles(o, base, payload, staging)
+      assertTime(o) // the last point at which stopping leaves everything as it was
       assertOwned()
       activate(payload, o.appHome, staging, managed, hadManagedFile, fsOps)
     } catch (e) {
@@ -662,7 +671,13 @@ async function runSync(o: SyncOptions, base: string, now: () => number, fsOps: F
       throw e
     }
     rmSync(staging, { recursive: true, force: true })
-    persist({ ...accepted, installed: installedNow })
+    try {
+      persist({ ...accepted, installed: installedNow })
+    } catch (e) {
+      // The workspace IS updated at this point; only the record of it failed.
+      if (e instanceof StateError) throw e
+      throw new ProvisionError('state_not_recorded', 'the workspace was updated, but the sync state could not be saved; run the sync again')
+    }
     return { status: 'updated' as const, ...summary }
   })
 }

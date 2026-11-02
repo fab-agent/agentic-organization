@@ -53,7 +53,9 @@ const MESSAGES: Record<string, string> = {
   base_url_invalid: 'The platform URL is not valid (no credentials, query or fragment allowed).',
   lock_lost: 'The sync lock was taken over by another run; nothing further was written. Run the sync again.',
   state_unreadable: 'The local sync state could not be read (a disk or permission problem). Nothing was changed; fix the cause and run again.',
-  fs_error: 'A file operation failed unexpectedly. The workspace was not changed.',
+  fs_error: 'A file operation failed unexpectedly. Run `3pa workspace status` to see where things stand; running the sync again is safe.',
+  state_not_recorded: 'The workspace was updated, but the sync state could not be saved. Run the sync again.',
+  locking_unsupported: 'The state directory is on a file system without hard links. Point THREEPA_WORKSPACE_DIR at a normal local folder.',
   sync_timeout: 'The sync took too long (or the platform did not answer) and was stopped. Nothing was changed.',
   app_home_unsafe: 'The Herdr app home contains a link where a real folder is expected; it was left untouched.',
 }

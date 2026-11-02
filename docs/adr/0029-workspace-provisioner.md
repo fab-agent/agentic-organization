@@ -53,7 +53,11 @@ never leave a half-installed workspace.
    attempt - even a disk error while writing - leaves the old state where it was.
 8. **One run at a time.** The lock file holds the pid and a random token. It is published
    whole: the content is written to a private temp file and hard-linked into place (which
-   fails if a lock exists), so no reader ever sees an empty or half-written lock. Unlock
+   fails if a lock exists), so no reader ever sees an empty or half-written lock. There is no
+   create-then-write fallback: on a file system without hard links the lock is refused
+   (`locking_unsupported`) and the state directory must be on an ordinary local one. Whether the
+   lock was published and whether the temp file could be tidied afterwards are separate
+   facts, so a failed cleanup never strands a lock that exists; old temp files of ours are swept. Unlock
    removes only a file with our token. A lock is *stale* when (a) its process is gone, or
    (b) it is older than an hour, which is the answer to pid reuse, or (c) it cannot be read
    as a lock and is older than ten seconds; a lock that cannot be read at all is left alone.
@@ -64,9 +68,12 @@ never leave a half-installed workspace.
    off if a normal acquirer was faster. The mutex is itself stale when its process is gone or
    it is older than 30 seconds. `assertOwned()` is checked before the recovery, before every
    state write and before activation, and a run that finds it lost stops.
-   The hour is safe because a sync is cut off long before it (each request after one minute,
-   the whole sync after 20 minutes, both with a stable `sync_timeout`); a machine that is
-   suspended for longer than that, or a clock that jumps, is outside what this protects.
+   The hour is only safe if a sync ends long before it, so a sync stops between steps
+   (each request after one minute, the whole sync after 20 minutes, checked before every
+   file is staged and once more before anything irreversible, with a stable `sync_timeout`).
+   That bound is **cooperative**: a blocked disk call cannot be interrupted from JavaScript, so
+   it is not a watchdog, and a machine suspended for longer, or a clock that jumps, is outside
+   what this protects.
    **Limits, stated plainly:** Node has no portable kernel file lock. `assertOwned()` followed
    by a write is not one atomic step, and unlock / mutex release are read-then-remove. Two runs
    that both see the same stale takeover mutex can still race. So the serialization is very
@@ -106,7 +113,10 @@ never leave a half-installed workspace.
 14. **Unchanged content does nothing**, even though the server issues a new generation per
     request: the content digest of `{layout, mods}` is compared, and the disk is checked for
     drift first (a damaged managed file is repaired).
-15. **Errors carry codes, not server text.** A server `reason` is passed on only if it is
+15. **Messages say what is true.** An unexpected file error is `fs_error` and points to
+    `3pa workspace status` instead of claiming nothing changed; a failure to record the state
+    after a committed update is `state_not_recorded` and says the workspace *was* updated.
+16. **Errors carry codes, not server text.** A server `reason` is passed on only if it is
     `[a-z0-9_]{1,48}`; otherwise the code is `http_<status>`. Unexpected errors print a
     generic line (`THREEPA_DEBUG=1` for details). Drift is a diagnostic, not attestation
     (`3pa workspace status`, exit code 2; it also reports an interrupted update).

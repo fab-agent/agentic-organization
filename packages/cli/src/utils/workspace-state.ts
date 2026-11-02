@@ -15,7 +15,7 @@
  */
 
 import {
-  closeSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, rmSync, fsyncSync,
+  closeSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, fsyncSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -206,44 +206,67 @@ const TAKEOVER_MAX_AGE_MS = 30 * 1000
 const INVALID_LOCK_GRACE_MS = 10 * 1000
 
 /** Test seams: after the stale holder was read / after the stale lock was removed. */
-export const lockHooks: { afterReadStale?: () => void; afterRemoveStale?: () => void; beforePublish?: () => void } = {}
+export const lockHooks: {
+  afterReadStale?: () => void
+  afterRemoveStale?: () => void
+  beforePublish?: () => void
+  link?: (from: string, to: string) => void
+  removeTemp?: (path: string) => void
+} = {}
 
 /** Create `path` with its COMPLETE content in one atomic step: the content is written to a
  * private temp file first and then hard-linked into place, which fails if `path` exists. A
- * reader can therefore never see an empty or half-written lock. (Where hard links are not
- * available it falls back to create-then-write.) */
+ * reader can therefore never see an empty or half-written lock.
+ *
+ * There is deliberately NO fallback to create-then-write: on a file system without hard
+ * links the lock would be visible empty for a moment, which is exactly the window this exists
+ * to close. Such a file system is refused (`locking_unsupported`) and the state directory
+ * must live on an ordinary local one.
+ *
+ * Whether the lock was published and whether the temp file could be removed afterwards are
+ * separate facts: a failed cleanup never hides a lock that now exists. */
 function createExclusive(path: string, body: string): boolean {
   const tmp = `${path}.tmp-${randomBytes(6).toString('hex')}`
-  const fd = openSync(tmp, 'wx', 0o600)
   try {
-    writeAll(fd, Buffer.from(body))
-    fsyncSync(fd)
-  } finally {
-    closeSync(fd)
-  }
-  try {
-    lockHooks.beforePublish?.()
-    linkSync(tmp, path)
-    return true
-  } catch (e) {
-    const code = (e as NodeJS.ErrnoException).code
-    if (code === 'EEXIST') return false
-    if (code !== 'EPERM' && code !== 'ENOSYS' && code !== 'EOPNOTSUPP' && code !== 'EXDEV' && code !== 'ENOTSUP') throw e
-  } finally {
-    rmSync(tmp, { force: true })
-  }
-  try {
-    const fd2 = openSync(path, 'wx', 0o600)
+    const fd = openSync(tmp, 'wx', 0o600)
     try {
-      writeAll(fd2, Buffer.from(body))
-      fsyncSync(fd2)
+      writeAll(fd, Buffer.from(body))
+      fsyncSync(fd)
     } finally {
-      closeSync(fd2)
+      closeSync(fd)
+    }
+    lockHooks.beforePublish?.()
+    try {
+      ;(lockHooks.link ?? linkSync)(tmp, path)
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code
+      if (code === 'EEXIST') return false
+      if (code === 'EPERM' || code === 'ENOSYS' || code === 'EOPNOTSUPP' || code === 'EXDEV' || code === 'ENOTSUP') {
+        throw new StateError('locking_unsupported', 'the state directory is on a file system without hard links; use a normal local folder (THREEPA_WORKSPACE_DIR)')
+      }
+      throw e
     }
     return true
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'EEXIST') return false
-    throw e
+  } finally {
+    try {
+      ;(lockHooks.removeTemp ?? ((p: string) => rmSync(p, { force: true })))(tmp)
+    } catch {
+      /* a leftover temp file is harmless and is swept later; it must not hide a published lock */
+    }
+  }
+}
+
+/** Temp files a crash (or a failed cleanup) left behind. Only old ones, only our names. */
+function sweepLockTemps(dir: string): void {
+  try {
+    for (const name of readdirSync(dir)) {
+      if (!/^sync\.lock(\.takeover)?\.tmp-[0-9a-f]{12}$/.test(name)) continue
+      const p = join(dir, name)
+      const st = lstatSync(p)
+      if (st.isFile() && Date.now() - st.mtimeMs > 60 * 1000) rmSync(p, { force: true })
+    }
+  } catch {
+    /* best effort */
   }
 }
 
@@ -267,6 +290,7 @@ function createExclusive(path: string, body: string): boolean {
  */
 export async function withLock<T>(dir: string, fn: (assertOwned: () => void) => Promise<T>): Promise<T> {
   ensurePrivateDir(dir)
+  sweepLockTemps(dir)
   const lock = join(dir, 'sync.lock')
   const token = randomBytes(12).toString('hex')
   const body = JSON.stringify({ pid: process.pid, token })
