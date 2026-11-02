@@ -46,7 +46,7 @@ never leave a half-installed workspace.
    `state.json` is validated (types, safe-integer ranges, hash and id formats, one entry
    per person), because JavaScript would otherwise coerce a damaged counter into a
    comparison that passes. It is written with a full-length write loop, fsync, rename and a
-   directory sync, mode 0600 in a 0700 directory (on Windows, which has no such mode bits, the folder is private through the ACL it inherits from the user's own profile; the CLI does not check bits there and the installer tightens the ACL explicitly, ADR-0032). The accepted state is saved **before** any
+   directory sync, mode 0600 in a 0700 directory (Windows has no such mode bits: there the CLI checks neither bits nor ACL - it relies on the folder being in the user's own profile or having been prepared by an installer that restricts it, as ADR-0032 does; a custom `THREEPA_WORKSPACE_DIR` on a shared location is the administrator's responsibility). The accepted state is saved **before** any
    file is touched. A corrupt file stops the run (a dangling link or odd file at `state.json` counts as
    corrupt, only a genuinely missing file is "no state yet"); `--re-enroll` keeps a copy
    of the old file and replaces it with one atomic rename of the new one, so a failed
