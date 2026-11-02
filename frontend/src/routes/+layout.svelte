@@ -464,6 +464,16 @@
 					</a>
 				{/if}
 
+{#if can('executive')}
+					<a href="/monitoring">
+						<Button variant={$page.url.pathname.startsWith('/monitoring') ? 'secondary' : 'ghost'}
+							class="w-full justify-start gap-x-3 h-10 rounded-xl text-sm font-medium {sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''}">
+							<Activity class="w-4 h-4 flex-shrink-0" />
+							{#if !sidebarCollapsed}<span class="truncate">İzleme</span>{/if}
+						</Button>
+					</a>
+				{/if}
+
 {#if can('dept_head')}
 					<a href="/eval">
 						<Button variant={$page.url.pathname.startsWith('/eval') ? 'secondary' : 'ghost'}
