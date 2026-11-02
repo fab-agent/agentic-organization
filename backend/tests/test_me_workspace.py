@@ -1436,3 +1436,12 @@ def test_an_invalid_agent_owner_membership_counts_for_nothing(
         _get(client, people["emp_user"]).json()["manifest"]["payload"]["layout"]["id"]
         == "finance-v2"
     )
+
+
+def test_response_names_the_callers_own_identity(client, env, people):
+    body = _get(client, people["emp_user"]).json()
+    assert body["identity"] == {
+        "company_id": people["co"].id,
+        "person_id": people["emp"].id,
+    }
+    assert body["identity"]["person_id"] == body["manifest"]["payload"]["person_id"]

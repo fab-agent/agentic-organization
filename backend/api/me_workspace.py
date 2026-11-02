@@ -80,7 +80,13 @@ def get_workspace(
         )
         if ev is None:
             raise _unavailable(ws.WorkspaceUnavailable("audit_unavailable"))
-    return {k: out[k] for k in ("manifest", "bootstrap")}
+    # `identity` is who this signed-in session is, so a client can pin it on first use and
+    # refuse a manifest for anyone else later (the manifest repeats it, signed).
+    return {
+        "manifest": out["manifest"],
+        "bootstrap": out["bootstrap"],
+        "identity": {"company_id": cid, "person_id": person.id},
+    }
 
 
 @router.get("/files/{sha256}")
