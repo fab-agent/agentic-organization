@@ -42,6 +42,11 @@ Format: a [MADR](https://adr.github.io/madr/) derivative — see [`0000-template
 | [0023](0023-eval-and-failure-attribution.md) | Evaluation and failure attribution on the audit trail | accepted |
 | [0024](0024-workspace-controller-hardening.md) | Workspace controller hardening follow-ups | accepted |
 | [0025](0025-odoo-discuss-agent-addon.md) | Odoo add-on — agents in Discuss, acting as the requesting user | proposed |
+| [0026](0026-herdr-app-core-role-based-client-and-stack-consolidation.md) | Herdr app/core as role-based client and stack consolidation | proposed |
+| [0027](0027-signed-workspace-manifest.md) | Signed workspace manifest | proposed |
+| [0028](0028-workspace-endpoint-and-catalog.md) | `/me/workspace` endpoint and workspace catalog | proposed |
+| [0029](0029-workspace-provisioner.md) | Workspace provisioner (`3pa workspace sync`) | proposed |
+| [0030](0030-user-installer-linux-macos.md) | User installer for Linux and macOS | proposed |
 
 ## Adding a new ADR
 

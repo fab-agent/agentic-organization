@@ -1,0 +1,50 @@
+name: Installers
+
+# User installer for Linux and macOS (ADR-0030).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "installers/**"
+      - "docs/adr/0030-*.md"
+      - "packages/cli/**"
+      - ".github/workflows/installers.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "installers/**"
+      - "docs/adr/0030-*.md"
+      - "packages/cli/**"
+      - ".github/workflows/installers.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  user-installer:
+    name: User installer (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Installer tests
+        run: sh installers/user/test.sh
+      - name: Install the real bundle
+        working-directory: packages/cli
+        run: |
+          npm ci --no-audit --no-fund
+          npm run bundle
+          SHA="$(shasum -a 256 dist/3pa.mjs | cut -d' ' -f1)"
+          KEY="$(node -e 'process.stdout.write(Buffer.alloc(32,7).toString("base64"))')"
+          sh ../../installers/user/install.sh --base-url https://platform.example \
+            --root-pub "$KEY" --cli dist/3pa.mjs --cli-sha256 "$SHA" --prefix "$RUNNER_TEMP/p" --state-dir "$RUNNER_TEMP/s"
+          THREEPA_WORKSPACE_DIR="$RUNNER_TEMP/s" "$RUNNER_TEMP/p/bin/3pa" workspace status | grep "No workspace installed yet"
