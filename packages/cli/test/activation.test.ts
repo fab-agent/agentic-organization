@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -23,6 +23,13 @@ const files = (dir: string) => readdirSync(dir).sort()
 const reqFiles = (dir: string) => files(dir).filter((f) => f.startsWith('activation.req.'))
 const claimFiles = (dir: string) => files(dir).filter((f) => f.startsWith('activation.claim.'))
 const liveFiles = (dir: string) => [...reqFiles(dir), ...claimFiles(dir)]
+/** Make a claim look as if it was taken `ms` ago: its time lives in its name, so rename it. */
+function makeStale(c: { path: string }, ms: number, now = NOW): void {
+  const dir = c.path.slice(0, Math.max(c.path.lastIndexOf('/'), c.path.lastIndexOf('\\')))
+  const name = c.path.slice(dir.length + 1)
+  const aged = name.replace(/\.(\d{13})-([0-9a-f]{16})$/, (_m, _t, r) => `.${String(now - ms).padStart(13, '0')}-${r}`)
+  renameSync(c.path, join(dir, aged)); c.path = join(dir, aged)
+}
 const ID16 = '0123456789abcdef'
 const keyOf = (ts: number, id = ID16) => `${String(ts).padStart(13, '0')}-${id}`
 
@@ -163,7 +170,7 @@ test('ACT-1: a claim left by a worker that died comes back after a while, and ne
   assert.equal(c.pending.layout, 'finance-v2'); assert.equal(loadPending(w.stateDir, NOW), null) // held
   assert.equal(claim(w.stateDir, NOW), null)
   assert.equal(claim(w.stateDir, NOW + 4 * 60 * 1000), null) // 4 minutes: still held
-  const old = new Date(NOW - STALE_CLAIM_MS - 1000); utimesSync(c.path, old, old) // the worker is gone
+  makeStale(c, STALE_CLAIM_MS + 1000) // the worker is gone
   const again = claim(w.stateDir, NOW)!
   assert.equal(again.pending.layout, 'finance-v2'); release(again, true)
   // with a newer request already there, a restored claim is dropped, not put over it
@@ -318,26 +325,26 @@ test('ACT-4: a dead worker\'s claim is recovered by the ordinary entry point, no
   const dead = claim(w.stateDir, NOW)!
   const app = fakeApp('main')
   assert.equal(await activate(base(w, app.run)), 'nothing'); assert.equal(app.calls.length, 0) // not yet stale: held
-  const old = new Date(NOW - STALE_CLAIM_MS - 1000); utimesSync(dead.path, old, old)
+  makeStale(dead, STALE_CLAIM_MS + 1000)
   assert.equal(await activate(base(w, app.run)), 'switched') // recovered and served in one go
   assert.equal(app.state.shown, 'finance-v2'); assert.deepEqual(liveFiles(w.stateDir), [])
   // with a newer request beside it, the recovered older one is dropped and the newer is served
   const w2 = world(); requestActivation(w2.stateDir, 'one', NOW); const dead2 = claim(w2.stateDir, NOW)!
   requestActivation(w2.stateDir, 'two', NOW + 1)
-  const old2 = new Date(NOW - STALE_CLAIM_MS - 1000); utimesSync(dead2.path, old2, old2)
+  makeStale(dead2, STALE_CLAIM_MS + 1000)
   const app2 = fakeApp('main')
   assert.equal(await activate(base(w2, app2.run)), 'switched'); assert.equal(app2.state.shown, 'two')
   // a claim that cannot be read back is simply removed
   const w3 = world(); requestActivation(w3.stateDir, 'x', NOW); const d3 = claim(w3.stateDir, NOW)!
-  writeFileSync(d3.path, 'garbage'); utimesSync(d3.path, old2, old2)
-  assert.equal(await activate(base(w3, fakeApp('main').run)), 'nothing'); assert.ok(!existsSync(d3.path))
+  writeFileSync(d3.path, 'garbage'); makeStale(d3, STALE_CLAIM_MS + 1000)
+  assert.equal(await activate(base(w3, fakeApp('main').run)), 'nothing'); assert.deepEqual(claimFiles(w3.stateDir), [])
 })
 
 
 test('ACT-6: two recoverers of one dead claim: the second, acting on an old observation, cannot take the first\'s new hold', async () => {
   const w = world(); requestActivation(w.stateDir, 'finance-v2', NOW)
   const dead = claim(w.stateDir, NOW)!
-  const old = new Date(NOW - STALE_CLAIM_MS - 1000); utimesSync(dead.path, old, old)
+  makeStale(dead, STALE_CLAIM_MS + 1000)
   const stale = readdirSync(w.stateDir).filter((f) => f.startsWith('activation.claim.')) // what recoverer B saw
   assert.equal(stale.length, 1)
   // A recovers it and takes it again (a fresh hold under a new name)
@@ -356,7 +363,7 @@ test('ACT-6: two recoverers of one dead claim: the second, acting on an old obse
 test('ACT-6: with the real entry points, two workers that both find the same stale claim serve it once', async () => {
   const w = world(); requestActivation(w.stateDir, 'finance-v2', NOW)
   const dead = claim(w.stateDir, NOW)!
-  const old = new Date(NOW - STALE_CLAIM_MS - 1000); utimesSync(dead.path, old, old)
+  makeStale(dead, STALE_CLAIM_MS + 1000)
   const app = fakeApp('main')
   const gate = new Promise<void>((r) => setTimeout(r, 20))
   const slow: Runner = async (b, a, e, t) => { await gate; return app.run(b, a, e, t) }
@@ -377,4 +384,20 @@ test('ACT-7: a clock that stepped back far beyond the skew does not make the new
   assert.equal(await activate(base(w, app.run, { now: () => back })), 'switched'); assert.equal(app.state.shown, 'after-rollback')
   // a small step back works the same
   requestActivation(w.stateDir, 'next', back - 1000); assert.equal(loadPending(w.stateDir, back - 1000)?.layout, 'next')
+})
+
+
+test('ACT-8: a claim\'s freshness is visible the instant the claim is, however old the request was', async () => {
+  const w = world()
+  // a request made 10 minutes ago and never served
+  requestActivation(w.stateDir, 'finance-v2', NOW - 10 * 60 * 1000)
+  const a = claim(w.stateDir, NOW)!
+  // another worker observing the claim right now (before anything else happens to the file) sees it as just taken
+  const seen = readdirSync(w.stateDir).filter((f) => f.startsWith('activation.claim.'))
+  const taken = Number(/\.(\d{13})-[0-9a-f]{16}$/.exec(seen[0]!)![1])
+  assert.equal(taken, NOW, 'the time of taking is in the name, not the request\'s old mtime')
+  const app = fakeApp('main')
+  assert.equal(await activate(base(w, app.run)), 'nothing'); assert.equal(app.calls.length, 0) // not stale: left alone
+  assert.deepEqual(claimFiles(w.stateDir), seen)
+  release(a, true)
 })

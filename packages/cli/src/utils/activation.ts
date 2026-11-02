@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { closeSync, fstatSync, lstatSync, openSync, readSync, readdirSync, renameSync, rmSync, utimesSync } from 'node:fs'
+import { closeSync, fstatSync, lstatSync, openSync, readSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 
 import { writeFileAtomic } from './fsutil.js'
@@ -19,7 +19,7 @@ import { ensurePrivateDir } from './workspace-state.js'
  */
 const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/
 const ID = /^[0-9a-f]{16}$/
-const FILE_RE = /^activation\.(req|done)\.(\d{13})-([0-9a-f]{16})$|^activation\.(claim)\.(\d{13})-([0-9a-f]{16})\.([0-9a-f]{16})$/
+const FILE_RE = /^activation\.(req|done)\.(\d{13})-([0-9a-f]{16})$|^activation\.(claim)\.(\d{13})-([0-9a-f]{16})\.(\d{13})-([0-9a-f]{16})$/
 const MAX_BYTES = 4096
 const KEEP_MARKERS = 8
 export const PENDING_MAX_AGE_MS = 7 * 24 * 3600 * 1000
@@ -42,11 +42,14 @@ export class ActivationError extends Error {
 }
 
 type State = 'req' | 'claim' | 'done'
-/** `token` is only on a claim: every taking of a request has its own path, so a worker that looked at
- * an older taking can never rename (and so never touch) a newer one. */
-interface Entry { state: State; key: string; ts: number; id: string; path: string; token?: string }
+/** `taken` is only on a claim: the time it was taken, written INTO ITS NAME by the same rename that
+ * makes it visible, so how fresh a claim is can never be seen wrongly (a file's own mtime is the
+ * request's old one until it is touched). `token` makes every taking a different path, so a worker
+ * that looked at an older taking can never rename, and so never touch, a newer one. */
+interface Entry { state: State; key: string; ts: number; id: string; path: string; token?: string; taken?: number }
 const keyOf = (ts: number, id: string) => `${String(ts).padStart(13, '0')}-${id}`
 const pathOf = (dir: string, state: State, key: string, token?: string) => join(dir, `activation.${state}.${key}${token ? `.${token}` : ''}`)
+const tokenOf = (taken: number) => `${String(taken).padStart(13, '0')}-${randomBytes(8).toString('hex')}`
 
 /** Every request file of the folder, oldest first. Anything else in the folder is ignored. */
 function entries(stateDir: string): Entry[] {
@@ -55,7 +58,7 @@ function entries(stateDir: string): Entry[] {
     const m = FILE_RE.exec(name)
     if (!m) continue
     if (m[1]) out.push({ state: m[1] as State, key: `${m[2]}-${m[3]}`, ts: Number(m[2]), id: m[3]!, path: join(stateDir, name) })
-    else out.push({ state: 'claim', key: `${m[5]}-${m[6]}`, ts: Number(m[5]), id: m[6]!, path: join(stateDir, name), token: m[7] })
+    else out.push({ state: 'claim', key: `${m[5]}-${m[6]}`, ts: Number(m[5]), id: m[6]!, path: join(stateDir, name), token: `${m[7]}-${m[8]}`, taken: Number(m[7]) })
   }
   return out.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
 }
@@ -149,7 +152,7 @@ function recoverStale(stateDir: string, now: number): void {
   for (const e of entries(stateDir)) {
     if (e.state !== 'claim') continue
     try {
-      if (now - lstatSync(e.path).mtimeMs < STALE_CLAIM_MS) continue
+      if (now - e.taken! < STALE_CLAIM_MS) continue // judged on the time in its name
       // one atomic rename of exactly this taking: if another worker already recovered (and maybe
       // re-took) it, this path no longer exists and nothing of theirs is touched
       if (isNewest(stateDir, e.key) && parse(e, now)) renameSync(e.path, pathOf(stateDir, 'req', e.key))
@@ -171,14 +174,13 @@ function claimNow(stateDir: string, now: number): Claim | null {
   const newest = all.at(-1)
   if (!newest || newest.state !== 'req') return null
   for (const old of all) if (old.state === 'req' && old.key < newest.key) rmSync(old.path, { force: true }) // superseded
-  const token = randomBytes(8).toString('hex')
+  const token = tokenOf(now)
   const path = pathOf(stateDir, 'claim', newest.key, token)
   try {
     renameSync(newest.path, path)
   } catch {
     return null // another worker took it
   }
-  try { utimesSync(path, now / 1000, now / 1000) } catch { /* only affects staleness */ }
   const e: Entry = { ...newest, state: 'claim', path, token }
   const pending = parse(e, now)
   if (!pending) {

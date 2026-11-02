@@ -38,7 +38,9 @@ role layout themselves. Facts about Herdr, read from the pinned source of `herdr
    `requested_at` (age and skew are judged on that, so a rollback of any size neither hides the new request
    nor weakens the expiry check). States: `req` (waiting), `claim` (taken by a worker),
    `done` (served or superseded). A worker **claims** the newest `req` by one atomic rename to a path that carries a fresh random token
-   (`activation.claim.<key>.<token>`), so every taking has its own name: of several
+   (`activation.claim.<key>.<time taken>-<random>`), so every taking has its own name and its own freshness - the
+   time lives in the name that the same rename makes visible, never in a file's mtime, which would still be the
+   request's old one for an instant: of several
    workers (a launcher started three times, a sync and a launcher) exactly one gets it and the others stop
    at once, so a request is never switched twice and waiting workers do not pile up; older `req` files are
    superseded and removed. A `claim` that is given back (no window, refused switch) becomes `req` again
