@@ -29,7 +29,6 @@ import base64
 import hashlib
 import json
 import re
-import unicodedata
 from dataclasses import dataclass, field, replace
 from typing import Any
 from urllib.parse import urlsplit
@@ -69,7 +68,6 @@ _LABEL = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
 _RESERVED = {"con", "prn", "aux", "nul"} | {
     f"{d}{i}" for d in ("com", "lpt") for i in range(1, 10)
 }
-_BAD_PATH_CHARS = set('<>"|?*:\\')
 
 
 class ManifestError(Exception):
@@ -234,21 +232,33 @@ def load_private(private_b64: str) -> Ed25519PrivateKey:
     return Ed25519PrivateKey.from_private_bytes(base64.b64decode(private_b64))
 
 
+_B64 = re.compile(r"(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?")
+
+
+def _b64decode(value: Any) -> bytes:
+    """Canonical standard base64 only: right alphabet, right padding, no extra `=`, and no
+    spare bits set, so one byte string has exactly one accepted spelling."""
+    if not isinstance(value, str) or not _B64.fullmatch(value):
+        raise ValueError("not canonical base64")
+    raw = base64.b64decode(value)
+    if base64.b64encode(raw).decode() != value:
+        raise ValueError("not canonical base64")
+    return raw
+
+
 def key_id(public_b64: str) -> str:
     """Recomputed from the public key by every verifier; never taken on trust."""
     try:
-        return hashlib.sha256(base64.b64decode(public_b64, validate=True)).hexdigest()[
-            :32
-        ]
+        return hashlib.sha256(_b64decode(public_b64)).hexdigest()[:32]
     except (ValueError, TypeError) as e:
         raise ManifestError("bad_key") from e
 
 
 def _verify_sig(public_b64: str, kind: str, payload: dict, sig_b64: str) -> None:
     try:
-        Ed25519PublicKey.from_public_bytes(
-            base64.b64decode(public_b64, validate=True)
-        ).verify(base64.b64decode(sig_b64, validate=True), _signed_bytes(kind, payload))
+        Ed25519PublicKey.from_public_bytes(_b64decode(public_b64)).verify(
+            _b64decode(sig_b64), _signed_bytes(kind, payload)
+        )
     except (InvalidSignature, ValueError, TypeError) as e:
         raise ManifestError("bad_signature") from e
 
@@ -354,24 +364,23 @@ def _check_name(name: Any) -> str:
     return name
 
 
+_PATH_PART = re.compile(r"[A-Za-z0-9._@+-]{1,255}")
+
+
 def _safe_path(path: Any) -> str:
-    if (
-        not isinstance(path, str)
-        or not path
-        or len(path) > 200
-        or path.startswith("/")
-        or any(ord(c) < 0x20 or ord(c) == 0x7F or c in _BAD_PATH_CHARS for c in path)
-        or path != unicodedata.normalize("NFC", path)
-    ):
+    """Portable path profile: ASCII letters, digits and `. _ @ + -` per component, no
+    empty / `.` / `..` component, no trailing dot, no Windows device name. ASCII-only is
+    deliberate: it makes normalisation and case-folding questions disappear, so the Python
+    signer and every verifier (TypeScript included) agree on collisions without sharing
+    Unicode tables."""
+    if not isinstance(path, str) or not path or len(path) > 200 or path.startswith("/"):
         raise ManifestError("bad_path")
-    _check_str(path)
     for part in path.split("/"):
         if (
             part in ("", ".", "..")
-            or part != part.strip()
+            or not _PATH_PART.fullmatch(part)
             or part.endswith(".")
-            or len(part.encode("utf-8")) > 255
-            or part.split(".")[0].strip().lower() in _RESERVED
+            or part.split(".")[0].lower() in _RESERVED
         ):
             raise ManifestError("bad_path")
     return path
@@ -456,7 +465,7 @@ def _validate_body(p: dict) -> None:
         for f in files:
             _only(f, {"path", "sha256", "size"}, "bad_mod_files")
             path = _safe_path(f.get("path"))
-            key = unicodedata.normalize("NFC", path).casefold()
+            key = path.lower()
             if key in keys:
                 raise ManifestError("duplicate_path")
             keys.add(key)
@@ -657,6 +666,10 @@ def _verify(
     state: ClientState,
     require_crl: bool,
 ) -> tuple[dict, ClientState]:
+    if not isinstance(expected.client_version, str) or not _VERSION.fullmatch(
+        expected.client_version
+    ):  # a malformed trusted value must not make the version check pass or crash
+        raise ManifestError("bad_client_version")
     _only(envelope, {"cert", "payload", "sig"})
     cert, payload = envelope.get("cert"), envelope.get("payload")
     if not isinstance(payload, dict):

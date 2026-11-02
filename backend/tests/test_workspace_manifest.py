@@ -716,6 +716,43 @@ def _verify_cases():
     vtrue["payload"]["v"] = True
     vtrue["sig"] = wm._sign(SIGN_PRIV, "manifest", vtrue["payload"])
     cases.append(_run_case("v_true", w(vtrue)))
+    # one profile for paths, base64 and the trusted version
+    for name, path in [
+        ("path_non_ascii", "\u00e9.js"),
+        ("path_eszett", "\u00df.js"),
+        ("path_emoji", "\U0001f600.js"),
+    ]:
+        raw = copy.deepcopy(ok_env)
+        raw["payload"]["mods"][0]["files"][0]["path"] = path
+        raw["sig"] = wm._sign(SIGN_PRIV, "manifest", raw["payload"])
+        cases.append(_run_case(name, w(raw)))
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    spare = {
+        **ok_env,
+        "sig": ok_env["sig"][:-3]
+        + alphabet[alphabet.index(ok_env["sig"][-3]) + 1]
+        + "==",
+    }
+    cases.append(_run_case("sig_noncanonical_base64", w(spare)))
+    for name, ver in [
+        ("client_version_short", "1.0"),
+        ("client_version_garbage", "1.0.x"),
+    ]:
+        cases.append(
+            _run_case(
+                name,
+                w(ok_env),
+                expected=Expected(
+                    "co1",
+                    "p1",
+                    "herdr-provisioner",
+                    ver,
+                    min_generation=1,
+                    min_epoch=1,
+                    min_crl_number=0,
+                ),
+            )
+        )
     # wire-level
     text = json.dumps(ok_env)
     cases.append(_run_case("wire_duplicate_key", text[:-1] + ', "sig": "x"}'))
@@ -741,6 +778,12 @@ def _verify_cases():
     )
     cases.append(_run_case("wire_not_json", "{oops"))
     cases.append(_run_case("wire_too_deep", "[" * 200 + "]" * 200))
+    # several faults in one document: the FIRST event in reading order decides, a duplicate
+    # key counting only when its object closes, depth and string checks only after the parse
+    cases.append(_run_case("wire_dup_then_float", '{"a":1,"a":2,"b":1.0}'))
+    cases.append(_run_case("wire_deep_then_float", "[" * 40 + "1.0" + "]" * 40))
+    cases.append(_run_case("wire_dup_unclosed", '{"x":1,"x":2,'))
+    cases.append(_run_case("wire_deep_only", "[" * 40 + "1" + "]" * 40))
     return cases
 
 
@@ -915,20 +958,30 @@ def test_portable_path_rules(path):
 
 
 @pytest.mark.parametrize(
-    "path", ["main.js", "dir/sub/file.min.js", "é.js", "CONSOLE.js", "a-b_c.d/e.js"]
+    "path", ["main.js", "dir/sub/file.min.js", "a@b+c.js", "CONSOLE.js", "a-b_c.d/e.js"]
 )
 def test_ordinary_paths_are_accepted(path):
     _env(mods=_one_file(path))
 
 
-def test_unicode_equivalent_and_case_equivalent_paths_collide():
-    files = [
-        {"path": "é.js", "sha256": SHA, "size": 1},
-        {"path": "É.JS", "sha256": SHA, "size": 1},
-    ]
+@pytest.mark.parametrize(
+    "path",
+    [
+        "\u00e9.js",
+        "\u00c9.JS",
+        "\u00df.js",
+        "\u1e9e.js",
+        "i\u0307.js",
+        "\u0131.js",
+        "\U0001f600.js",
+        "e\u0301.js",
+        "dir/\u00e9",
+    ],
+)
+def test_non_ascii_paths_are_refused_so_no_unicode_table_is_needed(path):
     with pytest.raises(ManifestError) as e:
-        _env(mods=[{"name": "m", "version": "1.0.0", "files": files}])
-    assert e.value.code == "duplicate_path"
+        _env(mods=_one_file(path))
+    assert e.value.code == "bad_path"
 
 
 def test_a_file_and_a_directory_of_the_same_name_cannot_coexist():
@@ -1733,3 +1786,62 @@ def test_previous_crl_must_verify_under_this_root_and_number_must_grow(
     assert json.loads((tmp_path / "ok.json").read_text())["payload"][
         "revoked_kids"
     ] == ["a" * 32]
+
+
+# ── CODEX-TSVERIFIER: one profile for paths, base64 and the trusted version ───
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "AAAA=",
+        "AAAA====",
+        "Zh==",
+        "Zm9=",
+        "AA",
+        "AAA",
+        "A===",
+        "AAAA\n",
+        " AAAA",
+        "AA AA",
+        "-_-_",
+    ],
+)
+def test_base64_has_exactly_one_accepted_spelling(value):
+    with pytest.raises(ManifestError) as e:
+        wm.key_id(value)
+    assert e.value.code == "bad_key"
+
+
+def test_canonical_base64_still_works():
+    assert wm.key_id("AAAAAAAA") == wm.key_id("AAAAAAAA")
+    assert wm.key_id(SIGN_PUB) == wm.key_id(SIGN_PUB) and len(wm.key_id(SIGN_PUB)) == 32
+
+
+def test_a_signature_spelled_with_spare_bits_is_refused():
+    env = _env()
+    sig = env["sig"]
+    assert sig.endswith("==")
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    last = sig[-3]
+    spare = (
+        sig[:-3] + alphabet[alphabet.index(last) + 1] + "=="
+    )  # same bytes, other spelling
+    assert base64.b64decode(spare) == base64.b64decode(sig)
+    assert _code({**env, "sig": spare}) == "bad_signature"
+
+
+@pytest.mark.parametrize(
+    "version", ["1.0", "1.0.x", "x", "", "1.0.0.0", "01.0.0\n", "\u0661.0.0"]
+)
+def test_a_malformed_trusted_client_version_is_an_error_not_a_pass(version):
+    exp = Expected(
+        "co1",
+        "p1",
+        "herdr-provisioner",
+        version,
+        min_generation=1,
+        min_epoch=1,
+        min_crl_number=0,
+    )
+    assert _code(_env(), expected=exp) == "bad_client_version"
