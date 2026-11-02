@@ -407,6 +407,343 @@ def test_file_verification_checks_size_and_hash():
     assert e.value.code == "hash_mismatch"
 
 
+# ── cross-language verification cases ────────────────────────────────────────
+
+
+def _state_to_json(st):
+    return {
+        "generations": st.generations,
+        "epoch": st.epoch,
+        "crl_number": st.crl_number,
+        "crl_digest": st.crl_digest,
+        "crl_next_update": st.crl_next_update,
+        "revoked": sorted(st.revoked),
+        "last_seen": st.last_seen,
+        "signing_kid": st.signing_kid,
+    }
+
+
+def _expected_to_json(e):
+    return {
+        "company_id": e.company_id,
+        "person_id": e.person_id,
+        "aud": e.aud,
+        "client_version": e.client_version,
+        "min_generation": e.min_generation,
+        "min_epoch": e.min_epoch,
+        "min_crl_number": e.min_crl_number,
+    }
+
+
+def _run_case(
+    name, wire, *, state=None, expected=None, now=NOW, crl=None, require_crl=False
+):
+    """One case for every implementation: inputs as plain JSON, and the outcome the
+    Python verifier gives (`ok` + the state it returns, or the stable error code)."""
+    state = state or ClientState()
+    expected = expected or EXPECT
+    case = {
+        "name": name,
+        "wire": wire,
+        "expected": _expected_to_json(expected),
+        "now": now,
+        "state": _state_to_json(state),
+        "crl": crl,
+        "require_crl": require_crl,
+    }
+    try:
+        payload, st = wm.verify_wire(
+            wire,
+            root_pub_b64=ROOT_PUB,
+            expected=expected,
+            now=now,
+            state=state,
+            crl=crl,
+            require_crl=require_crl,
+        )
+        case["result"] = {
+            "ok": True,
+            "generation": payload["generation"],
+            "state": _state_to_json(st),
+        }
+    except ManifestError as e:
+        case["result"] = {"ok": False, "code": e.code}
+    return case
+
+
+def _verify_cases():
+    def w(env):
+        return json.dumps(env)
+
+    ok_env = _env()
+    cases = [_run_case("valid", w(ok_env))]
+    _, accepted = _verify(_env(generation=7))
+    mut = lambda f: lambda e: (f(e["payload"]), e)[1]  # noqa: E731
+    for name, f in [
+        (
+            "tamper_gateway",
+            lambda p: p.__setitem__("gateway_url", "https://evil.example.test"),
+        ),
+        ("tamper_generation", lambda p: p.__setitem__("generation", 99)),
+        (
+            "tamper_file_hash",
+            lambda p: p["mods"][0]["files"][0].__setitem__("sha256", "b" * 64),
+        ),
+    ]:
+        cases.append(_run_case(name, w(mut(f)(copy.deepcopy(ok_env)))))
+    for name, exp in [
+        (
+            "wrong_company",
+            Expected(
+                "co2",
+                "p1",
+                "herdr-provisioner",
+                "1.0.0",
+                min_generation=1,
+                min_epoch=1,
+                min_crl_number=0,
+            ),
+        ),
+        (
+            "wrong_person",
+            Expected(
+                "co1",
+                "p2",
+                "herdr-provisioner",
+                "1.0.0",
+                min_generation=1,
+                min_epoch=1,
+                min_crl_number=0,
+            ),
+        ),
+        (
+            "wrong_aud",
+            Expected(
+                "co1",
+                "p1",
+                "other-client",
+                "1.0.0",
+                min_generation=1,
+                min_epoch=1,
+                min_crl_number=0,
+            ),
+        ),
+        (
+            "client_too_old",
+            Expected(
+                "co1",
+                "p1",
+                "herdr-provisioner",
+                "0.5.0",
+                min_generation=1,
+                min_epoch=1,
+                min_crl_number=0,
+            ),
+        ),
+        ("no_floors", Expected("co1", "p1", "herdr-provisioner", "1.0.0")),
+        (
+            "below_generation_floor",
+            Expected(
+                "co1",
+                "p1",
+                "herdr-provisioner",
+                "1.0.0",
+                min_generation=9,
+                min_epoch=1,
+                min_crl_number=0,
+            ),
+        ),
+        (
+            "below_epoch_floor",
+            Expected(
+                "co1",
+                "p1",
+                "herdr-provisioner",
+                "1.0.0",
+                min_generation=1,
+                min_epoch=2,
+                min_crl_number=0,
+            ),
+        ),
+        (
+            "below_crl_floor",
+            Expected(
+                "co1",
+                "p1",
+                "herdr-provisioner",
+                "1.0.0",
+                min_generation=1,
+                min_epoch=1,
+                min_crl_number=3,
+            ),
+        ),
+    ]:
+        cases.append(_run_case(name, w(ok_env), expected=exp))
+    cases.append(_run_case("expired", w(ok_env), now=NOW + 3600 + 400))
+    cases.append(
+        _run_case("not_yet_valid", w(_env(issued_at=NOW + 1000, expires_at=NOW + 2000)))
+    )
+    short_cert = sign_manifest(
+        SIGN_PRIV, _cert(not_after=NOW + 600), _body(expires_at=NOW + 3600)
+    )
+    cases.append(_run_case("outside_cert_window", w(short_cert)))
+    # replay / rollback / conflict
+    cases.append(_run_case("rollback", w(_env(generation=6)), state=accepted))
+    cases.append(_run_case("idempotent", w(_env(generation=7)), state=accepted))
+    cases.append(
+        _run_case(
+            "generation_conflict",
+            w(_env(generation=7, gateway_url="https://gw2.example.test")),
+            state=accepted,
+        )
+    )
+    cases.append(_run_case("newer_generation", w(_env(generation=8)), state=accepted))
+    # clock
+    cases.append(
+        _run_case("clock_rollback", w(ok_env), state=accepted, now=NOW - 10_000)
+    )
+    # epoch
+    poisoned = sign_manifest(SIGN_PRIV, _cert_epoch(1), _body(generation=2**53 - 1))
+    _, st_poison = _verify(poisoned)
+    cases.append(
+        _run_case(
+            "epoch_recovery_new_key",
+            w(sign_manifest(NEW_PRIV, _cert_epoch(2, NEW_PUB), _body(generation=1))),
+            state=st_poison,
+        )
+    )
+    cases.append(
+        _run_case(
+            "epoch_same_key_refused",
+            w(sign_manifest(SIGN_PRIV, _cert_epoch(2), _body(generation=1))),
+            state=st_poison,
+        )
+    )
+    cases.append(
+        _run_case(
+            "epoch_rewrap",
+            w({**_env(generation=1), "cert": _cert_epoch(2, NEW_PUB)}),
+            state=st_poison,
+        )
+    )
+    body = {"typ": "fab-workspace-manifest", "v": 1, "epoch": 2, **_body()}
+    cases.append(
+        _run_case(
+            "epoch_mismatch",
+            w(
+                {
+                    "cert": _cert_epoch(1),
+                    "payload": body,
+                    "sig": wm._sign(SIGN_PRIV, "manifest", body),
+                }
+            ),
+        )
+    )
+    # revocation
+    kid = wm.key_id(SIGN_PUB)
+    cases.append(_run_case("revoked_key", w(ok_env), crl=_crl(number=1, kids=[kid])))
+    st_crl = wm.verify_crl(_crl(number=5, kids=[kid]), ROOT_PUB, ClientState(), NOW)
+    cases.append(
+        _run_case(
+            "crl_rollback", w(ok_env), state=st_crl, crl=_crl(number=4, kids=[kid])
+        )
+    )
+    cases.append(
+        _run_case(
+            "crl_not_cumulative", w(ok_env), state=st_crl, crl=_crl(number=6, kids=[])
+        )
+    )
+    cases.append(
+        _run_case(
+            "crl_conflict",
+            w(ok_env),
+            state=st_crl,
+            crl=_crl(number=5, kids=[kid, "e" * 32]),
+        )
+    )
+    cases.append(
+        _run_case(
+            "crl_ok_unrelated_key", w(ok_env), crl=_crl(number=2, kids=["d" * 32])
+        )
+    )
+    cases.append(_run_case("require_crl_missing", w(ok_env), require_crl=True))
+    st_fresh = wm.verify_crl(
+        _crl(number=1, next_update=NOW + 600), ROOT_PUB, ClientState(), NOW
+    )
+    cases.append(
+        _run_case("require_crl_fresh", w(ok_env), state=st_fresh, require_crl=True)
+    )
+    cases.append(
+        _run_case(
+            "require_crl_stale",
+            w(_env(issued_at=NOW + 700, expires_at=NOW + 3000)),
+            state=st_fresh,
+            require_crl=True,
+            now=NOW + 1000,
+        )
+    )
+    # body validation
+    for name, path in [
+        ("path_traversal", "../x.js"),
+        ("path_windows_device", "CON"),
+        ("path_nfd", "e\u0301.js"),
+        ("path_trailing_dot", "a.js."),
+    ]:
+        raw = copy.deepcopy(ok_env)
+        raw["payload"]["mods"][0]["files"][0]["path"] = path
+        raw["sig"] = wm._sign(SIGN_PRIV, "manifest", raw["payload"])
+        cases.append(_run_case(name, w(raw)))
+    dup = copy.deepcopy(ok_env)
+    dup["payload"]["mods"][0]["files"].append(
+        {"path": "MAIN.JS", "sha256": SHA, "size": 1}
+    )
+    dup["sig"] = wm._sign(SIGN_PRIV, "manifest", dup["payload"])
+    cases.append(_run_case("path_case_collision", w(dup)))
+    for name, url in [
+        ("gateway_http", "http://gw.example.test"),
+        ("gateway_userinfo", "https://u:p@gw.example.test"),
+        ("gateway_dots", "https://a..b"),
+    ]:
+        raw = copy.deepcopy(ok_env)
+        raw["payload"]["gateway_url"] = url
+        raw["sig"] = wm._sign(SIGN_PRIV, "manifest", raw["payload"])
+        cases.append(_run_case(name, w(raw)))
+    extra = copy.deepcopy(ok_env)
+    extra["payload"]["surprise"] = 1
+    extra["sig"] = wm._sign(SIGN_PRIV, "manifest", extra["payload"])
+    cases.append(_run_case("unknown_field", w(extra)))
+    vtrue = copy.deepcopy(ok_env)
+    vtrue["payload"]["v"] = True
+    vtrue["sig"] = wm._sign(SIGN_PRIV, "manifest", vtrue["payload"])
+    cases.append(_run_case("v_true", w(vtrue)))
+    # wire-level
+    text = json.dumps(ok_env)
+    cases.append(_run_case("wire_duplicate_key", text[:-1] + ', "sig": "x"}'))
+    cases.append(
+        _run_case("wire_float", text.replace('"generation": 5', '"generation": 5.0'))
+    )
+    cases.append(
+        _run_case("wire_exponent", text.replace('"generation": 5', '"generation": 5e0'))
+    )
+    cases.append(
+        _run_case(
+            "wire_negative_zero", text.replace('"generation": 5', '"generation": -0')
+        )
+    )
+    cases.append(
+        _run_case(
+            "wire_unsafe_int",
+            text.replace('"generation": 5', '"generation": 9007199254740992'),
+        )
+    )
+    cases.append(
+        _run_case("wire_lone_surrogate", text.replace('"finance-v2"', '"fin\\ud800"'))
+    )
+    cases.append(_run_case("wire_not_json", "{oops"))
+    cases.append(_run_case("wire_too_deep", "[" * 200 + "]" * 200))
+    return cases
+
+
 # ── cross-language vectors ───────────────────────────────────────────────────
 
 
@@ -1199,6 +1536,7 @@ def _vectors():
         "manifest": env,
         "manifest_digest": wm.digest(env["payload"]),
         "crl": _crl(number=3, kids=["b" * 32, "a" * 32]),
+        "verify_cases": _verify_cases(),
     }
 
 

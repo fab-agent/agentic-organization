@@ -567,8 +567,8 @@ def verify_crl(
         or p["next_update"] <= p["issued_at"]
         or not isinstance(kids, list)
         or len(kids) > MAX_CRL_ENTRIES
-        or kids != sorted(set(kids))
         or not all(isinstance(k, str) and _KID.fullmatch(k) for k in kids)
+        or kids != sorted(set(kids))
     ):
         raise ManifestError("bad_crl")
     state = _check_clock(now, state)

@@ -147,5 +147,1704 @@
     "{\"a\":\"\\ud800\"}"
   ],
   "root_pub": "iojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w=",
-  "signing_pub": "gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q="
+  "signing_pub": "gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=",
+  "verify_cases": [
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "valid",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "generation": 5,
+        "ok": true,
+        "state": {
+          "crl_digest": "",
+          "crl_next_update": 0,
+          "crl_number": 0,
+          "epoch": 1,
+          "generations": {
+            "[\"co1\",\"p1\"]": {
+              "digest": "9f526cc26105f148cb0139045ac120da276daf2ef5ad6c98a8c6c3abbeb0fcae",
+              "generation": 5
+            }
+          },
+          "last_seen": 1800000000,
+          "revoked": [],
+          "signing_kid": "6a3803d5f059902a1c6dafbc9ba47292"
+        }
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "tamper_gateway",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "bad_signature",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://evil.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "tamper_generation",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "bad_signature",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 99, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "tamper_file_hash",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "bad_signature",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co2",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "wrong_company",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "wrong_binding",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p2"
+      },
+      "name": "wrong_person",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "wrong_binding",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "other-client",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "wrong_aud",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "wrong_binding",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "0.5.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "client_too_old",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "client_too_old",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": null,
+        "min_epoch": null,
+        "min_generation": null,
+        "person_id": "p1"
+      },
+      "name": "no_floors",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "bootstrap_floor_required",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 9,
+        "person_id": "p1"
+      },
+      "name": "below_generation_floor",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "below_floor",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 2,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "below_epoch_floor",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "epoch_rollback",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 3,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "below_crl_floor",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "crl_below_floor",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "expired",
+      "now": 1800004000,
+      "require_crl": false,
+      "result": {
+        "code": "expired",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "not_yet_valid",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "not_yet_valid",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1800001000, \"expires_at\": 1800002000, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"0j/pxG+XVSRNw6jSsJ8kprmiFb461Et10TD9ry/RRubV53EAYUNvuq9hlZjN0E8r7GUTWNIcAui+UDqphNBTAA==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "outside_cert_window",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "outside_cert_window",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1800000600, \"serial\": 1, \"epoch\": 1}, \"sig\": \"rUd16oQprzg7/yM9WCCdWb5AKU40SCu/Z0CSHDdjJmVAkDEYB/M6/l+cBEYWrdRzdn0R4Whyhbo4HwvQw5q0AQ==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "rollback",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "rollback",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 1,
+        "generations": {
+          "[\"co1\",\"p1\"]": {
+            "digest": "dc4bdfc1fefd6bea1ea1a06e2bf05c2b970e9d63f59dabbc3f7cff49e6ac966b",
+            "generation": 7
+          }
+        },
+        "last_seen": 1800000000,
+        "revoked": [],
+        "signing_kid": "6a3803d5f059902a1c6dafbc9ba47292"
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 6, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"s64QRFNhhW56PmsuEYWhtOD7wvYa6F8IFqmYi2kEfo1tFjkqPzxnUVRWYWSL/OgwL0RFEwEAhNhLfK8SP0ThDg==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "idempotent",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "generation": 7,
+        "ok": true,
+        "state": {
+          "crl_digest": "",
+          "crl_next_update": 0,
+          "crl_number": 0,
+          "epoch": 1,
+          "generations": {
+            "[\"co1\",\"p1\"]": {
+              "digest": "dc4bdfc1fefd6bea1ea1a06e2bf05c2b970e9d63f59dabbc3f7cff49e6ac966b",
+              "generation": 7
+            }
+          },
+          "last_seen": 1800000000,
+          "revoked": [],
+          "signing_kid": "6a3803d5f059902a1c6dafbc9ba47292"
+        }
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 1,
+        "generations": {
+          "[\"co1\",\"p1\"]": {
+            "digest": "dc4bdfc1fefd6bea1ea1a06e2bf05c2b970e9d63f59dabbc3f7cff49e6ac966b",
+            "generation": 7
+          }
+        },
+        "last_seen": 1800000000,
+        "revoked": [],
+        "signing_kid": "6a3803d5f059902a1c6dafbc9ba47292"
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 7, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"LXlUQqWMT8UOrAytVQJE4NywoUyU0zthkI424zFs6e/Dobbh52Gg3zwjn2TFPE9Lhlu5MVkVKFw1YrFgwmcQCg==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "generation_conflict",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "generation_conflict",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 1,
+        "generations": {
+          "[\"co1\",\"p1\"]": {
+            "digest": "dc4bdfc1fefd6bea1ea1a06e2bf05c2b970e9d63f59dabbc3f7cff49e6ac966b",
+            "generation": 7
+          }
+        },
+        "last_seen": 1800000000,
+        "revoked": [],
+        "signing_kid": "6a3803d5f059902a1c6dafbc9ba47292"
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 7, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw2.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"9iZlrYVIgprtCXh3bMEJxzduX9ThoZPqqiqVIWgxcf+wmqqdb7moFYWLVCHKt0cR7RVfMik1Lk+NSRORBmzYBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "newer_generation",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "generation": 8,
+        "ok": true,
+        "state": {
+          "crl_digest": "",
+          "crl_next_update": 0,
+          "crl_number": 0,
+          "epoch": 1,
+          "generations": {
+            "[\"co1\",\"p1\"]": {
+              "digest": "fcea5d8af6d3a16cf630cc6243664fb4ffb624e47bf5deb62c788313c7ba1da0",
+              "generation": 8
+            }
+          },
+          "last_seen": 1800000000,
+          "revoked": [],
+          "signing_kid": "6a3803d5f059902a1c6dafbc9ba47292"
+        }
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 1,
+        "generations": {
+          "[\"co1\",\"p1\"]": {
+            "digest": "dc4bdfc1fefd6bea1ea1a06e2bf05c2b970e9d63f59dabbc3f7cff49e6ac966b",
+            "generation": 7
+          }
+        },
+        "last_seen": 1800000000,
+        "revoked": [],
+        "signing_kid": "6a3803d5f059902a1c6dafbc9ba47292"
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 8, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Kb6b56FpcRiO19m4XtR1x9I9umlOjM7uvfDYWT55pnoK6UTr4NhSO3kX8QRUdwg7ex3c+37NVNN+PRTRb09oDA==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "clock_rollback",
+      "now": 1799990000,
+      "require_crl": false,
+      "result": {
+        "code": "clock_rollback",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 1,
+        "generations": {
+          "[\"co1\",\"p1\"]": {
+            "digest": "dc4bdfc1fefd6bea1ea1a06e2bf05c2b970e9d63f59dabbc3f7cff49e6ac966b",
+            "generation": 7
+          }
+        },
+        "last_seen": 1800000000,
+        "revoked": [],
+        "signing_kid": "6a3803d5f059902a1c6dafbc9ba47292"
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "epoch_recovery_new_key",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "generation": 1,
+        "ok": true,
+        "state": {
+          "crl_digest": "",
+          "crl_next_update": 0,
+          "crl_number": 0,
+          "epoch": 2,
+          "generations": {
+            "[\"co1\",\"p1\"]": {
+              "digest": "7f58b705f0e46edb8f3b74dde354fc4533051c25f75360865e2872db1767f7bb",
+              "generation": 1
+            }
+          },
+          "last_seen": 1800000000,
+          "revoked": [],
+          "signing_kid": "b62e867fa2f33afe62d5d6b1642e1621"
+        }
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 1,
+        "generations": {
+          "[\"co1\",\"p1\"]": {
+            "digest": "67b2ff3942044843ce85e077dbe722e11d6cf687ba0103c493325c4841c62535",
+            "generation": 9007199254740991
+          }
+        },
+        "last_seen": 1800000000,
+        "revoked": [],
+        "signing_kid": "6a3803d5f059902a1c6dafbc9ba47292"
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"b62e867fa2f33afe62d5d6b1642e1621\", \"pub\": \"7UkoxijRwsbq6QM4kFmVYSlZJzpcY/k2NsFGFKyHN9E=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1800086400, \"serial\": 2, \"epoch\": 2}, \"sig\": \"lsFsHKXeEj9c54Lse3F6sDCefZp9ua92p0BezDGzTfPjBumszIJJxfycwkWGiI29iHr9SWUH9zpek/oQB1KVAg==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 2, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 1, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"zAJoMvRQxGVVXx1Qsdqkz95WB5uj5j6g7MbESUXoyDrmmrP+PXB9q59QFQ/cV82TWaVjQjwaHgaqtzTBmkhlDQ==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "epoch_same_key_refused",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "epoch_needs_new_key",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 1,
+        "generations": {
+          "[\"co1\",\"p1\"]": {
+            "digest": "67b2ff3942044843ce85e077dbe722e11d6cf687ba0103c493325c4841c62535",
+            "generation": 9007199254740991
+          }
+        },
+        "last_seen": 1800000000,
+        "revoked": [],
+        "signing_kid": "6a3803d5f059902a1c6dafbc9ba47292"
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1800086400, \"serial\": 2, \"epoch\": 2}, \"sig\": \"NwySq4AIFiOp2I5y3Lj3rPDLUI4JRp6VUNBapUjldKP7p6VMwEoxoeVEoE1ByN/u2XD5cFiGJkY7v4WnmSkxDw==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 2, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 1, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"AXHo9oFr0rAYnOL4t+tvpCi9SGeiYNrSLxko20QKyLhdkX0Gy4NPYYfrForAgMtEpV5W/8HzraHeKhapofVtDw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "epoch_rewrap",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "bad_signature",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 1,
+        "generations": {
+          "[\"co1\",\"p1\"]": {
+            "digest": "67b2ff3942044843ce85e077dbe722e11d6cf687ba0103c493325c4841c62535",
+            "generation": 9007199254740991
+          }
+        },
+        "last_seen": 1800000000,
+        "revoked": [],
+        "signing_kid": "6a3803d5f059902a1c6dafbc9ba47292"
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"b62e867fa2f33afe62d5d6b1642e1621\", \"pub\": \"7UkoxijRwsbq6QM4kFmVYSlZJzpcY/k2NsFGFKyHN9E=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1800086400, \"serial\": 2, \"epoch\": 2}, \"sig\": \"lsFsHKXeEj9c54Lse3F6sDCefZp9ua92p0BezDGzTfPjBumszIJJxfycwkWGiI29iHr9SWUH9zpek/oQB1KVAg==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 1, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"XxHe2djJRY8zTNrUt68LBI+5d3ZjH2a5L18kJOuv47Ng2WNc1k4NXj1Knw/e7VTVfYGiUUYSrn74Tsj7eurjAQ==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "epoch_mismatch",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "epoch_mismatch",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1800086400, \"serial\": 1, \"epoch\": 1}, \"sig\": \"6O7dEUh5vEwMguENzL6CNtvnftJyOcl3roYHDWkorcdnIc+iqKyJgB/StrlIGR6x94bZxhPpeEAgouMP3mgvDg==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 2, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"oMUzut+Q1SmL23j8jJOjil3fRIA+Hlf3C3uwlR/FyJpmQSXAq4rlKQbVsLaR3b4ZPEkA6VfOcEKEP1PgPMQtDQ==\"}"
+    },
+    {
+      "crl": {
+        "payload": {
+          "issued_at": 1800000000,
+          "next_update": 1800086400,
+          "number": 1,
+          "revoked_kids": [
+            "6a3803d5f059902a1c6dafbc9ba47292"
+          ],
+          "typ": "fab-crl",
+          "v": 1
+        },
+        "sig": "2iTs7TXH4H6Ob2LYxtJhCtCumvxoMDgKfaNx/GryVh8IWsuQT6AdK3/xvFqvQz2tJnNPi92LUqAHJTxRiaYBBQ=="
+      },
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "revoked_key",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "cert_revoked",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": {
+        "payload": {
+          "issued_at": 1800000000,
+          "next_update": 1800086400,
+          "number": 4,
+          "revoked_kids": [
+            "6a3803d5f059902a1c6dafbc9ba47292"
+          ],
+          "typ": "fab-crl",
+          "v": 1
+        },
+        "sig": "vsOvqOv6KNvw5jmMGC48AOUJvfQpXQbbcoKvKyutWSGn+SYV0HPsXVwy+Mc65nWLRtsXDCdLJvlZ1LYdc8jDDQ=="
+      },
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "crl_rollback",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "crl_rollback",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "f3d893f60ba7d75220ccce79b478985d4cc54b91571402c5033f6d23f72af382",
+        "crl_next_update": 1800086400,
+        "crl_number": 5,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 1800000000,
+        "revoked": [
+          "6a3803d5f059902a1c6dafbc9ba47292"
+        ],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": {
+        "payload": {
+          "issued_at": 1800000000,
+          "next_update": 1800086400,
+          "number": 6,
+          "revoked_kids": [],
+          "typ": "fab-crl",
+          "v": 1
+        },
+        "sig": "rJzL7EW6XCkoBuyDPjkX9RvKO5qy7gFV8VTeMw4XRUVyK4nZEuuhKCoCrg5+UxG2IWz4V9PXXt9KenzOWv8wDw=="
+      },
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "crl_not_cumulative",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "crl_not_cumulative",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "f3d893f60ba7d75220ccce79b478985d4cc54b91571402c5033f6d23f72af382",
+        "crl_next_update": 1800086400,
+        "crl_number": 5,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 1800000000,
+        "revoked": [
+          "6a3803d5f059902a1c6dafbc9ba47292"
+        ],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": {
+        "payload": {
+          "issued_at": 1800000000,
+          "next_update": 1800086400,
+          "number": 5,
+          "revoked_kids": [
+            "6a3803d5f059902a1c6dafbc9ba47292",
+            "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+          ],
+          "typ": "fab-crl",
+          "v": 1
+        },
+        "sig": "/Ga0X/3vJr7RbASY+23IzUqU4mIyFqesnnaKqp/8UyByDwoZ/IALfy9mS5vG95GERH0SChKc4GOB4xM3CdjsCQ=="
+      },
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "crl_conflict",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "crl_conflict",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "f3d893f60ba7d75220ccce79b478985d4cc54b91571402c5033f6d23f72af382",
+        "crl_next_update": 1800086400,
+        "crl_number": 5,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 1800000000,
+        "revoked": [
+          "6a3803d5f059902a1c6dafbc9ba47292"
+        ],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": {
+        "payload": {
+          "issued_at": 1800000000,
+          "next_update": 1800086400,
+          "number": 2,
+          "revoked_kids": [
+            "dddddddddddddddddddddddddddddddd"
+          ],
+          "typ": "fab-crl",
+          "v": 1
+        },
+        "sig": "QuqGlO6m75eUiLo9wzSZDsYKk6v8ENEdiBWB3LDy42HqjoNlVb30piwAJGcdIMh2gUXXypOPdwrcGo5paWVCBg=="
+      },
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "crl_ok_unrelated_key",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "generation": 5,
+        "ok": true,
+        "state": {
+          "crl_digest": "9b2f4240ddb01a483c92118e17ef0632d3f56f9bff00b045bd3ff05f4182c545",
+          "crl_next_update": 1800086400,
+          "crl_number": 2,
+          "epoch": 1,
+          "generations": {
+            "[\"co1\",\"p1\"]": {
+              "digest": "9f526cc26105f148cb0139045ac120da276daf2ef5ad6c98a8c6c3abbeb0fcae",
+              "generation": 5
+            }
+          },
+          "last_seen": 1800000000,
+          "revoked": [
+            "dddddddddddddddddddddddddddddddd"
+          ],
+          "signing_kid": "6a3803d5f059902a1c6dafbc9ba47292"
+        }
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "require_crl_missing",
+      "now": 1800000000,
+      "require_crl": true,
+      "result": {
+        "code": "crl_required",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "require_crl_fresh",
+      "now": 1800000000,
+      "require_crl": true,
+      "result": {
+        "generation": 5,
+        "ok": true,
+        "state": {
+          "crl_digest": "561a2afbeff42147510c4b137c849973d6d0cc933cab02978d26abbe21333d0f",
+          "crl_next_update": 1800000600,
+          "crl_number": 1,
+          "epoch": 1,
+          "generations": {
+            "[\"co1\",\"p1\"]": {
+              "digest": "9f526cc26105f148cb0139045ac120da276daf2ef5ad6c98a8c6c3abbeb0fcae",
+              "generation": 5
+            }
+          },
+          "last_seen": 1800000000,
+          "revoked": [],
+          "signing_kid": "6a3803d5f059902a1c6dafbc9ba47292"
+        }
+      },
+      "state": {
+        "crl_digest": "561a2afbeff42147510c4b137c849973d6d0cc933cab02978d26abbe21333d0f",
+        "crl_next_update": 1800000600,
+        "crl_number": 1,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 1800000000,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "require_crl_stale",
+      "now": 1800001000,
+      "require_crl": true,
+      "result": {
+        "code": "crl_stale",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "561a2afbeff42147510c4b137c849973d6d0cc933cab02978d26abbe21333d0f",
+        "crl_next_update": 1800000600,
+        "crl_number": 1,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 1800000000,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1800000700, \"expires_at\": 1800003000, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Vgb2T9+TVYaHagtHwxvgMF/smYG2gO2xAT296ffSSj+Cmhc3lxtixjvbyo1n2M4K8Zx7hCBRcAP2zYj8BwpjBg==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "path_traversal",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "bad_path",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"../x.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"adIIyn00nIkI8ARnBWGCMqCjZwMFzXC5U6ThpnIm8c24Y3EkGugmPFLcSXLPCtaGgwxyFbKGreNUHDjoCtxEAw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "path_windows_device",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "bad_path",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"CON\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"MgnXet7+xguoERBHXRTyTJv2GQVSTdjiWSL6cBPL91lTv5J7ENJs6nk5oHK9vG1fYxDoGzncGhTa230GYayJDg==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "path_nfd",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "bad_path",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"e\\u0301.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"orQGA4Mr/a3zaWh0U9B0t/Ylmb4dwdDFPKF8wZ7L1uvEWB5cIiqODXSQaxkW4tuGZi+dPKD6MSO+7Cz0FcJmBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "path_trailing_dot",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "bad_path",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"a.js.\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Iq7RFyNONwKrk4O9b0GtQVk5/ekj8eH9BJys3Kqb5sv6S5+kyWJEuViB9FJPCA3QDYDk0PrZWNi0E5pQFXQDCw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "path_case_collision",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "duplicate_path",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}, {\"path\": \"MAIN.JS\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 1}]}]}, \"sig\": \"zAoKQ53H8AvbCtygstjm64qEovgCsRLDYQhCNplJQjv2WZn6C7jQminDpwcaXLU7TdPxOtTWC0AkciG1nNvVBg==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "gateway_http",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "bad_gateway_url",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"http://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"rrUnb4XZg+PmQE3rHr+ZA9qbU4NWINcxspw2kA16tEfb+sHr/soxzYccEYz/8cUdiYzVtLdnIbsYl63qDgtcDg==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "gateway_userinfo",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "bad_gateway_url",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://u:p@gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"AfFMhDayzApb8MHS8g4BKpeMvEC7Gi1r1nk0EK+m4Wsak1oCVb3sFDrg5xq0sr2xTsU6GXHoDq1iLkC+bv/EBg==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "gateway_dots",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "bad_gateway_url",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://a..b\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"TTuGvKd8WTB3SQPZUzecMJSLdyRmvySvTjyrDvGyGoFnDrsbvvhrgZexmgqQfZmnMTZvE+J+PsXCHr35p6r/Aw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "unknown_field",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "malformed",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}], \"surprise\": 1}, \"sig\": \"iVdllFmAul1zQJz6/7Vzphes2oCuwORqNcRLndonxR1spByWanpRW1obeomGPEAa5nO7PoiXEd3X/o7CDhx7AQ==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "v_true",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "malformed",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": true, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"irpxGbhA7tLMZ7zHYHlEBs5EJuXN+UwPeUZHx1fzuSFVJFl897Qcie4Yre4XrmSTr1oDodNAuD6AARMjEA0rCg==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "wire_duplicate_key",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "duplicate_key",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\", \"sig\": \"x\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "wire_float",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "float_not_allowed",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5.0, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "wire_exponent",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "float_not_allowed",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5e0, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "wire_negative_zero",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "negative_zero",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": -0, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "wire_unsafe_int",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "int_out_of_range",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 9007199254740992, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"finance-v2\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "wire_lone_surrogate",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "bad_string",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{\"cert\": {\"payload\": {\"typ\": \"fab-signing-cert\", \"v\": 1, \"kid\": \"6a3803d5f059902a1c6dafbc9ba47292\", \"pub\": \"gTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=\", \"issuer_kid\": \"34750f98bd59fcfc946da45aaabe933b\", \"not_before\": 1799996400, \"not_after\": 1802592000, \"serial\": 1, \"epoch\": 1}, \"sig\": \"4/3LBHFiBgNDLBQRrWJTWF0b8U55vAUB3aK10CFWGLJXOF1clg9HvrWLj8ynZgqdKe4jWuhLyTQDbNpZWzHCDA==\"}, \"payload\": {\"typ\": \"fab-workspace-manifest\", \"v\": 1, \"epoch\": 1, \"company_id\": \"co1\", \"person_id\": \"p1\", \"aud\": \"herdr-provisioner\", \"generation\": 5, \"issued_at\": 1799999940, \"expires_at\": 1800003600, \"min_client_version\": \"1.0.0\", \"gateway_url\": \"https://gw.example.test\", \"layout\": {\"id\": \"fin\\ud800\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 50}, \"mods\": [{\"name\": \"finance-dashboard\", \"version\": \"1.2.0\", \"files\": [{\"path\": \"main.js\", \"sha256\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"size\": 10}]}]}, \"sig\": \"Qxf/L7drwgLslpMLomStWYCl18sAS6hby4U39akKkZ/rz4LPL2ZX73RI3ED90fnXADIz5aVkkUX/o4KqbpmiBw==\"}"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "wire_not_json",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "bad_json",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "{oops"
+    },
+    {
+      "crl": null,
+      "expected": {
+        "aud": "herdr-provisioner",
+        "client_version": "1.0.0",
+        "company_id": "co1",
+        "min_crl_number": 0,
+        "min_epoch": 1,
+        "min_generation": 1,
+        "person_id": "p1"
+      },
+      "name": "wire_too_deep",
+      "now": 1800000000,
+      "require_crl": false,
+      "result": {
+        "code": "too_deep",
+        "ok": false
+      },
+      "state": {
+        "crl_digest": "",
+        "crl_next_update": 0,
+        "crl_number": 0,
+        "epoch": 0,
+        "generations": {},
+        "last_seen": 0,
+        "revoked": [],
+        "signing_kid": ""
+      },
+      "wire": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]"
+    }
+  ]
 }
