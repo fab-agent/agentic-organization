@@ -47,6 +47,7 @@ Format: a [MADR](https://adr.github.io/madr/) derivative — see [`0000-template
 | [0028](0028-workspace-endpoint-and-catalog.md) | `/me/workspace` endpoint and workspace catalog | proposed |
 | [0029](0029-workspace-provisioner.md) | Workspace provisioner (`3pa workspace sync`) | proposed |
 | [0030](0030-user-installer-linux-macos.md) | User installer for Linux and macOS | proposed |
+| [0031](0031-signed-release-chain.md) | Signed release chain and `3pa self-update` | proposed |
 
 ## Adding a new ADR
 

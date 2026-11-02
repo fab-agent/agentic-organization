@@ -14,6 +14,7 @@
 # Usage:
 #   install.sh --base-url URL --root-pub FILE|BASE64 --cli FILE --cli-sha256 HEX
 #              [--herdr-bin FILE --herdr-sha256 HEX] [--prefix DIR] [--app-home DIR]
+#              [--release-pub FILE|BASE64 --release-url URL] [--replace-release-key]
 #              [--state-dir DIR] [--replace-root] [--dry-run]
 #   install.sh --uninstall [--prefix DIR] [--state-dir DIR] [--purge-state]
 
@@ -32,6 +33,7 @@ trap 'exit 143' TERM HUP
 
 BASE_URL=""; ROOT_PUB=""; CLI=""; CLI_SHA=""; HERDR=""; HERDR_SHA=""
 PREFIX="${HOME:-}/.local"; APP_HOME=""; STATE_DIR=""
+RELEASE_PUB=""; RELEASE_URL=""; REPLACE_RELEASE=0
 REPLACE_ROOT=0; DRY=0; UNINSTALL=0; PURGE=0
 
 while [ $# -gt 0 ]; do
@@ -45,6 +47,9 @@ while [ $# -gt 0 ]; do
     --prefix) [ $# -ge 2 ] || die "$1 needs a value"; PREFIX="$2"; shift 2 ;;
     --app-home) [ $# -ge 2 ] || die "$1 needs a value"; APP_HOME="$2"; shift 2 ;;
     --state-dir) [ $# -ge 2 ] || die "$1 needs a value"; STATE_DIR="$2"; shift 2 ;;
+    --release-pub) [ $# -ge 2 ] || die "$1 needs a value"; RELEASE_PUB="$2"; shift 2 ;;
+    --release-url) [ $# -ge 2 ] || die "$1 needs a value"; RELEASE_URL="$2"; shift 2 ;;
+    --replace-release-key) REPLACE_RELEASE=1; shift ;;
     --replace-root) REPLACE_ROOT=1; shift ;;
     --dry-run) DRY=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
@@ -186,7 +191,8 @@ if [ "$UNINSTALL" -eq 1 ]; then
       if (d.isSymbolicLink() || !d.isDirectory()) bad(dir + " is a link or not a folder; nothing was removed")
       if (typeof process.getuid === "function" && d.uid !== process.getuid()) bad(dir + " belongs to someone else; nothing was removed")
       const OURS = [/^root\.pub$/, /^state\.json$/, /^state\.json\.replaced-\d+$/, /^state\.json\.[0-9a-f]{12}\.tmp$/,
-        /^sync\.lock$/, /^sync\.lock\.takeover$/, /^sync\.lock(\.takeover)?\.tmp-[0-9a-f]{12}$/, /^\.root\.pub\.\d+\.tmp$/]
+        /^sync\.lock$/, /^sync\.lock\.takeover$/, /^sync\.lock(\.takeover)?\.tmp-[0-9a-f]{12}$/, /^\.root\.pub\.\d+\.tmp$/,
+        /^release\.pub$/, /^release-url$/, /^release-state\.json$/, /^release-state\.json\.[0-9a-f]{12}\.tmp$/, /^\.release\.pub\.\d+\.tmp$/, /^\.release-url\.\d+\.tmp$/]
       let names; try { names = fs.readdirSync(dir) } catch (e) { bad("cannot read " + dir + " (" + e.code + "); nothing was removed") }
       let removed = 0, left = 0
       for (const n of names) {
@@ -241,13 +247,35 @@ ROOT_PUB="$ROOT_PUB" node -e '
   process.exit(b.length === 32 && b.toString("base64") === s ? 0 : 1)' \
   || die "--root-pub is not a valid Ed25519 public key (32 bytes, canonical base64)"
 
+# Release chain (ADR-0031): both or neither. The key is validated like the root key, the URL
+# like the CLI does (https anywhere, http only for loopback, no credentials or fragment).
+if [ -n "$RELEASE_PUB" ] || [ -n "$RELEASE_URL" ]; then
+  [ -n "$RELEASE_PUB" ] && [ -n "$RELEASE_URL" ] || die "--release-pub and --release-url go together"
+  if [ -f "$RELEASE_PUB" ]; then RELEASE_PUB="$(tr -d '\r\n ' < "$RELEASE_PUB")"; fi
+  RELEASE_PUB="$(printf %s "$RELEASE_PUB" | tr -d '\r\n ')"
+  RELEASE_PUB="$RELEASE_PUB" node -e '
+    const s = process.env.RELEASE_PUB
+    const b = Buffer.from(s, "base64")
+    process.exit(b.length === 32 && b.toString("base64") === s ? 0 : 1)' \
+    || die "--release-pub is not a valid Ed25519 public key (32 bytes, canonical base64)"
+  RELEASE_URL="$(RELEASE_URL="$RELEASE_URL" node -e '
+    const bad = () => { process.stderr.write("--release-url must be https:// (http:// only for localhost) without credentials or a fragment\n"); process.exit(1) }
+    let u; try { u = new URL(process.env.RELEASE_URL) } catch { bad() }
+    const loop = u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "[::1]"
+    if (u.protocol !== "https:" && !(u.protocol === "http:" && loop)) bad()
+    if (u.username || u.password || u.hash || !u.hostname) bad()
+    process.stdout.write(u.href)')" || exit 1
+fi
+
 [ -f "$CLI" ] && [ ! -L "$CLI" ] || die "--cli must be a regular file"
 if [ -n "$HERDR" ]; then [ -f "$HERDR" ] && [ ! -L "$HERDR" ] || die "--herdr-bin must be a regular file"; fi
 
 # What is at the state folder and at root.pub is looked at BEFORE anything is changed, and
 # "cannot look" is never "not there": an unreadable pinned key stops the install.
-ROOT_FILE="$STATE_DIR/root.pub"
-EXISTING="$(STATE_DIR="$STATE_DIR" node -e '
+ROOT_FILE="$STATE_DIR/root.pub"; RELEASE_FILE="$STATE_DIR/release.pub"
+# prints the key pinned under the given file name ("" when there is none)
+pinned_of() {
+  STATE_DIR="$STATE_DIR" PIN_NAME="$1" node -e '
   const fs = require("fs"), path = require("path")
   const bad = (m) => { process.stderr.write(m + "\n"); process.exit(1) }
   const look = (p) => { try { return fs.lstatSync(p) } catch (e) {
@@ -258,15 +286,22 @@ EXISTING="$(STATE_DIR="$STATE_DIR" node -e '
   if (d) {
     if (d.isSymbolicLink() || !d.isDirectory()) bad(dir + " is a link or not a folder; nothing was changed")
     if (typeof process.getuid === "function" && d.uid !== process.getuid()) bad(dir + " belongs to someone else; nothing was changed")
-    const f = look(path.join(dir, "root.pub"))
+    const f = look(path.join(dir, process.env.PIN_NAME))
     if (f) {
-      if (!f.isFile()) bad(path.join(dir, "root.pub") + " is not a regular file; nothing was changed")
-      let v; try { v = fs.readFileSync(path.join(dir, "root.pub"), "utf8") } catch (e) { bad("cannot read the pinned root key (" + e.code + "); nothing was changed") }
+      if (!f.isFile()) bad(path.join(dir, process.env.PIN_NAME) + " is not a regular file; nothing was changed")
+      let v; try { v = fs.readFileSync(path.join(dir, process.env.PIN_NAME), "utf8") } catch (e) { bad("cannot read the pinned key (" + e.code + "); nothing was changed") }
       process.stdout.write(v.replace(/[\r\n ]/g, ""))
     }
-  }')" || exit 1
+  }'
+}
+EXISTING="$(pinned_of root.pub)" || exit 1
+EXISTING_REL=""
+[ -z "$RELEASE_PUB" ] || EXISTING_REL="$(pinned_of release.pub)" || exit 1
 if [ -n "$EXISTING" ] && [ "$EXISTING" != "$ROOT_PUB" ] && [ "$REPLACE_ROOT" -ne 1 ]; then
   die "a different root key is already pinned in $ROOT_FILE; pass --replace-root only if the change is intended"
+fi
+if [ -n "$EXISTING_REL" ] && [ "$EXISTING_REL" != "$RELEASE_PUB" ] && [ "$REPLACE_RELEASE" -ne 1 ]; then
+  die "a different release key is already pinned in $RELEASE_FILE; pass --replace-release-key only if the change is intended"
 fi
 
 # Every file we publish must be absent or a plain file: `mv` into a folder (or a link to one)
@@ -308,6 +343,16 @@ TMP1="$STATE_DIR/.root.pub.$$.tmp"
 printf '%s\n' "$ROOT_PUB" > "$TMP1"
 chmod 644 "$TMP1"; mv -f -- "$TMP1" "$ROOT_FILE"; TMP1=""
 say "pinned root key -> $ROOT_FILE"
+
+if [ -n "$RELEASE_PUB" ]; then
+  TMP1="$STATE_DIR/.release.pub.$$.tmp"
+  printf '%s\n' "$RELEASE_PUB" > "$TMP1"
+  chmod 644 "$TMP1"; mv -f -- "$TMP1" "$RELEASE_FILE"; TMP1=""
+  TMP1="$STATE_DIR/.release-url.$$.tmp"
+  printf '%s\n' "$RELEASE_URL" > "$TMP1"
+  chmod 644 "$TMP1"; mv -f -- "$TMP1" "$STATE_DIR/release-url"; TMP1=""
+  say "pinned release key and URL -> $RELEASE_FILE (update with: 3pa self-update)"
+fi
 
 if [ -n "$HERDR" ]; then
   mv -f -- "$TMP2" "$LIB/herdr"; TMP2=""
