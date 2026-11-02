@@ -49,6 +49,7 @@ from api.journal import router as journal_router
 from api.learning import router as learning_router
 from api.mcp_server import router as mcp_router
 from api.me_workspace import router as me_workspace_router
+from api.monitoring import router as monitoring_router
 from api.onboarding import router as onboarding_router
 from api.personnel import router as personnel_router
 from api.policies import router as policies_router
@@ -136,6 +137,7 @@ app.include_router(auth_router)
 app.include_router(demo_auth_router)
 app.include_router(users_router)
 app.include_router(me_workspace_router)
+app.include_router(monitoring_router)
 app.include_router(companies_router)
 app.include_router(dept_router)
 app.include_router(personnel_router)

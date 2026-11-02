@@ -169,10 +169,15 @@ def _last_anchored() -> dict[str, dict]:
     return out
 
 
-def check_anchors(only: set[str] | None = None) -> dict:
+def check_anchors(
+    only: set[str] | None = None, *, verify_internal: bool = True
+) -> dict:
     """
     Compare live chain heads to the last anchored ones. An issue = the chain
     shrank (truncation) or its head at the anchored seq changed (rewrite).
+
+    `verify_internal=False` skips the internal hash-chain verification (it reads every event of
+    every selected chain): `internal_verify_ok` is then `None`, not "true".
     """
     from services import audit_chain
 
@@ -201,13 +206,15 @@ def check_anchors(only: set[str] | None = None) -> dict:
         if issue:
             issues.append({"chain_key": k, "issue": issue})
 
-    if only is None:
+    if not verify_internal:
+        internal = {"ok": None}
+    elif only is None:
         internal = audit_chain.verify_all()
     else:
         chains_ok = {k: audit_chain.verify(k) for k in sorted(only) if k in live}
         internal = {"ok": all(c["ok"] for c in chains_ok.values())}
     return {
-        "ok": not issues and internal["ok"],
+        "ok": not issues and internal["ok"] is not False,
         "chains": chains,
         "issues": issues,
         "internal_verify_ok": internal["ok"],
