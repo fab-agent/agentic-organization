@@ -124,3 +124,45 @@ import { createHash } from 'node:crypto'
 function require_sha(b: Buffer): string {
   return createHash('sha256').update(b).digest('hex')
 }
+
+
+test('a string input with a raw lone surrogate is refused, not repaired', () => {
+  assert.throws(() => parseWire('{"a":"\ud800"}'), (e: ManifestError) => e.code === 'bad_encoding')
+  // the escape spelling is a different fault, and a proper pair is fine
+  assert.throws(() => parseWire('{"a":"\\ud800"}'), (e: ManifestError) => e.code === 'bad_string')
+  assert.deepEqual(Object.entries(parseWire('{"a":"\\ud83d\\ude00"}') as object), [['a', '\u{1F600}']])
+  assert.throws(() => parseWire(Buffer.from([0x7b, 0x22, 0xed, 0xa0, 0x80, 0x22, 0x7d])), (e: ManifestError) => e.code === 'bad_encoding')
+})
+
+test('negative zero has no canonical form even as a plain object', () => {
+  assert.throws(() => canonicalBytes({ a: -0 }), (e: ManifestError) => e.code === 'unsupported_type')
+  assert.equal(canonicalBytes({ a: 0 }).toString('ascii'), '{"a":0}')
+})
+
+test('base64 has exactly one accepted spelling', () => {
+  for (const bad of ['AAAA=', 'AAAA====', 'Zh==', 'Zm9=', 'AA', 'A===', 'AAAA\n', ' AAAA', '-_-_']) {
+    assert.throws(() => keyId(bad), (e: ManifestError) => e.code === 'bad_key', bad)
+  }
+  assert.equal(keyId('AAAAAAAA').length, 32)
+})
+
+test('the trusted client version must be well formed, and defaults to 0.0.0 when absent', () => {
+  const c = vectors.verify_cases.find((x: { name: string }) => x.name === 'valid')
+  const base = { rootPub: vectors.root_pub, now: c.now, state: emptyState() }
+  const { client_version: _drop, ...rest } = c.expected
+  assert.throws(() => verifyWire(c.wire, { ...base, expected: { ...rest, client_version: '1.0' } }), (e: ManifestError) => e.code === 'bad_client_version')
+  // absent means 0.0.0, which is older than this manifest's minimum 1.0.0
+  assert.throws(() => verifyWire(c.wire, { ...base, expected: rest }), (e: ManifestError) => e.code === 'client_too_old')
+})
+
+test('several faults in one document: the first in reading order decides, like Python', () => {
+  const code = (text: string) => {
+    try { parseWire(text) } catch (e) { return (e as ManifestError).code }
+    return 'ok'
+  }
+  assert.equal(code('{"a":1,"a":2,"b":1.0}'), 'float_not_allowed')
+  assert.equal(code('{"x":1,"x":2,'), 'bad_json')
+  assert.equal(code('[' .repeat(40) + '1.0' + ']'.repeat(40)), 'float_not_allowed')
+  assert.equal(code('[' .repeat(40) + '1' + ']'.repeat(40)), 'too_deep')
+  assert.equal(code('{"a":1,"a":2}'), 'duplicate_key')
+})

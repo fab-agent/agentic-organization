@@ -10,10 +10,9 @@
  * canonical form is byte-identical to Python's: keys sorted by UTF-16 code unit,
  * everything outside U+0020-U+007E escaped as lower-case \uXXXX.
  *
- * Where this port is stricter than Python (exotic Unicode digits in a port number,
- * approximate case folding for path collisions) it errs on the side of refusing. The
- * provisioner must still create files exclusively (O_EXCL) so a collision the folding
- * missed aborts the install.
+ * Paths are ASCII-only (`[A-Za-z0-9._@+-]` per component), so there are no normalisation or
+ * case-folding tables to keep in step with Python. A collision the provisioner still misses
+ * on a case-insensitive filesystem aborts the install, because files are created with O_EXCL.
  */
 
 import { createHash, createPublicKey, verify as edVerify } from 'node:crypto'
@@ -103,6 +102,7 @@ function checkJson(o: unknown, depth = 0): void {
     return
   }
   if (typeof o === 'number') {
+    if (Object.is(o, -0)) throw new ManifestError('unsupported_type')
     if (!Number.isInteger(o) || Math.abs(o) > MAX_SAFE) {
       throw new ManifestError(Number.isInteger(o) ? 'int_out_of_range' : 'unsupported_type')
     }
@@ -163,6 +163,8 @@ export function digest(payload: unknown): string {
 /** Strict parser: size cap, duplicate keys, floats/exponents, `-0`, NaN/Infinity,
  * integers beyond +/-(2^53-1), lone surrogates and nesting beyond the profile. */
 export function parseWire(data: string | Uint8Array, maxBytes = MAX_WIRE_BYTES): Json {
+  // A string that cannot be encoded as UTF-8 (a raw lone surrogate) is refused, never repaired.
+  if (typeof data === 'string' && hasLoneSurrogate(data)) throw new ManifestError('bad_encoding')
   const raw = typeof data === 'string' ? Buffer.from(data, 'utf8') : Buffer.from(data)
   if (raw.length > maxBytes) throw new ManifestError('wire_too_large')
   let text: string
@@ -178,8 +180,12 @@ export function parseWire(data: string | Uint8Array, maxBytes = MAX_WIRE_BYTES):
     while (i < text.length && ' \t\n\r'.includes(text[i]!)) i++
   }
 
+  // Nesting beyond the profile (32) is reported after the parse, like Python, so a fault that
+  // comes first in reading order wins; this cap only keeps the recursion bounded.
+  const RECURSION_CAP = 500
+
   function value(depth: number): Json {
-    if (depth > MAX_JSON_DEPTH) throw new ManifestError('too_deep')
+    if (depth > RECURSION_CAP) throw new ManifestError('too_deep')
     ws()
     const c = text[i]
     if (c === '{') return object(depth)
@@ -254,6 +260,7 @@ export function parseWire(data: string | Uint8Array, maxBytes = MAX_WIRE_BYTES):
   function object(depth: number): { [k: string]: Json } {
     i++
     const out: { [k: string]: Json } = Object.create(null)
+    let duplicate = false
     ws()
     if (text[i] === '}') return (i++, out)
     for (;;) {
@@ -264,14 +271,18 @@ export function parseWire(data: string | Uint8Array, maxBytes = MAX_WIRE_BYTES):
       if (text[i] !== ':') throw bad()
       i++
       const v = value(depth + 1)
-      if (k in out) throw new ManifestError('duplicate_key')
+      if (k in out) duplicate = true // reported when the object closes, as Python does
       out[k] = v
       ws()
       if (text[i] === ',') {
         i++
         continue
       }
-      if (text[i] === '}') return (i++, out)
+      if (text[i] === '}') {
+        i++
+        if (duplicate) throw new ManifestError('duplicate_key')
+        return out
+      }
       throw bad()
     }
   }
@@ -286,8 +297,12 @@ export function parseWire(data: string | Uint8Array, maxBytes = MAX_WIRE_BYTES):
 // ── keys and signatures ──────────────────────────────────────────────────────
 
 const B64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/
+/** Canonical standard base64 only: alphabet, padding, and no spare bits, so one byte string
+ * has exactly one accepted spelling (same rule as the Python verifier). */
 function b64(s: unknown): Buffer | null {
-  return typeof s === 'string' && B64.test(s) ? Buffer.from(s, 'base64') : null
+  if (typeof s !== 'string' || !B64.test(s)) return null
+  const raw = Buffer.from(s, 'base64')
+  return raw.toString('base64') === s ? raw : null
 }
 
 export function keyId(publicB64: string): string {
@@ -320,14 +335,6 @@ const BODY_KEYS = ['typ', 'v', 'epoch', 'company_id', 'person_id', 'aud', 'gener
 const CERT_KEYS = ['typ', 'v', 'kid', 'pub', 'issuer_kid', 'not_before', 'not_after', 'serial', 'epoch']
 const CRL_KEYS = ['typ', 'v', 'number', 'revoked_kids', 'issued_at', 'next_update']
 
-function pyStrip(s: string): string {
-  let a = 0
-  let b = s.length
-  while (a < b && PY_SPACE.has(s[a]!)) a++
-  while (b > a && PY_SPACE.has(s[b - 1]!)) b--
-  return s.slice(a, b)
-}
-
 function checkName(name: unknown): string {
   if (typeof name !== 'string' || !NAME.test(name) || name.endsWith('.') || RESERVED.has(name.split('.')[0]!)) {
     throw new ManifestError('bad_name')
@@ -336,36 +343,24 @@ function checkName(name: unknown): string {
 }
 
 const codePoints = (s: string) => Array.from(s).length
+const PATH_PART = /^[A-Za-z0-9._@+-]{1,255}$/
 
+/** Portable path profile (ASCII letters, digits and `. _ @ + -`); see the Python docstring. */
 function safePath(path: unknown): string {
-  if (
-    typeof path !== 'string' ||
-    path === '' ||
-    codePoints(path) > 200 ||
-    path.startsWith('/') ||
-    Array.from(path).some((c) => c.codePointAt(0)! < 0x20 || c.codePointAt(0) === 0x7f || BAD_PATH_CHARS.has(c)) ||
-    path !== path.normalize('NFC')
-  ) {
+  if (typeof path !== 'string' || path === '' || path.length > 200 || path.startsWith('/')) {
     throw new ManifestError('bad_path')
   }
-  if (hasLoneSurrogate(path)) throw new ManifestError('bad_string')
   for (const part of path.split('/')) {
     if (
       part === '' || part === '.' || part === '..' ||
-      part !== pyStrip(part) ||
+      !PATH_PART.test(part) ||
       part.endsWith('.') ||
-      Buffer.byteLength(part, 'utf8') > 255 ||
-      RESERVED.has(pyStrip(part.split('.')[0]!).toLowerCase())
+      RESERVED.has(part.split('.')[0]!.toLowerCase())
     ) {
       throw new ManifestError('bad_path')
     }
   }
   return path
-}
-
-function foldKey(path: string): string {
-  // Approximation of Python's casefold (ß -> ss through the upper-case mapping).
-  return path.normalize('NFC').toUpperCase().toLowerCase()
 }
 
 function checkHttpsUrl(url: unknown): void {
@@ -432,7 +427,7 @@ export function validateBody(p: unknown): void {
     for (const f of m.files) {
       only(f, ['path', 'sha256', 'size'], 'bad_mod_files')
       const path = safePath(f.path)
-      const key = foldKey(path)
+      const key = path.toLowerCase()
       if (keys.has(key)) throw new ManifestError('duplicate_path')
       keys.add(key)
       if (typeof f.sha256 !== 'string' || !SHA256.test(f.sha256)) throw new ManifestError('bad_hash')
@@ -548,6 +543,10 @@ export interface VerifyOptions {
 
 function verifyInner(envelope: unknown, o: VerifyOptions, state: ClientState): [Obj, ClientState] {
   const { rootPub, expected, now } = o
+  const clientVersion = expected.client_version ?? '0.0.0'
+  if (typeof clientVersion !== 'string' || !VERSION.test(clientVersion)) {
+    throw new ManifestError('bad_client_version')
+  }
   const env = only(envelope, ['cert', 'payload', 'sig'])
   const payload = env.payload
   if (!isObj(payload)) throw new ManifestError('malformed')
@@ -571,7 +570,7 @@ function verifyInner(envelope: unknown, o: VerifyOptions, state: ClientState): [
   if (payload.company_id !== expected.company_id || payload.person_id !== expected.person_id || payload.aud !== expected.aud) {
     throw new ManifestError('wrong_binding')
   }
-  if (versionLess(expected.client_version ?? '0.0.0', payload.min_client_version)) throw new ManifestError('client_too_old')
+  if (versionLess(clientVersion, payload.min_client_version)) throw new ManifestError('client_too_old')
   if (now + CLOCK_SKEW < payload.issued_at) throw new ManifestError('not_yet_valid')
   if (now - CLOCK_SKEW > payload.expires_at) throw new ManifestError('expired')
   if (payload.issued_at < cp.not_before || payload.expires_at > cp.not_after) throw new ManifestError('outside_cert_window')
