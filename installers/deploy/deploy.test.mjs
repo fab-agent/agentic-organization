@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -220,4 +220,35 @@ test('D5/D6: deploy.sh passes the config path untouched and keeps a home directo
   const o = spawnSync('/bin/sh', [sh, 'check', '--config', a], { encoding: 'utf8', env: { PATH: `${shim}:/usr/bin:/bin`, HOME: T } })
   assert.match(o.stdout, new RegExp(`HOME=${uhome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `), o.stdout + o.stderr)
   assert.match(o.stdout, /runuser -u alice|RUNUSER -u alice/)
+})
+
+// ═══ Codex round 3 (D12, D13) ════════════════════════════════════════════════
+test('D12: a custom state folder written with extra separators converges (install, check, reinstall, check)', { skip: isRoot }, () => {
+  const herdr = path.join(T, WIN ? 'herdr.exe' : 'herdr'); copyFileSync(process.execPath, herdr)
+  for (const [i, suffix] of ['', path.sep, path.sep + '.' + path.sep, path.sep + path.sep].entries()) {
+    const h = fresh(`d12-${i}`); const custom = path.join(T, `d12-state-${i}`) + suffix
+    const env = { ...h, THREEPA_WORKSPACE_DIR: custom }
+    const f = conf({ HERDR_FILE: path.basename(herdr), HERDR_SHA256: sha(herdr) }, `d12-${i}.conf`)
+    assert.equal(runIn(env, ['install', '--config', f]).rc, 0, JSON.stringify(suffix))
+    let r = runIn(env, ['check', '--config', f]); assert.equal(r.rc, 0, `${JSON.stringify(suffix)}: ${r.out}`)
+    assert.equal(runIn(env, ['install', '--config', f]).rc, 0)
+    assert.equal(runIn(env, ['check', '--config', f]).rc, 0)
+  }
+  // an unsafe state location is a configuration error, not a quiet pass
+  const bad = runIn({ ...fresh('d12-bad'), THREEPA_WORKSPACE_DIR: `${T}${path.sep}a${path.sep}..${path.sep}b` }, ['check', '--config', conf({}, 'd12-bad.conf')])
+  assert.equal(bad.rc, 2); assert.match(bad.out, /must not contain \.\./)
+})
+
+test('D13: an entry point or Herdr binary that lost its execute permission is non-compliant and is repaired', { skip: isRoot || WIN }, () => {
+  const h = fresh('d13'); const herdr = path.join(T, 'herdr'); copyFileSync(process.execPath, herdr)
+  const f = conf({ HERDR_FILE: 'herdr', HERDR_SHA256: sha(herdr) }, 'd13.conf')
+  assert.equal(runIn(h, ['install', '--config', f]).rc, 0)
+  const bin = path.join(h.HOME, '.local', 'bin'), lib = libOf(h)
+  for (const file of [path.join(bin, '3pa'), path.join(bin, 'herdr-fab'), path.join(lib, 'herdr')]) {
+    chmodSync(file, 0o644)
+    const r = runIn(h, ['check', '--config', f]); assert.equal(r.rc, 1, file + r.out); assert.match(r.out, /not executable/)
+    assert.equal(runIn(h, ['check', '--config', f, '--pins-only']).rc, 0, 'pins-only ignores it')
+    assert.equal(runIn(h, ['install', '--config', f]).rc, 0)
+    assert.notEqual(statSync(file).mode & 0o100, 0, file); assert.equal(runIn(h, ['check', '--config', f]).rc, 0)
+  }
 })

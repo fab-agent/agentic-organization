@@ -13,7 +13,7 @@
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { existsSync, lstatSync, readFileSync } from 'node:fs'
-import { checkUrl, defaultLocations, layout, renderLauncher, renderWrapper } from '../user/windows/install.mjs'
+import { checkUrl, defaultLocations, layout, renderLauncher, renderWrapper, resolveLocations } from '../user/windows/install.mjs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -74,8 +74,9 @@ function keyValue(dir, v, what = 'key') {
 
 function locations() {
   const dl = defaultLocations()
-  const state = process.env.THREEPA_WORKSPACE_DIR || dl.state
-  return { ...dl, state, ...layout(dl.prefix) }
+  // the same raw checks and the same cleaned form the installer writes into its scripts
+  const r = resolveLocations({ prefix: dl.prefix, state: process.env.THREEPA_WORKSPACE_DIR || dl.state, app: dl.app })
+  return { ...r, ...layout(r.prefix) }
 }
 
 /** What differs from the settings. Artifacts are compared by hash, the two entry scripts byte for
@@ -83,18 +84,20 @@ function locations() {
 function problems(cfg, dir) {
   const loc = locations(), bad = [], differs = []
   const read = (f) => { try { return lstatSync(f).isFile() ? readFileSync(f, 'utf8') : null } catch { return null } }
+  const runnable = (f) => WIN || (() => { try { return (lstatSync(f).mode & 0o100) !== 0 } catch { return false } })()
   const hashOf = (f) => { try { return lstatSync(f).isFile() ? sha(f) : null } catch { return null } }
   const pins = (s) => (s === null ? null : s.replace(/[\r\n ]/g, ''))
   const artifact = (label, file, want) => {
     const have = hashOf(file)
     if (have === null) bad.push(`${label} is not installed`)
+    else if (label === 'Herdr binary' && !runnable(file)) bad.push('the Herdr binary is not executable')
     else if (have !== want) { bad.push(`the installed ${label} is not the one in the settings`); differs.push(file) }
   }
   artifact('3pa bundle', loc.bundle, cfg.CLI_SHA256)
-  if (read(loc.wrapper) !== renderWrapper({ state: loc.state, app: loc.app, bundle: loc.bundle })) bad.push('the 3pa entry script is missing or differs')
+  if (read(loc.wrapper) !== renderWrapper({ state: loc.state, app: loc.app, bundle: loc.bundle }) || !runnable(loc.wrapper)) bad.push('the 3pa entry script is missing, differs or is not executable')
   if (cfg.HERDR_FILE) {
     artifact('Herdr binary', loc.herdr, cfg.HERDR_SHA256)
-    if (read(loc.launcher) !== renderLauncher({ base: checkUrl(cfg.BASE_URL, 'BASE_URL', false), state: loc.state, app: loc.app, wrapper: loc.wrapper, herdr: loc.herdr })) bad.push('the herdr-fab launcher is missing or differs')
+    if (read(loc.launcher) !== renderLauncher({ base: checkUrl(cfg.BASE_URL, 'BASE_URL', false), state: loc.state, app: loc.app, wrapper: loc.wrapper, herdr: loc.herdr }) || !runnable(loc.launcher)) bad.push('the herdr-fab launcher is missing, differs or is not executable')
   }
   if (pins(read(path.join(loc.state, 'root.pub'))) !== keyValue(dir, cfg.ROOT_PUB, 'ROOT_PUB')) bad.push('the pinned root key is missing or differs')
   if (cfg.RELEASE_PUB) {

@@ -30,8 +30,10 @@ without a tenant, and the product in use is not fixed.
    refuses to act for anyone else. `deploy.ps1` refuses SYSTEM.
 4. **`check` is the detection rule**: read-only; exit 0 only if the installed bundle's SHA-256, the
    Herdr binary's SHA-256 (when configured), the two entry scripts **byte for byte** against what
-   the installer would write (the Node installer exports its generators; a missing or damaged
-   `3pa` wrapper or `herdr-fab` launcher is non-compliant), and the pinned root key, release key
+   the installer would write (the Node installer exports its generators and its location resolution - the same raw checks and
+   cleaned form - so a state folder written with extra separators converges; a missing, damaged or
+   non-executable `3pa` wrapper or `herdr-fab` launcher, or a non-executable Herdr binary on POSIX,
+   is non-compliant and is repaired by `install`), and the pinned root key, release key
    and release URL equal the settings. URLs are compared in the installer's own normal form
    (WHATWG href) and keys must be canonical 32-byte base64: a malformed setting is a
    configuration error (exit 2), never "compliant". `--pins-only` checks the trust setup only.

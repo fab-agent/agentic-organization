@@ -266,6 +266,12 @@ export function defaultLocations(home = homedir(), env = process.env) {
     app: WIN ? P.join(env.APPDATA || P.join(home, 'AppData', 'Roaming'), 'herdr-app') : P.join(home, '.config', 'herdr-app'),
   }
 }
+/** The raw checks, then the cleaned form, exactly as `main` does - for callers that must compare
+ * with what an install writes. Throws on an unsafe location. */
+export function resolveLocations(raw) {
+  checkRaw('prefix', raw.prefix); checkRaw('state', raw.state); checkRaw('app home', raw.app)
+  return { prefix: clean(raw.prefix), state: clean(raw.state), app: clean(raw.app) }
+}
 export function renderWrapper({ state, app, bundle }) {
   return WIN
     ? ['@echo off', 'setlocal DisableDelayedExpansion', `if not defined THREEPA_WORKSPACE_DIR set "THREEPA_WORKSPACE_DIR=${state}"`, `if not defined HERDR_APP_HOME set "HERDR_APP_HOME=${app}"`, `node ${q(bundle)} %*`, 'exit /b %errorlevel%', ''].join('\r\n')
