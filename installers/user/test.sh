@@ -244,5 +244,16 @@ rm -rf "$T/i20" "$T/i20t"; mkdir -p "$T/i20/lib" "$T/i20t"; ln -s "$T/i20t" "$T/
 out="$(sh "$INST" --uninstall --prefix "$T/i20" --state-dir "$T/i20s" 2>&1)"; rc=$?
 [ $rc -eq 0 ] && printf %s "$out" | grep -q "a link" && [ -d "$T/i20t" ] && ok || bad "lib link: rc=$rc $out"
 
+# ── Codex round 6 (I21) ──────────────────────────────────────────────────────
+rm -rf "$T/i21"; mkdir -p "$T/i21/real"; echo B > "$T/i21/real/root.pub"; chmod 755 "$T/i21/real"
+BAD="$(printf '%s/i21/state-\377' "$T")"
+ln -s "$T/i21/real" "$BAD" 2>/dev/null
+expect_fail "invalid UTF-8 state path" "valid UTF-8" base --state-dir "$BAD"
+expect_fail "invalid UTF-8 purge path" "valid UTF-8" sh "$INST" --uninstall --purge-state --state-dir "$BAD"
+[ "$(cat "$T/i21/real/root.pub")" = "B" ] && [ "$(perm "$T/i21/real")" = "755" ] && ok || bad "invalid UTF-8 path reached the pinned key"
+# a real U+FFFD character is valid UTF-8 and is judged like any other name
+U2="$T/i21/state-$(printf '\357\277\275')"; ln -s "$T/i21/real" "$U2"
+expect_fail "U+FFFD state link" "link or not a folder" base --state-dir "$U2"
+
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

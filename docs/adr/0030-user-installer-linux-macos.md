@@ -60,7 +60,7 @@ workspace has been verified. ADR-0026 lists user installers as the third deliver
    owner, readable); an unreadable one is an error, never "nothing to do". `--dry-run` with
    `--uninstall` is refused rather than ignored. Sync history is kept without `--purge-state`,
    because deleting it would let an old workspace be replayed (ADR-0029). The Herdr app home is
-   never touched. Raw paths are judged before normalisation (control characters such as a trailing newline, and backslashes, are refused, since a shell would otherwise drop the newline and name a different folder). Paths are then normalised (repeated, trailing and `.` components dropped) so that
+   never touched. Raw paths are judged before normalisation (control characters such as a trailing newline, backslashes, and bytes that are not valid UTF-8 are refused - Node would otherwise read them as U+FFFD and inspect a different path than the shell writes to, since a shell would otherwise drop the newline and name a different folder). Paths are then normalised (repeated, trailing and `.` components dropped) so that
    `link/` and `link/.` cannot slip past the link check. Every file the installer publishes
    must be absent or a plain file beforehand; a folder or link there stops the install before
    anything changes.
@@ -83,7 +83,7 @@ workspace has been verified. ADR-0026 lists user installers as the third deliver
 
 ## Verification
 
-`installers/user/test.sh` (115 checks, run in CI on Linux and macOS): every refusal above,
+`installers/user/test.sh` (119 checks, run in CI on Linux and macOS): every refusal above,
 a hash mismatch leaving nothing behind, a full install, launcher flow and fail-closed
 behaviour, quote-in-path, root replacement, idempotence, uninstall and `--purge-state`.
 A CI step also installs the real bundle and runs `3pa workspace status`.

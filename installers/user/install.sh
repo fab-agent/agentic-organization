@@ -79,6 +79,13 @@ norm() {
 }
 # Judge the raw text first: command substitution below would silently drop a trailing newline,
 # turning the named folder into a different one.
+# Node receives these through the environment, which would silently turn bytes that are not
+# valid UTF-8 into U+FFFD and make it inspect a different path than the shell uses. Refuse
+# such paths (read as raw bytes through stdin) before anything else looks at them.
+for v in "$HOME" "$PREFIX" "$STATE_DIR" "$APP_HOME"; do
+  printf '%s' "$v" | node -e 'new TextDecoder("utf-8", { fatal: true }).decode(require("fs").readFileSync(0))' 2>/dev/null \
+    || die "paths must be valid UTF-8 text"
+done
 P_PREFIX="$PREFIX" P_STATE="$STATE_DIR" P_APP="$APP_HOME" node -e '
   for (const v of [process.env.P_PREFIX, process.env.P_STATE, process.env.P_APP]) {
     if (/[\x00-\x1f\x7f]/.test(v)) { process.stderr.write("paths must not contain control characters (newline, tab, ...)\n"); process.exit(1) }
