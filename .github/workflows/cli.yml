@@ -56,10 +56,9 @@ jobs:
           node dist/3pa.mjs --version
 
   cli-windows:
-    name: CLI tests (windows, exploratory)
+    name: CLI tests (windows)
     runs-on: windows-latest
     timeout-minutes: 15
-    continue-on-error: true
     defaults:
       run:
         working-directory: packages/cli
