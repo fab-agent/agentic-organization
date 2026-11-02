@@ -59,6 +59,7 @@ INST="$HOME/.local/lib/3pa/3pa.mjs"
 # a document signed by a different key is refused and changes nothing
 "$CLI_DIR/node_modules/.bin/tsx" scripts/release-sign.ts keygen --out "$T/keys2" >/dev/null
 sed 's/"seq":1/"seq":2/' "$T/body.json" > "$T/body2.json"
+rm -f "$T/srv/release.json" # the signer never overwrites
 npx tsx scripts/release-sign.ts sign --key "$T/keys2/release.key" --body "$T/body2.json" --out "$T/srv/release.json" >/dev/null
 "$HOME/.local/bin/3pa" self-update 2>&1 | grep -q "different key" || { echo "FAIL: wrong key accepted"; exit 1; }
 [ "$(sha "$INST")" = "$NEWSHA" ] || { echo "FAIL: bundle changed after a refused release"; exit 1; }
