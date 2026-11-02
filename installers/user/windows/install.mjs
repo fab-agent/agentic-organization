@@ -19,7 +19,7 @@ import {
   chmodSync, closeSync, copyFileSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync,
   readdirSync, realpathSync, renameSync, rmSync, rmdirSync, statSync, unlinkSync, writeFileSync,
 } from 'node:fs'
-import { homedir, tmpdir } from 'node:os'
+import { homedir, hostname, tmpdir } from 'node:os'
 import path from 'node:path'
 
 const WIN = process.platform === 'win32'
@@ -181,11 +181,14 @@ function writeText(dest, text, mode = 0o644) {
 const ALIASES = { WD: 'S-1-1-0', SY: 'S-1-5-18', BA: 'S-1-5-32-544', BU: 'S-1-5-32-545', AU: 'S-1-5-11', IU: 'S-1-5-4', NU: 'S-1-5-2', LS: 'S-1-5-19', NS: 'S-1-5-20', AN: 'S-1-5-7', CO: 'S-1-3-0', PS: 'S-1-5-10' }
 
 /** The ACEs of a folder as [type, sid] pairs, read as SDDL (locale independent). */
-function readAces(dir) {
+function readAces(dir, me) {
   // Only aliases whose SID is the same on every machine are known. LA/LG (local Administrator /
-  // Guest) are NOT: their SID belongs to the machine, and cannot be derived from a domain user's.
-  // They, and anything else unknown, are refused instead of guessed.
-  const aliases = ALIASES
+  // Guest) belong to the MACHINE: they can be resolved only for a LOCAL account, whose SID prefix
+  // is the machine's (a hosted runner's account is the local Administrator, so its own entry is
+  // printed as LA). For a domain account they are somebody else's and, like anything else unknown,
+  // are refused instead of guessed.
+  const dom = me.local ? /^(S-1-5-21-\d+-\d+-\d+)-\d+$/.exec(me.sid)?.[1] : undefined
+  const aliases = { ...ALIASES, ...(dom ? { LA: `${dom}-500`, LG: `${dom}-501` } : {}) }
   const out = P.join(tmpdir(), `3pa-acl-${process.pid}-${randomBytes(4).toString('hex')}.txt`)
   try {
     execFileSync(sys('icacls.exe'), [dir, '/save', out, '/q'], { stdio: 'ignore' })
@@ -208,8 +211,10 @@ function readAces(dir) {
  * interpreted, stops the install. */
 function privateAcl(dir) {
   if (!WIN) { chmodSync(dir, 0o700); return }
-  const sid = execFileSync(sys('whoami.exe'), ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8' }).trim().split(',')[1]?.replace(/"/g, '')
+  const fields = execFileSync(sys('whoami.exe'), ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8' }).trim().split(',').map((s) => s.replace(/"/g, ''))
+  const sid = fields[1]
   if (!sid || !/^S-1-[0-9-]+$/.test(sid)) die('could not determine the current user to restrict the state folder')
+  const me = { sid, local: (fields[0] ?? '').split('\\')[0].toLowerCase() === (process.env.COMPUTERNAME || hostname()).toLowerCase() }
   const keep = new Set([sid, 'S-1-5-18', 'S-1-5-32-544'])
   const file = P.join(tmpdir(), `3pa-acl-restore-${process.pid}-${randomBytes(4).toString('hex')}.txt`)
   try {
@@ -217,7 +222,7 @@ function privateAcl(dir) {
     writeFileSync(file, '\uFEFF' + `${P.basename(dir)}\r\n${sddl}\r\n\r\n`, 'utf16le')
     execFileSync(sys('icacls.exe'), [P.dirname(dir), '/restore', file, '/q'], { stdio: 'ignore' })
   } finally { rmSync(file, { force: true }) }
-  const aces = readAces(dir)
+  const aces = readAces(dir, me)
   const left = aces.filter(([, who]) => !keep.has(who))
   if (left.length) die(`the state folder still grants access to ${left.map(([, w]) => w).join(', ')}; nothing was installed`)
   if (!aces.some(([t, who]) => t === 'A' && who === sid)) die('the current user has no access to the state folder after restricting it')

@@ -46,8 +46,10 @@ program.
    pre-existing folder with explicit grants for Everyone or Users. The result is then **read back
    as SDDL** (locale independent): any other entry, or one the installer cannot interpret, stops
    the install. Only aliases whose SID is the same on every machine are interpreted; `LA`/`LG`
-   (local Administrator/Guest) are not, because their SID belongs to the machine and cannot be
-   derived from a domain user's, so they are refused rather than guessed. `whoami.exe` and
+   (local Administrator/Guest) belong to the machine: they are resolved only for a *local*
+   account, whose SID prefix is the machine's (a hosted CI runner's account is the local
+   Administrator, so its own entry is printed as `LA`); for a domain account they are another
+   principal and are refused rather than guessed. `whoami.exe` and
    `icacls.exe` are run by absolute path from System32, because a first CI run showed that a
    `whoami` from Git for Windows can come first on PATH and answers differently. The CLI cannot
    check mode bits there (ADR-0029) and does not try.
