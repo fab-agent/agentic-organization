@@ -181,7 +181,10 @@ function writeText(dest, text, mode = 0o644) {
 const ALIASES = { WD: 'S-1-1-0', SY: 'S-1-5-18', BA: 'S-1-5-32-544', BU: 'S-1-5-32-545', AU: 'S-1-5-11', IU: 'S-1-5-4', NU: 'S-1-5-2', LS: 'S-1-5-19', NS: 'S-1-5-20', AN: 'S-1-5-7', CO: 'S-1-3-0', PS: 'S-1-5-10' }
 
 /** The ACEs of a folder as [type, sid] pairs, read as SDDL (locale independent). */
-function readAces(dir) {
+function readAces(dir, userSid) {
+  // LA/LG are the local Administrator/Guest accounts: the current account's own domain/machine id plus -500/-501
+  const dom = /^(S-1-5-21-\d+-\d+-\d+)-\d+$/.exec(userSid)?.[1]
+  const aliases = { ...ALIASES, ...(dom ? { LA: `${dom}-500`, LG: `${dom}-501` } : {}) }
   const out = P.join(tmpdir(), `3pa-acl-${process.pid}-${randomBytes(4).toString('hex')}.txt`)
   try {
     execFileSync(sys('icacls.exe'), [dir, '/save', out, '/q'], { stdio: 'ignore' })
@@ -189,7 +192,7 @@ function readAces(dir) {
     const sddl = text.split(/\r?\n/).find((l) => l.includes('D:')) ?? ''
     const aces = []
     for (const m of sddl.matchAll(/\(([A-Z]+);[^;]*;[^;]*;[^;]*;[^;]*;([^)]+)\)/g)) {
-      const who = ALIASES[m[2]] ?? m[2]
+      const who = aliases[m[2]] ?? m[2]
       if (!/^S-1-[0-9-]+$/.test(who)) die(`the state folder has an access entry for "${m[2]}" that this installer cannot interpret; fix the folder's permissions by hand`)
       aces.push([m[1], who])
     }
@@ -209,10 +212,10 @@ function privateAcl(dir) {
   const keep = new Set([sid, 'S-1-5-18', 'S-1-5-32-544'])
   icacls(dir, '/inheritance:r')
   icacls(dir, '/grant:r', `*${sid}:(OI)(CI)F`)
-  for (const [, who] of readAces(dir)) if (!keep.has(who)) icacls(dir, '/remove', `*${who}`)
-  const left = readAces(dir).filter(([, who]) => !keep.has(who))
+  for (const [, who] of readAces(dir, sid)) if (!keep.has(who)) icacls(dir, '/remove', `*${who}`)
+  const left = readAces(dir, sid).filter(([, who]) => !keep.has(who))
   if (left.length) die(`the state folder still grants access to ${left.map(([, w]) => w).join(', ')}; nothing was installed`)
-  if (!readAces(dir).some(([t, who]) => t === 'A' && who === sid)) die('the current user has no access to the state folder after restricting it')
+  if (!readAces(dir, sid).some(([t, who]) => t === 'A' && who === sid)) die('the current user has no access to the state folder after restricting it')
 }
 
 function notElevated(allow) {
