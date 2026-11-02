@@ -11,7 +11,7 @@ ADR-0030 covers Linux and macOS with a POSIX shell script. Windows has no `sh`; 
 contract (nothing downloaded, hashes checked on the copy, keys pinned, unsafe locations
 refused, no recursive delete, fail-closed launcher) has to be kept with different file-system
 rules: no mode bits, case-insensitive paths, reserved device names, drive letters and UNC paths,
-alternate data streams, a `.cmd` launcher with its own quoting, and no replacing a running
+alternate data streams, a `.cmd` launcher with its own quoting (the POSIX scripts this installer also writes on Linux/macOS use single-quote escaping like install.sh), and no replacing a running
 program.
 
 ## Decision
@@ -29,7 +29,7 @@ program.
    `%APPDATA%\herdr-app` (the CLI uses the same defaults on Windows). *The Herdr app home on
    Windows is assumed; it must be confirmed against Herdr's own documentation or a real
    install before relying on the default - `--app-home` overrides it.*
-4. **Refuses an elevated prompt** (integrity level check), as install.sh refuses root: the
+4. **Refuses an elevated prompt** (integrity level read from `whoami /groups`: anything above medium-plus, i.e. high, system or protected, is refused; an unreadable level is also a refusal), as install.sh refuses root: the
    workspace is one person's, and an install from an administrator prompt would go into the wrong
    profile. `--allow-elevated` is the explicit override (hosted CI runners are elevated; so is a
    deliberate install into an administrator's own profile). It is a named flag, not an
@@ -40,8 +40,13 @@ program.
    component ending in a dot or space. Locations are compared **case-insensitively** after links,
    junctions and 8.3 short names are resolved (`realpath.native`); never a drive root, the
    home directory or a parent of it; bin, lib, state and app home must not overlap.
-6. **The state folder is private through its ACL**: the installer removes inheritance and
-   grants only the current user (by SID, via `icacls`; `whoami.exe` and `icacls.exe` are run by absolute path from System32, because a first CI run showed that a `whoami` from Git for Windows can come first on PATH and answers differently). The CLI cannot check mode bits there
+6. **The state folder is private through its ACL**: the installer removes inheritance, grants
+   the current user (by SID, via `icacls`), removes every other entry except SYSTEM and
+   Administrators, and then **reads the result back as SDDL** (locale independent): an entry
+   it cannot interpret or cannot remove stops the install. This also repairs a pre-existing folder
+   that had explicit grants for Everyone or Users. `whoami.exe` and `icacls.exe` are run by
+   absolute path from System32, because a first CI run showed that a `whoami` from Git for
+   Windows can come first on PATH and answers differently. The CLI cannot check mode bits there
    (ADR-0029) and does not try.
 7. **Launcher and wrapper are `.cmd` files.** Because a path can contain neither `"` nor `%`
    (decision 5), double-quoting is sufficient; the platform URL has `%` doubled. The launcher

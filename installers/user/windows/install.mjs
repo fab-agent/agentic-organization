@@ -19,7 +19,7 @@ import {
   chmodSync, closeSync, copyFileSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync,
   readdirSync, realpathSync, renameSync, rmSync, rmdirSync, statSync, unlinkSync, writeFileSync,
 } from 'node:fs'
-import { homedir, userInfo } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 
 const WIN = process.platform === 'win32'
@@ -177,20 +177,53 @@ function writeText(dest, text, mode = 0o644) {
   renameSync(tmp, dest); temps.delete(tmp)
 }
 
-/** Windows has no 0700: take the folder away from everyone but the current user. */
+/** Well-known SDDL aliases we may meet, as SIDs. Anything else is refused rather than guessed. */
+const ALIASES = { WD: 'S-1-1-0', SY: 'S-1-5-18', BA: 'S-1-5-32-544', BU: 'S-1-5-32-545', AU: 'S-1-5-11', IU: 'S-1-5-4', NU: 'S-1-5-2', LS: 'S-1-5-19', NS: 'S-1-5-20', AN: 'S-1-5-7', CO: 'S-1-3-0', PS: 'S-1-5-10' }
+
+/** The ACEs of a folder as [type, sid] pairs, read as SDDL (locale independent). */
+function readAces(dir) {
+  const out = P.join(tmpdir(), `3pa-acl-${process.pid}-${randomBytes(4).toString('hex')}.txt`)
+  try {
+    execFileSync(sys('icacls.exe'), [dir, '/save', out, '/q'], { stdio: 'ignore' })
+    const text = readFileSync(out, 'utf16le').replace(/^\uFEFF/, '')
+    const sddl = text.split(/\r?\n/).find((l) => l.includes('D:')) ?? ''
+    const aces = []
+    for (const m of sddl.matchAll(/\(([A-Z]+);[^;]*;[^;]*;[^;]*;[^;]*;([^)]+)\)/g)) {
+      const who = ALIASES[m[2]] ?? m[2]
+      if (!/^S-1-[0-9-]+$/.test(who)) die(`the state folder has an access entry for "${m[2]}" that this installer cannot interpret; fix the folder's permissions by hand`)
+      aces.push([m[1], who])
+    }
+    if (!aces.length) die('could not read the state folder\'s permissions')
+    return aces
+  } finally { rmSync(out, { force: true }) }
+}
+
+/** Windows has no 0700. The folder's permissions are rebuilt for the current user (plus SYSTEM and
+ * the Administrators group, which the system itself keeps), every other entry is removed, and the
+ * result is READ BACK: anything left over stops the install. */
 function privateAcl(dir) {
   if (!WIN) { chmodSync(dir, 0o700); return }
   const sid = execFileSync(sys('whoami.exe'), ['/user', '/fo', 'csv', '/nh'], { encoding: 'utf8' }).trim().split(',')[1]?.replace(/"/g, '')
   if (!sid || !/^S-1-[0-9-]+$/.test(sid)) die('could not determine the current user to restrict the state folder')
-  execFileSync(sys('icacls.exe'), [dir, '/inheritance:r', '/grant:r', `*${sid}:(OI)(CI)F`], { stdio: 'ignore' })
+  const icacls = (...a) => execFileSync(sys('icacls.exe'), a, { stdio: 'ignore' })
+  const keep = new Set([sid, 'S-1-5-18', 'S-1-5-32-544'])
+  icacls(dir, '/inheritance:r')
+  icacls(dir, '/grant:r', `*${sid}:(OI)(CI)F`)
+  for (const [, who] of readAces(dir)) if (!keep.has(who)) icacls(dir, '/remove', `*${who}`)
+  const left = readAces(dir).filter(([, who]) => !keep.has(who))
+  if (left.length) die(`the state folder still grants access to ${left.map(([, w]) => w).join(', ')}; nothing was installed`)
+  if (!readAces(dir).some(([t, who]) => t === 'A' && who === sid)) die('the current user has no access to the state folder after restricting it')
 }
 
 function notElevated(allow) {
   if (allow) return // explicit: CI runners and deliberate installs into an administrator's own profile
   if (WIN) {
-    let g = ''
+    let g
     try { g = execFileSync(sys('whoami.exe'), ['/groups'], { encoding: 'utf8' }) } catch { die('could not check whether this prompt is elevated; fix that, or pass --allow-elevated if you are sure') }
-    if (g.includes('S-1-16-12288')) die('run as the person who will use the workspace, not from an elevated (administrator) prompt')
+    // the mandatory integrity label: 4096 low, 8192 medium, 8448 medium+, 12288 high (elevated), 16384 system, 20480 protected
+    const m = g.match(/S-1-16-(\d+)/)
+    if (!m) die('could not read this prompt\'s integrity level; fix that, or pass --allow-elevated if you are sure')
+    if (Number(m[1]) > 8448) die('run as the person who will use the workspace, not from an elevated (administrator or system) prompt; --allow-elevated overrides this')
   } else if (process.getuid && process.getuid() === 0) die('run as the person who will use the workspace, not as root')
 }
 
@@ -199,6 +232,8 @@ const OURS = [/^root\.pub$/, /^state\.json$/, /^state\.json\.replaced-\d+$/, /^s
   /^release\.pub$/, /^release-url$/, /^release-state\.json$/, /^release-state\.json\.[0-9a-f]{12}\.tmp$/,
   /^\.release\.pub\.\d+\.tmp$/, /^\.release-url\.\d+\.tmp$/]
 
+/** Single-quote a value for /bin/sh (the generated POSIX scripts are code). */
+const sq = (s) => `'${s.replace(/'/g, "'\\''")}'`
 const q = (s) => `"${s}"` // paths cannot contain " or % (checkRaw), so this is safe in a .cmd file
 
 // ── main ─────────────────────────────────────────────────────────────────────
@@ -275,7 +310,9 @@ function main() {
 
   mkdirSync(o.state, { recursive: true }); privateAcl(o.state)
   publish(cliTmp, P.join(LIB, '3pa.mjs')); say(`installed 3pa bundle -> ${P.join(LIB, '3pa.mjs')}`)
-  writeText(wrapper, WIN ? ['@echo off', `if not defined THREEPA_WORKSPACE_DIR set "THREEPA_WORKSPACE_DIR=${o.state}"`, `if not defined HERDR_APP_HOME set "HERDR_APP_HOME=${o.app}"`, `node ${q(P.join(LIB, '3pa.mjs'))} %*`, ''].join('\r\n') : `#!/bin/sh\n[ -n "\${THREEPA_WORKSPACE_DIR:-}" ] || THREEPA_WORKSPACE_DIR='${o.state}'; export THREEPA_WORKSPACE_DIR\n[ -n "\${HERDR_APP_HOME:-}" ] || HERDR_APP_HOME='${o.app}'; export HERDR_APP_HOME\nexec node '${P.join(LIB, '3pa.mjs')}' "$@"\n`, 0o755)
+  writeText(wrapper, WIN
+    ? ['@echo off', 'setlocal DisableDelayedExpansion', `if not defined THREEPA_WORKSPACE_DIR set "THREEPA_WORKSPACE_DIR=${o.state}"`, `if not defined HERDR_APP_HOME set "HERDR_APP_HOME=${o.app}"`, `node ${q(P.join(LIB, '3pa.mjs'))} %*`, 'exit /b %errorlevel%', ''].join('\r\n')
+    : ['#!/bin/sh', `[ -n "\${THREEPA_WORKSPACE_DIR:-}" ] || THREEPA_WORKSPACE_DIR=${sq(o.state)}; export THREEPA_WORKSPACE_DIR`, `[ -n "\${HERDR_APP_HOME:-}" ] || HERDR_APP_HOME=${sq(o.app)}; export HERDR_APP_HOME`, `exec node ${sq(P.join(LIB, '3pa.mjs'))} "$@"`, ''].join('\n'), 0o755)
   say(`installed ${wrapper}`)
   writeText(P.join(o.state, 'root.pub'), rootPub + '\n'); say(`pinned root key -> ${P.join(o.state, 'root.pub')}`)
   if (relPub) {
@@ -286,11 +323,13 @@ function main() {
     publish(herdrTmp, herdrDest); say(`installed Herdr -> ${herdrDest}`)
     const url = base.replace(/%/g, '%%')
     writeText(launcher, WIN
-      ? ['@echo off', 'setlocal', `set "FABAGENT_BASE_URL=${url}"`, `set "THREEPA_WORKSPACE_DIR=${o.state}"`, `set "HERDR_APP_HOME=${o.app}"`,
+      ? ['@echo off', 'setlocal DisableDelayedExpansion', `set "FABAGENT_BASE_URL=${url}"`, `set "THREEPA_WORKSPACE_DIR=${o.state}"`, `set "HERDR_APP_HOME=${o.app}"`,
         `call ${q(wrapper)} workspace sync`,
         'if errorlevel 1 (', '  echo herdr-fab: the workspace could not be synced and verified; not starting Herdr. 1>&2', '  exit /b 1', ')',
         `${q(herdrDest)} %*`, 'exit /b %errorlevel%', ''].join('\r\n')
-      : `#!/bin/sh\nset -eu\nexport FABAGENT_BASE_URL='${base.replace(/'/g, "'\\''")}'\nexport THREEPA_WORKSPACE_DIR='${o.state}'\nexport HERDR_APP_HOME='${o.app}'\n'${wrapper}' workspace sync || { echo "herdr-fab: the workspace could not be synced and verified; not starting Herdr." >&2; exit 1; }\nexec '${herdrDest}' "$@"\n`, 0o755)
+      : ['#!/bin/sh', 'set -eu', `export FABAGENT_BASE_URL=${sq(base)}`, `export THREEPA_WORKSPACE_DIR=${sq(o.state)}`, `export HERDR_APP_HOME=${sq(o.app)}`,
+        `${sq(wrapper)} workspace sync || { echo "herdr-fab: the workspace could not be synced and verified; not starting Herdr." >&2; exit 1; }`,
+        `exec ${sq(herdrDest)} "$@"`, ''].join('\n'), 0o755)
     say(`installed launcher ${launcher}`)
   } else say('no Herdr binary given: installed the CLI and the root key only')
   say(`done. First start: ${herdrTmp ? 'herdr-fab' : '3pa workspace sync'} (it asks you to sign in). Add ${BIN} to your PATH if it is not there.`)

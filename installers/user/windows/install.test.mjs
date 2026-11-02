@@ -203,10 +203,45 @@ test('windows only: drive-letter paths, reserved names, streams, trailing dots, 
   assert.doesNotMatch(acl, /Everyone|BUILTIN\\Users|Authenticated Users/i, acl)
 })
 
+test('posix scripts: apostrophes, spaces and shell metacharacters in locations are data, never code', { skip: WIN || asRoot }, () => {
+  const l = loc()
+  const odd = { prefix: path.join(l.d, "it's p $(touch INJECTED) `x`"), state: path.join(l.d, "st';touch INJECTED;#"), app: path.join(l.d, 'a b&c') }
+  ok(run(base(odd, withHerdr)))
+  const env = { ...ENV, PATH: `${path.dirname(nodeBin)}${path.delimiter}${process.env.PATH}` }
+  const w = spawnSync(path.join(odd.prefix, 'bin', '3pa'), ['workspace', 'status'], { encoding: 'utf8', env, cwd: l.d })
+  assert.equal(w.status, 0, w.stderr); assert.match(w.stdout, /3pa-stub workspace status/)
+  const h = spawnSync(path.join(odd.prefix, 'bin', 'herdr-fab'), ['-e', 'console.log("HERDR-RAN " + process.env.HERDR_APP_HOME)'], { encoding: 'utf8', env, cwd: l.d })
+  assert.equal(h.status, 0, h.stderr); assert.ok(h.stdout.includes('HERDR-RAN ' + odd.app))
+  assert.ok(!existsSync(path.join(l.d, 'INJECTED')), 'a path was run as code')
+})
+
 test('windows only: an elevated prompt is refused unless --allow-elevated is given', { skip: !WIN }, () => {
   const l = loc()
   const elevated = spawnSync(path.join(process.env.SystemRoot, 'System32', 'whoami.exe'), ['/groups'], { encoding: 'utf8' }).stdout.includes('S-1-16-12288')
   const r = spawnSync(nodeBin, [INST, ...base(l)], { encoding: 'utf8', env: ENV }) // no flag
   if (elevated) { assert.notEqual(r.status, 0); assert.match(r.stdout + r.stderr, /elevated/); assert.ok(!existsSync(l.prefix)) }
   else assert.equal(r.status, 0, r.stdout + r.stderr)
+})
+
+test('windows only: .cmd files keep ! ^ & and spaces literal even under cmd /v:on', { skip: !WIN }, () => {
+  const l = loc(); const odd = { prefix: path.join(l.d, 'p!X!^&y z'), state: path.join(l.d, 's!X!'), app: path.join(l.d, 'a^b') }
+  ok(run(base(odd, withHerdr)))
+  for (const flagv of ['/v:on', '/v:off']) {
+    const w = spawnSync('cmd.exe', ['/d', flagv, '/c', path.join(odd.prefix, 'bin', '3pa.cmd'), 'workspace', 'status'], { encoding: 'utf8', env: { ...ENV, X: 'EXPANDED' } })
+    assert.match(w.stdout, /3pa-stub workspace status/, `${flagv}: ${w.stdout}${w.stderr}`)
+    const h = spawnSync('cmd.exe', ['/d', flagv, '/c', path.join(odd.prefix, 'bin', 'herdr-fab.cmd'), '-e', 'console.log("HERDR-RAN " + process.env.HERDR_APP_HOME)'], { encoding: 'utf8', env: { ...ENV, X: 'EXPANDED' } })
+    assert.ok(h.stdout.includes('HERDR-RAN ' + odd.app), `${flagv}: ${h.stdout}${h.stderr}`)
+  }
+})
+
+test('windows only: an existing state folder with explicit grants for other principals is rebuilt, or the install stops', { skip: !WIN }, () => {
+  const l = loc(); mkdirSync(l.state, { recursive: true })
+  const icacls = (...a) => spawnSync(path.join(process.env.SystemRoot, 'System32', 'icacls.exe'), a, { encoding: 'utf8' })
+  icacls(l.state, '/grant', '*S-1-1-0:(OI)(CI)F') // Everyone
+  icacls(l.state, '/grant', '*S-1-5-32-545:(OI)(CI)M') // Users
+  ok(run(base(l)))
+  const out = path.join(T, `acl-${n}.txt`); icacls(l.state, '/save', out, '/q')
+  const sddl = readFileSync(out, 'utf16le')
+  assert.doesNotMatch(sddl, /;;;WD\)|;;;BU\)|;;;AU\)|S-1-1-0\)|S-1-5-32-545\)/, sddl)
+  assert.ok(existsSync(path.join(l.state, 'root.pub')))
 })
