@@ -52,6 +52,7 @@ Format: a [MADR](https://adr.github.io/madr/) derivative — see [`0000-template
 | [0033](0033-deployment-contract.md) | Deployment contract (vendor-neutral MDM runbook) | proposed |
 | [0034](0034-monitoring-summary.md) | Monitoring summary (one screen from existing views) | proposed |
 | [0035](0035-client-drift-report.md) | Client drift report (a diagnostic signal, not attestation) | proposed |
+| [0036](0036-layout-activation.md) | Showing the person their layout (layout activation) | proposed |
 
 ## Adding a new ADR
 

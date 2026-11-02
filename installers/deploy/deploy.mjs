@@ -96,7 +96,7 @@ function problems(cfg, dir) {
     if (label === 'Herdr binary' && !runnable(file)) bad.push('the Herdr binary is not executable')
   }
   artifact('3pa bundle', loc.bundle, cfg.CLI_SHA256)
-  if (read(loc.wrapper) !== renderWrapper({ state: loc.state, app: loc.app, bundle: loc.bundle }) || !runnable(loc.wrapper)) bad.push('the 3pa entry script is missing, differs or is not executable')
+  if (read(loc.wrapper) !== renderWrapper({ state: loc.state, app: loc.app, bundle: loc.bundle, herdr: cfg.HERDR_FILE ? loc.herdr : undefined }) || !runnable(loc.wrapper)) bad.push('the 3pa entry script is missing, differs or is not executable')
   if (cfg.HERDR_FILE) {
     artifact('Herdr binary', loc.herdr, cfg.HERDR_SHA256)
     if (read(loc.launcher) !== renderLauncher({ base: checkUrl(cfg.BASE_URL, 'BASE_URL', false), state: loc.state, app: loc.app, wrapper: loc.wrapper, herdr: loc.herdr }) || !runnable(loc.launcher)) bad.push('the herdr-fab launcher is missing, differs or is not executable')

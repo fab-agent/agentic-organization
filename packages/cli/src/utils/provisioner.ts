@@ -105,6 +105,9 @@ export interface SyncOptions {
 
 export interface SyncResult {
   status: 'updated' | 'unchanged'
+  /** The layout id differs from the one this machine had (or there was none): the person should be
+   * shown it once (ADR-0036). A change of CONTENT alone is not this; Herdr reloads those live. */
+  layoutChanged: boolean
   generation: number
   epoch: number
   layout: string
@@ -664,7 +667,7 @@ async function runSync(o: SyncOptions, base: string, now: () => number, fsOps: F
     const summary = { generation: payload.generation, epoch: payload.epoch, layout: payload.layout.id, mods: payload.mods.map((m) => m.name) }
     if (state.installed?.content_digest === cd && intact(o.appHome).length === 0) {
       persist({ ...accepted, installed: installedNow })
-      return { status: 'unchanged' as const, ...summary }
+      return { status: 'unchanged' as const, layoutChanged: false, ...summary }
     }
 
     // 7. Download and verify into staging; the live workspace is untouched until done.
@@ -687,7 +690,7 @@ async function runSync(o: SyncOptions, base: string, now: () => number, fsOps: F
       if (e instanceof StateError) throw e
       throw new ProvisionError('state_not_recorded', 'the workspace was updated, but the sync state could not be saved; run the sync again')
     }
-    return { status: 'updated' as const, ...summary }
+    return { status: 'updated' as const, layoutChanged: managed.layout?.name !== payload.layout.id, ...summary }
   })
 }
 

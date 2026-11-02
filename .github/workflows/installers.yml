@@ -11,6 +11,7 @@ on:
       - "docs/adr/0031-*.md"
       - "docs/adr/0032-*.md"
       - "docs/adr/0033-*.md"
+      - "docs/adr/0036-*.md"
       - "packages/cli/**"
       - ".github/workflows/installers.yml"
   pull_request:

@@ -4,6 +4,7 @@
  *   3pa workspace sync   [--base URL] [--company ID] [--root-pub FILE|BASE64]
  *                        [--app-home DIR] [--oidc ID_TOKEN] [--adopt] [--re-enroll]
  *   3pa workspace status [--app-home DIR]
+ *   3pa workspace activate [--wait SECONDS] [--herdr-bin PATH] [--quiet]   (show the new layout, ADR-0036)
  *   3pa workspace report [--base URL] [--company ID] [--app-home DIR]   (drift as counts, ADR-0035)
  *
  * `sync` signs in (the web token stays in memory), asks the platform for the manifest of
@@ -19,6 +20,7 @@ import { join } from 'node:path'
 import * as p from '@clack/prompts'
 import chalk from 'chalk'
 
+import { ActivationError, MAX_WAIT_SECONDS, activate, requestActivation } from '../utils/activation.js'
 import { ReportError, sendReport } from '../utils/drift-report.js'
 import { ProvisionError, checkBaseUrl, scanDrift, syncWorkspace } from '../utils/provisioner.js'
 import { StateError, loadState, workspaceStateDir } from '../utils/workspace-state.js'
@@ -69,7 +71,8 @@ export async function workspace(args: string[]): Promise<void> {
   if (sub === 'status') return status(args.slice(1))
   if (sub === 'sync') return sync(args.slice(1))
   if (sub === 'report') return report(args.slice(1))
-  console.log('  ' + chalk.bold('Kullanım:') + '  3pa workspace sync | status | report')
+  if (sub === 'activate') return activateCmd(args.slice(1))
+  console.log('  ' + chalk.bold('Kullanım:') + '  3pa workspace sync | status | report | activate')
   if (sub) process.exit(1)
 }
 
@@ -95,6 +98,19 @@ async function sync(args: string[]): Promise<void> {
       chalk.green(r.status === 'updated' ? 'Workspace updated' : 'Workspace already up to date') +
         chalk.dim(`  generation ${r.generation}, layout ${r.layout}, mods: ${r.mods.join(', ') || '-'}`),
     )
+    // A layout the person has not been shown yet (ADR-0036): remember it, and switch now if Herdr is open.
+    if (r.layoutChanged && !args.includes('--no-activate')) {
+      try {
+        requestActivation(workspaceStateDir(), r.layout)
+        const bin = herdrBin(args)
+        if (bin) {
+          const out = await activate({ stateDir: workspaceStateDir(), appHome: appHome(args), herdrBin: bin })
+          console.log(chalk.dim(out === 'switched' ? `  now showing the ${r.layout} layout` : out === 'already' ? `  already showing the ${r.layout} layout` : `  the ${r.layout} layout will be shown when Herdr starts`))
+        }
+      } catch (e) {
+        console.log(chalk.dim(`  layout not switched [${e instanceof ActivationError ? e.code : 'error'}]; it stays installed`))
+      }
+    }
     // Best effort and never part of the sync's result: a report that cannot be sent is one dim line.
     if (!args.includes('--no-report') && !process.env.THREEPA_NO_REPORT) {
       try {
@@ -114,6 +130,26 @@ async function sync(args: string[]): Promise<void> {
         : known ? (e as Error).message
         : process.env.THREEPA_DEBUG ? (e as Error).message : 'Unexpected error (set THREEPA_DEBUG=1 for details).')
     p.cancel(chalk.red(hint) + chalk.dim(`  [${code}]`))
+    process.exit(1)
+  }
+}
+
+/** The Herdr binary this install put in place: set by the wrapper the installer wrote, or given. */
+function herdrBin(args: string[]): string | undefined {
+  return flag(args, '--herdr-bin') || process.env.THREEPA_HERDR_BIN || undefined
+}
+
+async function activateCmd(args: string[]): Promise<void> {
+  try {
+    const bin = herdrBin(args)
+    if (!bin) throw new ActivationError('herdr_bin_missing', 'no Herdr binary known (the installer sets THREEPA_HERDR_BIN)')
+    const wait = Number(flag(args, '--wait') ?? 0)
+    if (!Number.isFinite(wait) || wait < 0 || wait > MAX_WAIT_SECONDS) throw new ActivationError('bad_wait')
+    const out = await activate({ stateDir: workspaceStateDir(), appHome: appHome(args), herdrBin: bin, waitSeconds: wait })
+    const quiet = args.includes('--quiet')
+    if (!quiet) console.log('  ' + ({ nothing: 'Nothing to switch.', switched: 'Layout switched.', already: 'That layout is already shown.', no_window: 'Herdr is not open; the switch stays pending.', failed: 'The switch did not take; it stays pending.' } as const)[out])
+  } catch (e) {
+    console.error(chalk.red(`  activate: ${e instanceof ActivationError ? e.code : 'error'}`))
     process.exit(1)
   }
 }
