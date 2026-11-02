@@ -1,19 +1,25 @@
 import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { closeSync, existsSync, fstatSync, linkSync, lstatSync, openSync, readSync, readdirSync, renameSync, rmSync, utimesSync } from 'node:fs'
+import { closeSync, fstatSync, lstatSync, openSync, readSync, readdirSync, renameSync, rmSync, utimesSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 
 import { writeFileAtomic } from './fsutil.js'
 import { ensurePrivateDir } from './workspace-state.js'
 
-const FILE = 'activation.json'
-/** The id of the NEWEST request ever made, kept after the request itself has been taken: a worker
- * that still holds an older one can tell it is no longer wanted. */
-const HEAD = 'activation.head'
-const CLAIM = /^activation\.claimed\.[0-9a-f]{16}$/
+/**
+ * Storage: every request is its OWN immutable file, `activation.<state>.<key>`, with
+ * `<key>` = 13 digits of milliseconds + '-' + 16 hex (so names sort in the order requests were made).
+ * There is no shared mutable record, so no two writers can interleave into a half state:
+ *   req    a request nobody has taken
+ *   claim  taken by a worker (atomic rename req -> claim)
+ *   done   honoured or superseded; kept as a marker so that "newer" can still be seen later
+ * The NEWEST key among all files, whatever its state, is the request that counts.
+ */
 const NAME = /^[a-z0-9][a-z0-9._-]{0,63}$/
 const ID = /^[0-9a-f]{16}$/
+const FILE_RE = /^activation\.(req|claim|done)\.(\d{13})-([0-9a-f]{16})$/
 const MAX_BYTES = 4096
+const KEEP_MARKERS = 8
 export const PENDING_MAX_AGE_MS = 7 * 24 * 3600 * 1000
 /** A claim older than this was left by a worker that died (a run is bounded far below it). */
 export const STALE_CLAIM_MS = 5 * 60 * 1000
@@ -33,26 +39,38 @@ export class ActivationError extends Error {
   }
 }
 
+type State = 'req' | 'claim' | 'done'
+interface Entry { state: State; key: string; ts: number; id: string; path: string }
+const keyOf = (ts: number, id: string) => `${String(ts).padStart(13, '0')}-${id}`
+const pathOf = (dir: string, state: State, key: string) => join(dir, `activation.${state}.${key}`)
+
+/** Every request file of the folder, oldest first. Anything else in the folder is ignored. */
+function entries(stateDir: string): Entry[] {
+  const out: Entry[] = []
+  for (const name of readdirSync(stateDir)) {
+    const m = FILE_RE.exec(name)
+    if (m) out.push({ state: m[1] as State, key: `${m[2]}-${m[3]}`, ts: Number(m[2]), id: m[3]!, path: join(stateDir, name) })
+  }
+  return out.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+}
+
+/** Keep the newest few files (the markers); the rest are history. */
+function prune(stateDir: string): void {
+  const all = entries(stateDir)
+  for (const e of all.slice(0, Math.max(0, all.length - KEEP_MARKERS))) rmSync(e.path, { force: true })
+}
+
 export function requestActivation(stateDir: string, layout: string, now = Date.now()): void {
   if (!NAME.test(layout)) throw new ActivationError('bad_layout')
   ensurePrivateDir(stateDir)
-  const rec: Pending = { v: 1, id: randomBytes(8).toString('hex'), layout, requested_at: now }
-  const text = JSON.stringify(rec)
-  // Head first: a worker that claims the new request already sees it as the newest, and a worker
-  // holding an older one sees it superseded before the new request file even exists.
-  writeFileAtomic(join(stateDir, HEAD), text)
-  writeFileAtomic(join(stateDir, FILE), text)
-}
-
-/** The newest request's id, or null when unknown (no head, damaged, untrusted folder). */
-function headId(stateDir: string, now: number): string | null {
-  return parse(readSmall(join(stateDir, HEAD)), now)?.id ?? null
-}
-
-/** Is this still the newest request? An unknown head counts as "yes" only for a request that
- * predates the head file (none exist yet), so unknown means no: the caller does nothing. */
-function isNewest(stateDir: string, id: string, now: number): boolean {
-  return headId(stateDir, now) === id
+  // never older than a request already on file (a clock that stepped back must not make a new
+  // request look superseded)
+  const newest = entries(stateDir).at(-1)
+  const ts = Math.max(now, newest ? newest.ts + 1 : 0)
+  const id = randomBytes(8).toString('hex')
+  const rec: Pending = { v: 1, id, layout, requested_at: ts }
+  writeFileAtomic(pathOf(stateDir, 'req', keyOf(ts, id)), JSON.stringify(rec))
+  prune(stateDir)
 }
 
 /** Reads at most MAX_BYTES of a regular file without following a link; null on anything else. */
@@ -77,15 +95,18 @@ function readSmall(path: string): string | null {
   }
 }
 
-function parse(raw: string | null, now: number): Pending | null {
+/** The record in an entry's file, only if its content agrees with its name. */
+function parse(e: Entry, now: number): Pending | null {
+  const raw = readSmall(e.path)
   if (raw === null) return null
   let j: unknown
   try { j = JSON.parse(raw) } catch { return null }
   if (typeof j !== 'object' || j === null || Array.isArray(j)) return null
   const o = j as Record<string, unknown>
   if (Object.keys(o).length !== 4 || o.v !== 1) return null
-  if (typeof o.id !== 'string' || !ID.test(o.id) || typeof o.layout !== 'string' || !NAME.test(o.layout)) return null
-  if (typeof o.requested_at !== 'number' || !Number.isSafeInteger(o.requested_at) || o.requested_at < 0) return null
+  if (typeof o.id !== 'string' || !ID.test(o.id) || o.id !== e.id) return null
+  if (typeof o.layout !== 'string' || !NAME.test(o.layout)) return null
+  if (typeof o.requested_at !== 'number' || !Number.isSafeInteger(o.requested_at) || o.requested_at !== e.ts) return null
   if (now - o.requested_at > PENDING_MAX_AGE_MS || o.requested_at > now + FUTURE_SKEW_MS) return null
   return { v: 1, id: o.id, layout: o.layout, requested_at: o.requested_at }
 }
@@ -100,36 +121,36 @@ function trusted(stateDir: string): boolean {
   }
 }
 
-/** The pending request, or null: absent, damaged, unknown shape, older than a week, or in a folder
- * that is not this user's private one all mean "nothing to do" (a record must never turn into a
- * switch to an arbitrary name). */
+/** The request waiting to be served: the NEWEST request, if nobody has taken it. Absent, damaged,
+ * expired, in an untrusted folder, or superseded by a taken/served newer one all mean "nothing". */
 export function loadPending(stateDir: string, now = Date.now()): Pending | null {
   if (!trusted(stateDir)) return null
-  return parse(readSmall(join(stateDir, FILE)), now)
+  const newest = entries(stateDir).at(-1)
+  return newest && newest.state === 'req' ? parse(newest, now) : null
 }
 
-export interface Claim { path: string; pending: Pending; stateDir: string }
+export interface Claim { path: string; key: string; pending: Pending; stateDir: string }
 
-/** Put back claims left by workers that died (rename = atomic; a newer request wins). */
+/** Is `key` still the newest request of the folder (nothing newer, in any state)? */
+function isNewest(stateDir: string, key: string): boolean {
+  const newest = entries(stateDir).at(-1)
+  return !newest || newest.key <= key
+}
+
+/** Give back claims left by workers that died - if they are still the newest request. */
 function recoverStale(stateDir: string, now: number): void {
-  for (const name of readdirSync(stateDir)) {
-    if (!CLAIM.test(name)) continue
-    const path = join(stateDir, name)
+  for (const e of entries(stateDir)) {
+    if (e.state !== 'claim') continue
     try {
-      const st = lstatSync(path)
-      if (!st.isFile() || now - st.mtimeMs < STALE_CLAIM_MS) continue
-      const old = parse(readSmall(path), now)
-      // restored only if it is still the newest request and no newer file is waiting
-      if (old && isNewest(stateDir, old.id, now)) {
-        try { linkSync(path, join(stateDir, FILE)) } catch { /* a newer request is there: it wins */ }
-      }
-      rmSync(path, { force: true })
+      if (now - lstatSync(e.path).mtimeMs < STALE_CLAIM_MS) continue
+      if (isNewest(stateDir, e.key) && parse(e, now)) renameSync(e.path, pathOf(stateDir, 'req', e.key))
+      else rmSync(e.path, { force: true })
     } catch { /* gone already */ }
   }
 }
 
-/** Take the request for this worker: one atomic rename, so of several workers exactly one gets it
- * and a request written afterwards is a different file that nobody here can remove. */
+/** Take the newest request for this worker: one atomic rename. Of several workers exactly one gets
+ * it; older requests are superseded and removed. */
 export function claim(stateDir: string, now = Date.now()): Claim | null {
   if (!trusted(stateDir)) return null
   recoverStale(stateDir, now)
@@ -137,27 +158,37 @@ export function claim(stateDir: string, now = Date.now()): Claim | null {
 }
 
 function claimNow(stateDir: string, now: number): Claim | null {
-  const path = join(stateDir, `activation.claimed.${randomBytes(8).toString('hex')}`)
+  const all = entries(stateDir)
+  const newest = all.at(-1)
+  if (!newest || newest.state !== 'req') return null
+  for (const old of all) if (old.state === 'req' && old.key < newest.key) rmSync(old.path, { force: true }) // superseded
+  const path = pathOf(stateDir, 'claim', newest.key)
   try {
-    renameSync(join(stateDir, FILE), path)
+    renameSync(newest.path, path)
   } catch {
-    return null // nothing pending, or another worker took it
+    return null // another worker took it
   }
   try { utimesSync(path, now / 1000, now / 1000) } catch { /* only affects staleness */ }
-  const pending = parse(readSmall(path), now)
+  const e: Entry = { ...newest, state: 'claim', path }
+  const pending = parse(e, now)
   if (!pending) {
     rmSync(path, { force: true })
     return null
   }
-  return { path, pending, stateDir }
+  return { path, key: newest.key, pending, stateDir }
 }
 
-/** Done: the claim is removed. Not done: it goes back unless a newer request already exists. */
-export function release(c: Claim, done: boolean, now = Date.now()): void {
-  if (!done && isNewest(c.stateDir, c.pending.id, now)) {
-    try { linkSync(c.path, join(c.stateDir, FILE)) } catch { /* a newer request wins, or the folder is gone */ }
+/** Done (served, or no longer wanted): the claim stays as a marker, so that a request made
+ * after it is recognisably newer. Not done: it goes back - unless something newer exists. */
+export function release(c: Claim, done: boolean): void {
+  try {
+    if (!done && isNewest(c.stateDir, c.key)) renameSync(c.path, pathOf(c.stateDir, 'req', c.key))
+    else if (done) renameSync(c.path, pathOf(c.stateDir, 'done', c.key))
+    else rmSync(c.path, { force: true })
+  } catch {
+    rmSync(c.path, { force: true })
   }
-  rmSync(c.path, { force: true })
+  try { prune(c.stateDir) } catch { /* history only */ }
 }
 
 export interface Ran { code: number | null; stdout: string }
@@ -241,7 +272,7 @@ export async function activate(o: ActivateOptions): Promise<Outcome> {
     if (!stillWanted()) { done = true; return 'nothing' } // expired while waiting
     if (shown === layout) { done = true; return 'already' }
     // a newer request exists (waiting, or already taken by another worker): it decides
-    if (existsSync(join(o.stateDir, FILE)) || !isNewest(o.stateDir, mine.pending.id, wall())) { done = true; return 'superseded' }
+    if (!isNewest(o.stateDir, mine.key)) { done = true; return 'superseded' }
     const sw = await run(o.herdrBin, ['do', 'layout.switch', '--name', layout], env, SWITCH_BUDGET_MS - 10_000)
     if (sw.code !== 0) return 'failed'
     const after = await shownLayout(o, run, env, 10_000)
@@ -249,7 +280,7 @@ export async function activate(o: ActivateOptions): Promise<Outcome> {
     done = true
     return 'switched'
   } finally {
-    release(mine, done, wall())
+    release(mine, done)
   }
 }
 

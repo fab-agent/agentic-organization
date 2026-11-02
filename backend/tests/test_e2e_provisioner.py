@@ -309,14 +309,15 @@ def test_without_an_open_window_the_switch_waits_and_the_sync_still_succeeds(liv
     r = sync(live, herdr=herdr)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "will be shown when Herdr starts" in r.stdout
-    pending = json.loads((live["tmp"] / "state" / "activation.json").read_text())
-    assert pending["layout"] == "finance-v2"
+    (req,) = list((live["tmp"] / "state").glob("activation.req.*"))
+    assert json.loads(req.read_text())["layout"] == "finance-v2"
     # later, with the window open, the explicit command does it
     herdr2, log, shown = _fake_herdr(live["tmp"])
     out = sync(live, "--quiet", sub="activate", herdr=herdr2)
     assert out.returncode == 0, out.stdout + out.stderr
     assert shown.read_text() == "finance-v2"
-    assert not (live["tmp"] / "state" / "activation.json").exists()
+    assert not list((live["tmp"] / "state").glob("activation.req.*"))
+    assert not list((live["tmp"] / "state").glob("activation.claim.*"))
 
 
 def test_a_wrong_herdr_path_never_fails_the_sync(live):

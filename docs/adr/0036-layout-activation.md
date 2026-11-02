@@ -25,27 +25,29 @@ role layout themselves. Facts about Herdr, read from the pinned source of `herdr
    `<herdr> do layout.switch --name <id>` with `HERDR_APP_HOME` set, as an argument vector (no shell),
    with timeouts. It never edits `shared.json`, never signals or restarts Herdr.
 2. **Once per change, not on every sync.** `sync` reports `layoutChanged` when the installed layout id
-   differs from the one the machine had (a first install counts). Only then a small **pending record**
-   (`activation.json` in the private state folder: unique request id, layout name, time) is written. A change of the layout
-   file's *content* is not a layout change: Herdr reloads those live. A person who later switches to
-   another layout on purpose is not fought: the record is removed once it has been honoured, and an
-   unanswered one expires after 7 days.
-3. **One worker serves a request; a newer request is never lost.** A worker **claims** the record by one
-   atomic rename (`activation.json` -> `activation.claimed.<random>`): of several workers (a launcher
-   started three times, a sync and a launcher) exactly one gets it and the others stop at once, so the
-   same request is never switched twice and waiting workers do not pile up. A request written afterwards
-   is a different file that no other worker can remove. A claim that is given back (no window, refused
-   switch) is restored with a hard link, which fails if a newer request already exists - the newer one
-   wins. A small **head** file (`activation.head`) keeps the id of the newest request ever made, also
-   after that request was taken or served; a request is written head first, then the request file. Just
-   before the switch - and before giving a claim back - a worker checks that its request is still the
-   head: if a newer one exists (waiting, claimed or already served by another worker) it is `superseded`
-   and the older layout is neither switched to nor put back. (A request arriving in the instant between
-   that check and the switch is served by its own worker right after.) A claim whose worker died is
-   restored once it is 5 minutes old, by **any** worker's ordinary entry (before it looks for work), and
-   only if it is still the newest request. The record and its folder are trusted only if the folder is the caller's
-   own private one (not a link, not shared; on Windows the state folder's ACL is the installer's job,
-   ADR-0032); the file is read without following a link and at most 4 KiB.
+   differs from the one the machine had (a first install counts). Only then a request is recorded in the
+   private state folder. A change of the layout file's *content* is not a layout change: Herdr reloads
+   those live. A person who later switches to another layout on purpose is not fought: a request is
+   served once, and an unanswered one expires after 7 days.
+3. **Requests are immutable files; the newest key counts.** Each request is its own file,
+   `activation.<state>.<ms>-<random>` (13 digits of milliseconds, so names sort by the time they were
+   made), written atomically and never edited. There is no shared record two writers could interleave
+   into, so no coordination between writers is needed: whatever order they finish in, the file with the
+   greatest key is the newest. A new request is never given a time below the newest key on file (a clock
+   that stepped back cannot make it look old). States: `req` (waiting), `claim` (taken by a worker),
+   `done` (served or superseded). A worker **claims** the newest `req` by one atomic rename: of several
+   workers (a launcher started three times, a sync and a launcher) exactly one gets it and the others stop
+   at once, so a request is never switched twice and waiting workers do not pile up; older `req` files are
+   superseded and removed. A `claim` that is given back (no window, refused switch) becomes `req` again
+   only if it is still the newest key of **any** state; otherwise it is dropped. Before the switch the
+   worker checks the same, so a newer request - waiting, claimed or already served - makes it
+   `superseded`: the older layout is neither switched to nor put back. (A request made in the instant
+   between that check and the switch is served by its own worker right after.) `done` files are kept as
+   markers, only the newest 8 files are retained. A claim whose worker died is restored once it is 5
+   minutes old, by **any** worker's ordinary entry (before it looks for work), and only if it is still
+   the newest. A file is trusted only if its name and its content agree (id and time), the folder is the
+   caller's own private one (not a link, not shared; on Windows the state folder's ACL is the installer's
+   job, ADR-0032), and it is read without following a link and at most 4 KiB.
 4. **Honoured only when it can be verified.** With a window open the switch is done and `status` is read
    again; only if the window now shows the layout is the record cleared. A refusal, or a window that says
    yes but does not show it, keeps the record (`failed`). No window means the record stays (`no_window`).
