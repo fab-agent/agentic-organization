@@ -9,6 +9,7 @@ bounded by the company id given by the caller, whose right to see it is decided 
 from __future__ import annotations
 
 import logging
+import re
 import time
 from datetime import datetime, timedelta
 
@@ -35,6 +36,15 @@ TOP_AGENTS = 5
 
 def worst(statuses: list[str]) -> str:
     return max(statuses, key=lambda s: ORDER[s]) if statuses else "unknown"
+
+
+_CODE = re.compile(r"^[a-z0-9_]{1,48}$")
+
+
+def _safe_code(text: str) -> str:
+    """Only a short identifier-shaped code is ever shown; anything else (a path, a message, key
+    material) is replaced by a fixed code."""
+    return text if _CODE.fullmatch(text) else "signing_unavailable"
 
 
 def _guard(name: str, fn):
@@ -84,11 +94,15 @@ def _audit(company_id: str, deep: bool) -> dict:
 
 def _gateway(company_id: str, now: datetime) -> dict:
     day, month = now.strftime("%Y-%m-%d"), now.strftime("%Y-%m")
-    agents = select(Personnel.id).where(Personnel.company_id == company_id)
     with get_session() as session:
+        # A row belongs to the company recorded ON THE ROW when it was written. A row with no
+        # company (legacy) has no proof of ownership and is left out rather than attributed to
+        # whichever company the persona belongs to today; a persona that changed company keeps its
+        # past usage with the company that incurred it. (A row spans a period and is not split if
+        # the persona moves mid-period: a limit of the writer, noted in ADR-0034.)
         rows = session.exec(
             select(GatewayUsage).where(
-                GatewayUsage.persona_id.in_(agents),
+                GatewayUsage.company_id == company_id,
                 GatewayUsage.period.in_([day, month]),
             )
         ).all()
@@ -151,14 +165,15 @@ def _workspace(company_id: str, now_s: int) -> dict:
     status = "ok"
     try:
         signer = ws.load_signer(now_s)
-        not_after = int(signer.cert.get("not_after", 0))
+        # the verified payload of the certificate envelope {payload, sig}
+        not_after = int(signer.cert["payload"]["not_after"])
         out.update(signer="ok", epoch=signer.epoch, crl_number=signer.crl_number)
         out["signing_cert_days_left"] = max(0, (not_after - now_s) // 86400)
         if not_after - now_s < CERT_WARN_SECONDS:
             status = "warn"
     except ws.WorkspaceUnavailable as e:
         # the stable code only; the reason text could name a file
-        out.update(signer="unavailable", reason=str(e)[:48])
+        out.update(signer="unavailable", reason=_safe_code(str(e)))
         status = "fail"
     with get_session() as session:
         states = session.exec(

@@ -27,19 +27,27 @@ on one screen, explicitly without inventing a metrics stack.
      truncation and rewrite, the thing a self-consistent rebuilt chain defeats). A chain with events
      but no anchor is `warn`. The full re-hash reads every event, so it runs only with `deep=true`;
      otherwise `verified` is `null` ("not checked in this request"), never "true".
-   - `gateway`: today and this month, requests and tokens, summed over **this company's** agents
-     only, with the top agents of the day.
+   - `gateway`: today and this month, requests and tokens, from the usage rows **recorded for this
+     company** (the company on the row, written with it). A row with no recorded company (legacy)
+     has no proof of ownership and is left out, not attributed to whatever company the persona
+     belongs to today; a persona that changed company keeps its past usage with the company that
+     incurred it. A row spans a period and is not split if a persona moves mid-period (a limit of
+     the writer, `gateway_limits.record_usage`), with the top agents of the day.
    - `eval`: the last 30 days of stored diagnoses of this company, with the stage-1 suspect-layer
      counts, labelled as hypotheses, not fault rates (ADR-0023).
    - `workspace`: whether the signing material loads, epoch, CRL number, days left on the signing
-     certificate (`warn` under 14), people issued a manifest and when last.
+     certificate, read from the certificate's verified payload (`warn` under 14), people issued a manifest and when last.
    - `clients`: **`unknown`, reason `drift_not_reported`** - clients do not report their state yet
      (ADR-0026 decision 4). It says so instead of guessing.
 3. **A failing section never fails the response and never leaks.** An unexpected error in one section
    yields `{status: unknown, reason: section_failed}` (the detail goes to the server log); the
-   workspace section exposes only a short stable code, no paths, no key material, no exception text.
-4. **A page in the web app** (`/monitoring`, shown to executive and founder) renders the sections in
-   Turkish, with a refresh and a "verify the whole chain" button. It adds no new measurements.
+   workspace section exposes only an identifier-shaped code (`[a-z0-9_]{1,48}`); any other message is
+   replaced by the fixed code `signing_unavailable`, so no path, key material or exception text can
+   reach the response.
+4. **A page in the web app** (`/monitoring`, shown only to a **company-wide** founder or executive of
+   the active company, the same rule as the endpoint) renders the sections in
+   Turkish, with a refresh and a "verify the whole chain" button. It adds no new measurements. Only the newest request for the company that is active now may
+   update the screen (a late answer for the company just left is dropped; tested).
 
 ## What this does not do
 
@@ -52,7 +60,9 @@ on one screen, explicitly without inventing a metrics stack.
 ## Verification
 
 `backend/tests/test_monitoring.py`: anonymous / outsider / other-company founder / plain member /
-department-scoped executive; response shape and absence of secret-looking material; gateway and eval
-and workspace counts that exclude other companies and out-of-window rows; the audit states (no events,
+department-scoped executive; response shape and absence of secret-looking material; gateway counts that follow the row's recorded company (not the persona's current one; legacy rows
+excluded), eval and workspace counts that exclude other companies and out-of-window rows, days left
+from a real certificate envelope, reason codes; `frontend/tests/latest-request.test.mjs` for the
+stale-answer rule; the audit states (no events,
 unanchored, anchored, tamper found only by `deep`, truncation after an anchor), and that another
 company's chain is untouched; a section that raises is reported `unknown` without leaking the message.

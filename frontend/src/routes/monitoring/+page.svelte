@@ -3,6 +3,7 @@
 	import { companyStore } from '$lib/stores/company.svelte';
 	import Badge from '$lib/components/ui/badge.svelte';
 	import Button from '$lib/components/ui/button.svelte';
+	import { latestRequest } from '$lib/latest-request';
 	import { Loader } from '@lucide/svelte';
 
 	const activeCompanyId = $derived(companyStore.active?.id ?? '');
@@ -33,22 +34,32 @@
 
 	const num = (n: number) => n.toLocaleString('tr-TR');
 
+	const requests = latestRequest<string>();
+
 	async function load(deep = false) {
-		if (!activeCompanyId) return;
-		loading = true;
+		const id = activeCompanyId;
+		const req = requests.begin(id);
+		data = null;
 		error = null;
-		try {
-			data = await monitoringApi.get(activeCompanyId, deep);
-		} catch (e) {
-			data = null;
-			error = (e as Error).message;
-		} finally {
+		if (!id) {
 			loading = false;
+			return;
+		}
+		loading = true;
+		try {
+			const result = await monitoringApi.get(id, deep);
+			if (req.isCurrent(activeCompanyId)) data = result;
+		} catch (e) {
+			if (req.isCurrent(activeCompanyId)) error = (e as Error).message;
+		} finally {
+			if (req.isLatest()) loading = false;
 		}
 	}
 
 	$effect(() => {
-		if (activeCompanyId) load();
+		// reads activeCompanyId, so a company change reloads (and an empty one clears the screen)
+		void activeCompanyId;
+		load();
 	});
 </script>
 

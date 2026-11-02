@@ -1,6 +1,7 @@
 """GET /admin/monitoring (ADR-0034): one company's picture, only for its founders/executives."""
 
 import json
+import time
 from datetime import datetime, timedelta
 
 import pytest
@@ -106,12 +107,13 @@ def test_shape_and_no_secret_material(client, world):
     assert "no-workspace" not in text
 
 
-def test_gateway_counts_only_this_companys_agents(client, db_session, world):
+def test_gateway_counts_only_rows_recorded_for_this_company(client, db_session, world):
     day = datetime.utcnow().strftime("%Y-%m-%d")
     db_session.add(
         GatewayUsage(
             persona_id=world.bot_a.id,
             period=day,
+            company_id=world.a.id,
             requests=3,
             tokens_in=10,
             tokens_out=5,
@@ -121,6 +123,7 @@ def test_gateway_counts_only_this_companys_agents(client, db_session, world):
         GatewayUsage(
             persona_id=world.bot_b.id,
             period=day,
+            company_id=world.b.id,
             requests=99,
             tokens_in=1000,
             tokens_out=1000,
@@ -131,6 +134,38 @@ def test_gateway_counts_only_this_companys_agents(client, db_session, world):
     assert g["day"] == {"requests": 3, "tokens_in": 10, "tokens_out": 5}
     assert [a["persona_id"] for a in g["top_agents_today"]] == [world.bot_a.id]
     assert "BotB" not in json.dumps(g)
+
+
+def test_gateway_ownership_is_the_rows_not_the_personas_current_company(
+    client, db_session, world
+):
+    """MON-1: usage recorded for B stays B's after the persona moves to A; rows with no recorded
+    company are not attributed to anyone."""
+    day = datetime.utcnow().strftime("%Y-%m-%d")
+    # bot_b used to belong to B; its past usage is B's. Now it works for A.
+    db_session.add(
+        GatewayUsage(
+            persona_id=world.bot_b.id, period=day, company_id=world.b.id, requests=991
+        )
+    )
+    db_session.add(
+        GatewayUsage(
+            persona_id="legacy-persona", period=day, company_id=None, requests=777
+        )
+    )
+    db_session.add(
+        GatewayUsage(
+            persona_id=world.bot_a.id, period=day, company_id=None, requests=555
+        )
+    )
+    moved = db_session.get(type(world.bot_b), world.bot_b.id)
+    moved.company_id = world.a.id
+    db_session.add(moved)
+    db_session.commit()
+    a = get(client, world.founder, world.a.id).json()["sections"]["gateway"]
+    assert a["day"]["requests"] == 0 and a["top_agents_today"] == []
+    b = get(client, world.outsider, world.b.id).json()["sections"]["gateway"]
+    assert b["day"]["requests"] == 991  # it stays with the company that incurred it
 
 
 def test_eval_counts_only_this_company_and_the_window(client, db_session, world):
@@ -276,3 +311,64 @@ def test_worst_status_wins():
     assert monitoring.worst(["ok", "warn", "unknown"]) == "warn"
     assert monitoring.worst(["warn", "fail", "ok"]) == "fail"
     assert monitoring.worst([]) == "unknown"
+
+
+def test_certificate_days_left_come_from_the_verified_payload(
+    client, world, monkeypatch
+):
+    """MON-2: the signer's cert is {payload, sig}; not_after lives in the payload."""
+    import services.workspace_service as ws
+
+    now = int(time.time())
+
+    def signer(days):
+        return ws.Signer(
+            "k",
+            {"payload": {"not_after": now + days * 86400}, "sig": "x"},
+            "r",
+            3,
+            "kid",
+            None,
+            7,
+        )
+
+    monkeypatch.setattr(ws, "load_signer", lambda n: signer(60))
+    w = get(client, world.founder, world.a.id).json()["sections"]["workspace"]
+    assert (
+        w["status"] == "ok"
+        and w["signing_cert_days_left"] in (59, 60)
+        and w["epoch"] == 3
+        and w["crl_number"] == 7
+    )
+    monkeypatch.setattr(ws, "load_signer", lambda n: signer(5))
+    w = get(client, world.founder, world.a.id).json()["sections"]["workspace"]
+    assert w["status"] == "warn" and w["signing_cert_days_left"] in (4, 5)
+    monkeypatch.setattr(ws, "load_signer", lambda n: signer(-3))
+    w = get(client, world.founder, world.a.id).json()["sections"]["workspace"]
+    assert w["status"] == "warn" and w["signing_cert_days_left"] == 0
+
+
+@pytest.mark.parametrize(
+    "message,expected",
+    [
+        ("signing_key_revoked", "signing_key_revoked"),
+        ("/fixture/private/signing.key example-sensitive", "signing_unavailable"),
+        ("x" * 200, "signing_unavailable"),
+        ("", "signing_unavailable"),
+        ("Signing Key Revoked", "signing_unavailable"),
+    ],
+)
+def test_workspace_reason_is_a_code_or_a_fixed_code(
+    client, world, monkeypatch, message, expected
+):
+    """MON-4: whatever the loader says, only an identifier-shaped code is shown."""
+    import services.workspace_service as ws
+
+    def boom(n):
+        raise ws.WorkspaceUnavailable(message)
+
+    monkeypatch.setattr(ws, "load_signer", boom)
+    r = get(client, world.founder, world.a.id)
+    w = r.json()["sections"]["workspace"]
+    assert w["status"] == "fail" and w["reason"] == expected
+    assert "private" not in r.text and "sensitive" not in r.text

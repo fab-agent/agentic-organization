@@ -231,6 +231,12 @@
 		if (!['/assistant', '/profile', '/login', '/set-password'].some((r) => p === r || p.startsWith(r + '/'))) goto('/assistant');
 	});
 	function can(minRole: string): boolean { return roleWeight >= (ROLE_WEIGHT[minRole] ?? 1); }
+	// The monitoring endpoint wants a COMPANY-WIDE founder/executive (a section-scoped one gets 403).
+	const canMonitor = $derived(
+		(currentUser?.companies ?? []).some(
+			(c) => c.company_id === active?.id && (c.role === 'founder' || c.role === 'executive') && c.scope_id === null
+		)
+	);
 </script>
 
 {#if isPublicPage}
@@ -464,7 +470,7 @@
 					</a>
 				{/if}
 
-{#if can('executive')}
+{#if canMonitor}
 					<a href="/monitoring">
 						<Button variant={$page.url.pathname.startsWith('/monitoring') ? 'secondary' : 'ghost'}
 							class="w-full justify-start gap-x-3 h-10 rounded-xl text-sm font-medium {sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''}">
