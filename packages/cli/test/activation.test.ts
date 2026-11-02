@@ -20,7 +20,8 @@ function world() {
   return { root, stateDir, appHome, herdrBin }
 }
 const files = (dir: string) => readdirSync(dir).sort()
-const activationFiles = (dir: string) => files(dir).filter((f) => f.startsWith('activation'))
+/** The request files (the head file, which only remembers the newest id, is not one of them). */
+const activationFiles = (dir: string) => files(dir).filter((f) => f.startsWith('activation') && f !== 'activation.head')
 
 /** A fake window: `shown` is the layout it shows (null: no window), `do layout.switch` changes it. */
 function fakeApp(shown: string | null, opts: { switchFails?: boolean; ignoreSwitch?: boolean; garbage?: boolean } = {}) {
@@ -165,11 +166,18 @@ test('no window: the request goes back; with a wait the app is polled once a sec
   const w = world(); const app = fakeApp(null); requestActivation(w.stateDir, 'finance-v2', NOW)
   assert.equal(await activate(base(w, app.run)), 'no_window')
   assert.equal(app.calls.length, 1); assert.equal(loadPending(w.stateDir, NOW)?.layout, 'finance-v2')
-  // slow status calls (each takes 10 s of the clock) consume the deadline: ACT-3, not 61 x 10 s
-  let t = 0; const sleeps: number[] = []
-  const slowNo: Runner = async () => { t += 10_000; return { code: 1, stdout: '' } }
-  assert.equal(await activate(base(w, slowNo, { waitSeconds: 60, clock: () => t, sleep: async (ms: number) => { sleeps.push(ms); t += ms } })), 'no_window')
-  assert.ok(t <= 60_000 + 10_000 + 1000, `took ${t} ms of clock`)
+  // ACT-3: slow status calls (each uses ALL the time it is given, up to 10 s) cannot stretch the wait
+  const vt = virtual(); const given: number[] = []
+  const slowNo: Runner = async (_b, _a, _e, timeout) => { given.push(timeout); await vt.sleep(Math.min(timeout, 10_000)); return { code: 1, stdout: '' } }
+  assert.equal(await activate(base(w, slowNo, { waitSeconds: 60, clock: vt.clock, sleep: vt.sleep })), 'no_window')
+  assert.ok(vt.now <= 60_000, `took ${vt.now} ms of clock against a 60 s deadline`)
+  assert.ok(given.every((g) => g >= 1 && g <= 10_000), JSON.stringify(given))
+  assert.ok(given.length > 4 && given.length < 12, `${given.length} looks`) // not 61
+  // a look never gets more than what is left, including the last sliver
+  const vs = virtual(); const given2: number[] = []
+  const quick: Runner = async (_b, _a, _e, timeout) => { given2.push(timeout); return { code: 1, stdout: '' } }
+  await activate(base(w, quick, { waitSeconds: 2, clock: vs.clock, sleep: async (ms: number) => { await vs.sleep(ms) } }))
+  assert.deepEqual(given2, [2000, 1000], 'the second look gets the remaining second, and nothing starts at the deadline')
   // the window opens during the wait
   const app3 = fakeApp(null); let n = 0
   const opening: Runner = (b, a, e, tt) => { if (++n === 3) app3.state.shown = 'main'; return app3.run(b, a, e, tt) }
@@ -235,4 +243,54 @@ esac
   requestActivation(w.stateDir, 'finance-v3')
   assert.equal(await activate({ stateDir: w.stateDir, appHome: w.appHome, herdrBin: w.herdrBin }), 'no_window')
   assert.equal(loadPending(w.stateDir)?.layout, 'finance-v3')
+})
+
+
+test('ACT-1: a request that was already taken and applied by another worker still supersedes the one a slow worker holds', async () => {
+  for (const sameName of [false, true]) {
+    const w = world(); requestActivation(w.stateDir, 'old-layout', NOW)
+    const app = fakeApp('main')
+    let release!: () => void; const hold = new Promise<void>((r) => { release = r })
+    let first = true
+    const slowFirst: Runner = async (b, a, e, t) => { if (first) { first = false; await hold } return app.run(b, a, e, t) }
+    const oldWorker = activate(base(w, slowFirst)) // claimed the old request, stuck on its first status
+    await new Promise((r) => setTimeout(r, 10))
+    requestActivation(w.stateDir, sameName ? 'old-layout' : 'new-layout', NOW + 1)
+    assert.equal(await activate(base(w, app.run)), 'switched') // the newer one is served completely
+    const shownAfterNew = app.state.shown
+    release()
+    // consumed or not, it is no longer the newest. With the same name the window already shows it.
+    assert.equal(await oldWorker, sameName ? 'already' : 'superseded')
+    assert.equal(app.state.shown, shownAfterNew, 'the old worker did not switch back')
+    assert.equal(app.calls.filter((c) => c.args[0] === 'do').length, 1)
+  }
+})
+
+test('ACT-1: an old worker whose switch fails does not put its old request back over a newer, already-served one', async () => {
+  const w = world(); requestActivation(w.stateDir, 'old-layout', NOW)
+  const c = claim(w.stateDir, NOW)!
+  requestActivation(w.stateDir, 'new-layout', NOW + 1)
+  const served = claim(w.stateDir, NOW)!; release(served, true, NOW) // the newer one is done
+  release(c, false, NOW) // the old one failed and is being given back
+  assert.deepEqual(activationFiles(w.stateDir), [], 'nothing is left to serve; the old request did not come back')
+})
+
+test('ACT-4: a dead worker\'s claim is recovered by the ordinary entry point, not only by claim()', async () => {
+  const w = world(); requestActivation(w.stateDir, 'finance-v2', NOW)
+  const dead = claim(w.stateDir, NOW)!
+  const app = fakeApp('main')
+  assert.equal(await activate(base(w, app.run)), 'nothing'); assert.equal(app.calls.length, 0) // not yet stale: held
+  const old = new Date(NOW - STALE_CLAIM_MS - 1000); utimesSync(dead.path, old, old)
+  assert.equal(await activate(base(w, app.run)), 'switched') // recovered and served in one go
+  assert.equal(app.state.shown, 'finance-v2'); assert.deepEqual(activationFiles(w.stateDir), [])
+  // with a newer request beside it, the recovered older one is dropped and the newer is served
+  const w2 = world(); requestActivation(w2.stateDir, 'one', NOW); const dead2 = claim(w2.stateDir, NOW)!
+  requestActivation(w2.stateDir, 'two', NOW + 1)
+  const old2 = new Date(NOW - STALE_CLAIM_MS - 1000); utimesSync(dead2.path, old2, old2)
+  const app2 = fakeApp('main')
+  assert.equal(await activate(base(w2, app2.run)), 'switched'); assert.equal(app2.state.shown, 'two')
+  // a claim that cannot be read back is simply removed
+  const w3 = world(); requestActivation(w3.stateDir, 'x', NOW); const d3 = claim(w3.stateDir, NOW)!
+  writeFileSync(d3.path, 'garbage'); utimesSync(d3.path, old2, old2)
+  assert.equal(await activate(base(w3, fakeApp('main').run)), 'nothing'); assert.ok(!existsSync(d3.path))
 })

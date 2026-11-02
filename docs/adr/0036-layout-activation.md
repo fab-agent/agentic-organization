@@ -36,9 +36,14 @@ role layout themselves. Facts about Herdr, read from the pinned source of `herdr
    same request is never switched twice and waiting workers do not pile up. A request written afterwards
    is a different file that no other worker can remove. A claim that is given back (no window, refused
    switch) is restored with a hard link, which fails if a newer request already exists - the newer one
-   wins. Just before the switch the worker looks again: if a newer request is waiting it is
-   `superseded` and the older layout is not switched to. A claim whose worker died is restored by the next
-   worker once it is 5 minutes old. The record and its folder are trusted only if the folder is the caller's
+   wins. A small **head** file (`activation.head`) keeps the id of the newest request ever made, also
+   after that request was taken or served; a request is written head first, then the request file. Just
+   before the switch - and before giving a claim back - a worker checks that its request is still the
+   head: if a newer one exists (waiting, claimed or already served by another worker) it is `superseded`
+   and the older layout is neither switched to nor put back. (A request arriving in the instant between
+   that check and the switch is served by its own worker right after.) A claim whose worker died is
+   restored once it is 5 minutes old, by **any** worker's ordinary entry (before it looks for work), and
+   only if it is still the newest request. The record and its folder are trusted only if the folder is the caller's
    own private one (not a link, not shared; on Windows the state folder's ACL is the installer's job,
    ADR-0032); the file is read without following a link and at most 4 KiB.
 4. **Honoured only when it can be verified.** With a window open the switch is done and `status` is read
@@ -49,8 +54,9 @@ role layout themselves. Facts about Herdr, read from the pinned source of `herdr
      (`THREEPA_HERDR_BIN`, which the wrapper the installer wrote sets; or `--herdr-bin`); `--no-activate`
      turns it off. A failure is one dim line and never changes the sync's result.
    - `3pa workspace activate [--wait N] [--quiet]` does it on demand. N is a real deadline (status
-     calls count against it, each with the remaining time as its timeout), at most 120 s, for the window
-     to appear; after that the switch and its check take at most 45 s more. A record that expires while
+     calls count against it, each gets at most the time that is left, no look starts at or after the
+     deadline and the sleep between looks is cut to what is left), at most 120 s, for the window
+     to appear (with no wait there is one look of up to 10 s); after that the switch and its check take at most 45 s more. A record that expires while
      waiting is not served.
    - The `herdr-fab` launcher starts `3pa workspace activate --wait 60 --quiet` **in the background**
      before it starts Herdr (POSIX `( ... & )`, Windows `start "" /b`), silent, so the first start after
