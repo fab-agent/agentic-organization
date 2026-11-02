@@ -337,7 +337,14 @@ mv -f -- "$TMP1" "$LIB/3pa.mjs"; TMP1=""
 say "installed 3pa bundle -> $LIB/3pa.mjs"
 
 TMP1="$BIN/.3pa.$$.tmp"
-printf '#!/bin/sh\nexec node %s "$@"\n' "$(sq "$LIB/3pa.mjs")" > "$TMP1"
+# the wrapper carries this install's own locations, so `3pa self-update` finds the pinned keys
+# even when --state-dir was custom (an explicit environment variable still wins)
+{
+  printf '#!/bin/sh\n'
+  printf '[ -n "${THREEPA_WORKSPACE_DIR:-}" ] || THREEPA_WORKSPACE_DIR=%s; export THREEPA_WORKSPACE_DIR\n' "$(sq "$STATE_DIR")"
+  printf '[ -n "${HERDR_APP_HOME:-}" ] || HERDR_APP_HOME=%s; export HERDR_APP_HOME\n' "$(sq "$APP_HOME")"
+  printf 'exec node %s "$@"\n' "$(sq "$LIB/3pa.mjs")"
+} > "$TMP1"
 chmod 755 "$TMP1"; mv -f -- "$TMP1" "$BIN/3pa"; TMP1=""
 say "installed $BIN/3pa"
 

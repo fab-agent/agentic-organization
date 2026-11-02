@@ -28,7 +28,8 @@ function flag(args: string[], name: string): string | undefined {
 }
 
 function appHome(args: string[]): string {
-  return flag(args, '--app-home') || process.env.HERDR_APP_HOME || join(homedir(), '.config', 'herdr-app')
+  const dflt = process.platform === 'win32' ? join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'herdr-app') : join(homedir(), '.config', 'herdr-app')
+  return flag(args, '--app-home') || process.env.HERDR_APP_HOME || dflt
 }
 
 /** A file path, or the base64 key itself. */

@@ -9,6 +9,7 @@ on:
       - "installers/**"
       - "docs/adr/0030-*.md"
       - "docs/adr/0031-*.md"
+      - "docs/adr/0032-*.md"
       - "packages/cli/**"
       - ".github/workflows/installers.yml"
   pull_request:
@@ -17,6 +18,7 @@ on:
       - "installers/**"
       - "docs/adr/0030-*.md"
       - "docs/adr/0031-*.md"
+      - "docs/adr/0032-*.md"
       - "packages/cli/**"
       - ".github/workflows/installers.yml"
   workflow_dispatch:
@@ -52,3 +54,41 @@ jobs:
           THREEPA_WORKSPACE_DIR="$RUNNER_TEMP/s" "$RUNNER_TEMP/p/bin/3pa" workspace status | grep "No workspace installed yet"
       - name: Signed self-update end to end (ADR-0031)
         run: sh installers/user/e2e-update.sh
+
+  windows-installer:
+    name: Node installer (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Installer tests
+        run: node --test installers/user/windows/install.test.mjs
+      - name: Install the real bundle and run it
+        shell: bash
+        working-directory: packages/cli
+        run: |
+          npm ci --no-audit --no-fund
+          npm run bundle
+          SHA="$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync("dist/3pa.mjs")).digest("hex"))')"
+          KEY="$(node -e 'process.stdout.write(Buffer.alloc(32,7).toString("base64"))')"
+          node ../../installers/user/windows/install.mjs --base-url https://platform.example \
+            --root-pub "$KEY" --cli dist/3pa.mjs --cli-sha256 "$SHA" --prefix "$RUNNER_TEMP/p" --state-dir "$RUNNER_TEMP/s" --app-home "$RUNNER_TEMP/a" --allow-elevated
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cmd.exe //d //c "$(cygpath -w "$RUNNER_TEMP/p/bin/3pa.cmd") workspace status" | grep "No workspace installed yet"
+          else
+            "$RUNNER_TEMP/p/bin/3pa" workspace status | grep "No workspace installed yet"
+          fi
+      - name: PowerShell entry point
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .\installers\user\windows\install.ps1 --base-url https://platform.example --root-pub ([Convert]::ToBase64String([byte[]](,7 * 32))) --cli packages\cli\dist\3pa.mjs --cli-sha256 (Get-FileHash packages\cli\dist\3pa.mjs -Algorithm SHA256).Hash.ToLower() --prefix "$env:RUNNER_TEMP\ps" --state-dir "$env:RUNNER_TEMP\pss" --app-home "$env:RUNNER_TEMP\psa" --allow-elevated
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          if (-not (Test-Path "$env:RUNNER_TEMP\ps\bin\3pa.cmd")) { throw "wrapper missing" }

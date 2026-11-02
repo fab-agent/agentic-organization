@@ -47,7 +47,10 @@ export class StateError extends Error {
 }
 
 export function workspaceStateDir(): string {
-  return process.env.THREEPA_WORKSPACE_DIR || join(homedir(), '.config', '3pa', 'workspace')
+  if (process.env.THREEPA_WORKSPACE_DIR) return process.env.THREEPA_WORKSPACE_DIR
+  // the same place the Windows installer uses by default (ADR-0032)
+  if (process.platform === 'win32') return join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), '3pa', 'workspace')
+  return join(homedir(), '.config', '3pa', 'workspace')
 }
 
 export function freshState(): WorkspaceState {
