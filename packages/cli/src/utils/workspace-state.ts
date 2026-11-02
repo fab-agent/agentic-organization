@@ -256,14 +256,16 @@ function createExclusive(path: string, body: string): boolean {
   }
 }
 
-/** Temp files a crash (or a failed cleanup) left behind. Only old ones, only our names. */
+/** Temp files a crash (or a failed cleanup) left behind. Only our names, and only older than
+ * the age at which a lock itself counts as stale: a run still preparing its lock after that
+ * long has outlived every assumption the lock makes anyway. */
 function sweepLockTemps(dir: string): void {
   try {
     for (const name of readdirSync(dir)) {
       if (!/^sync\.lock(\.takeover)?\.tmp-[0-9a-f]{12}$/.test(name)) continue
       const p = join(dir, name)
       const st = lstatSync(p)
-      if (st.isFile() && Date.now() - st.mtimeMs > 60 * 1000) rmSync(p, { force: true })
+      if (st.isFile() && Date.now() - st.mtimeMs > LOCK_MAX_AGE_MS) rmSync(p, { force: true })
     }
   } catch {
     /* best effort */

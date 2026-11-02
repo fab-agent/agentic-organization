@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 
 import {
-  ProvisionError, SHIPPED_MODS, checkBaseUrl, cleanManaged, ensureTelemetryOff, recoverInterrupted, scanDrift, syncWorkspace,
+  ProvisionError, SHIPPED_MODS, checkBaseUrl, provisionHooks, cleanManaged, ensureTelemetryOff, recoverInterrupted, scanDrift, syncWorkspace,
 } from '../src/utils/provisioner.ts'
 import { writeAll } from '../src/utils/fsutil.ts'
 import { lockHooks } from '../src/utils/workspace-state.ts'
@@ -1283,7 +1283,7 @@ test('Q2: a failed temp cleanup after the lock was published does not strand the
   await withLock(stateDir, async () => undefined) // a second run is not blocked
   const left = rd(stateDir).filter((n) => /^sync\.lock\.tmp-/.test(n))
   assert.equal(left.length, 1, 'the harmless temp file is still there')
-  const old = new Date(Date.now() - 5 * 60 * 1000)
+  const old = new Date(Date.now() - 2 * 60 * 60 * 1000)
   utimesSync(join(stateDir, left[0]!), old, old)
   await withLock(stateDir, async () => undefined) // sweeps old temp files of ours
   assert.ok(!rd(stateDir).some((n) => /^sync\.lock\.tmp-/.test(n)))
@@ -1292,7 +1292,7 @@ test('Q2: a failed temp cleanup after the lock was published does not strand the
 test('Q2: the temp sweep touches only our own old files', async () => {
   const { stateDir } = setup()
   saveState(stateDir, freshState())
-  const old = new Date(Date.now() - 5 * 60 * 1000)
+  const old = new Date(Date.now() - 2 * 60 * 60 * 1000)
   for (const n of ['sync.lock.tmp-0123456789ab', 'sync.lock.takeover.tmp-0123456789ab', 'sync.lock.tmp-XYZ', 'other.tmp-0123456789ab', 'sync.lock.tmp-0123456789abc']) {
     wf(join(stateDir, n), '')
     utimesSync(join(stateDir, n), old, old)
@@ -1361,4 +1361,69 @@ test('Q4: an unexpected file error before the commit never claims the workspace 
   assert.equal(err?.code, 'fs_error')
   assert.ok(!/was not changed/.test(err!.message))
   assert.match(err!.message, /status/)
+})
+
+
+// ═══ CODEX-PROVISIONER round 5 ═══════════════════════════════════════════════
+
+test('N1: the time budget is validated before anything is touched and can never exceed the lock-age rule', async () => {
+  for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -1, 0, 1.5, 20 * 60 * 1000 + 1, 2 * 60 * 60 * 1000, '5000' as unknown as number]) {
+    const { appHome, stateDir, opts } = setup()
+    assert.equal(await code(syncWorkspace(opts({ maxDurationMs: bad }))), 'bad_duration', String(bad))
+    assert.ok(!ex(appHome), 'the app home was not even created')
+    assert.ok(!ex(stateDir))
+  }
+  const { opts } = setup()
+  await syncWorkspace(opts({ maxDurationMs: 20 * 60 * 1000 })) // the cap itself is fine
+})
+
+test('N2: a temp file is only swept after the age at which a lock itself is stale', async () => {
+  const { stateDir } = setup()
+  saveState(stateDir, freshState())
+  const tmp = join(stateDir, 'sync.lock.tmp-0123456789ab')
+  wf(tmp, '')
+  const sixtyOneSeconds = new Date(Date.now() - 61 * 1000)
+  utimesSync(tmp, sixtyOneSeconds, sixtyOneSeconds)
+  await withLock(stateDir, async () => undefined)
+  assert.ok(ex(tmp), 'a run that has been preparing for a minute keeps its file')
+  const twoHours = new Date(Date.now() - 2 * 60 * 60 * 1000)
+  utimesSync(tmp, twoHours, twoHours)
+  await withLock(stateDir, async () => undefined)
+  assert.ok(!ex(tmp))
+})
+
+test('N3: the budget is checked before every file written, including the extra copies of one download', async () => {
+  const { w, appHome, opts } = setup()
+  // one content, four targets (the layout and three mod files share the same bytes)
+  w.content = { layout: 'same', mods: { 'finance-dashboard': { 'a.js': 'same', 'b.js': 'same', 'c.js': 'same' } } }
+  let writes = 0
+  provisionHooks.afterStageWrite = () => {
+    writes++
+    const until = Date.now() + 200 // the first write is followed by a slow disk
+    while (Date.now() < until) { /* busy wait: a blocked syscall */ }
+  }
+  try {
+    assert.equal(await code(syncWorkspace(opts({ maxDurationMs: 150 }))), 'sync_timeout')
+  } finally {
+    provisionHooks.afterStageWrite = undefined
+  }
+  assert.equal(writes, 1, 'no second copy was written once the budget was gone')
+  assert.deepEqual(readdirSync(appHome).filter((n) => n.startsWith('.3pa-staging-')), [])
+  assert.ok(!ex(join(appHome, 'layouts', 'finance-v2.json')))
+})
+
+test('N4: a timeout after an interrupted update was rolled back does not claim "nothing was changed"', async () => {
+  const s = await interrupted()
+  let err: ProvisionError | undefined
+  const orig = s.w.fetchImpl
+  s.w.fetchImpl = async (u, i) => { await new Promise((r) => setTimeout(r, 60)); return orig(u, i) }
+  try {
+    await syncWorkspace(s.opts({ maxDurationMs: 20 }))
+  } catch (e) {
+    err = e as ProvisionError
+  }
+  assert.equal(err?.code, 'sync_timeout')
+  assert.ok(!/nothing was changed/.test(err!.message), err?.message)
+  assert.match(err!.message, /no new update was applied/)
+  assert.equal(read(join(s.appHome, 'mods', 'finance-dashboard', 'main.js')), 'export default 1;\n') // the rollback that came first is complete
 })

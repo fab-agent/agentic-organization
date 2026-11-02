@@ -49,6 +49,9 @@ export const SHIPPED_MODS = new Set([
   'peek', 'picker', 'prompt', 'spaces', 'tabs', 'terminals-bar', 'terminals-pane', 'toast',
   'win98', 'workspace-chrome', 'workspace-status', 'worktree',
 ])
+/** Test seam: runs after each staged file has been written. */
+export const provisionHooks: { afterStageWrite?: () => void } = {}
+
 const MANAGED_FILE = '.3pa-managed.json'
 const JOURNAL_FILE = '.3pa-journal.json'
 const DEFAULT_MAX_FILE = 16 * 1024 * 1024
@@ -254,7 +257,7 @@ async function readLimited(res: Response, max: number): Promise<Uint8Array> {
 async function get(o: SyncOptions, base: string, path: string, max: number): Promise<{ status: number; body: Uint8Array }> {
   const f = o.fetchImpl ?? fetch
   const left = deadlines.get(o) !== undefined ? deadlines.get(o)! - Date.now() : REQUEST_MAX_MS
-  if (left <= 0) throw new ProvisionError('sync_timeout', 'the sync took too long and was stopped; nothing was changed')
+  if (left <= 0) throw new ProvisionError('sync_timeout', 'the sync took too long and was stopped; no new update was applied')
   let res: Response
   try {
     res = await f(`${base}${path}`, {
@@ -265,7 +268,7 @@ async function get(o: SyncOptions, base: string, path: string, max: number): Pro
     return { status: res.status, body: await readLimited(res, max) }
   } catch (e) {
     if ((e as Error)?.name === 'TimeoutError' || (e as Error)?.name === 'AbortError') {
-      throw new ProvisionError('sync_timeout', 'the platform did not answer in time; nothing was changed')
+      throw new ProvisionError('sync_timeout', 'the platform did not answer in time; no new update was applied')
     }
     throw e
   }
@@ -278,7 +281,7 @@ const deadlines = new WeakMap<SyncOptions, number>()
  * cannot be interrupted from JavaScript, so this is a soft bound, not a watchdog. */
 function assertTime(o: SyncOptions): void {
   const d = deadlines.get(o)
-  if (d !== undefined && Date.now() > d) throw new ProvisionError('sync_timeout', 'the sync took too long and was stopped; nothing was changed')
+  if (d !== undefined && Date.now() > d) throw new ProvisionError('sync_timeout', 'the sync took too long and was stopped; no new update was applied')
 }
 
 /** A short, value-free code. Whatever the server sends is reduced to a fixed alphabet. */
@@ -337,13 +340,14 @@ async function stageFiles(o: SyncOptions, base: string, b: ManifestBody, staging
       if (e instanceof ManifestError) throw new ProvisionError(`file_${e.code}`)
       throw e
     }
-    assertTime(o)
     for (const rel of item.target) {
+      assertTime(o)
       const dest = join(staging, rel)
       if (!dest.startsWith(staging + sep)) throw new ProvisionError('path_escape')
       mkdirSync(dirname(dest), { recursive: true, mode: 0o700 })
       try {
         createFileExclusive(dest, res.body) // exclusive, fully written, size checked
+        provisionHooks.afterStageWrite?.()
       } catch (e) {
         throw new ProvisionError(e instanceof FsError ? e.code : 'stage_write_failed')
       }
@@ -532,6 +536,10 @@ export async function syncWorkspace(opts: SyncOptions): Promise<SyncResult> {
   // Absolute paths, once: the journal and every later step must mean the same folder even if
   // the next run starts from another working directory.
   const o: SyncOptions = { ...opts, appHome: resolve(opts.appHome), stateDir: resolve(opts.stateDir) }
+  if (o.maxDurationMs !== undefined && !(Number.isSafeInteger(o.maxDurationMs) && o.maxDurationMs > 0 && o.maxDurationMs <= SYNC_MAX_MS)) {
+    // A longer budget would outlive the age at which another run may take the lock over.
+    throw new ProvisionError('bad_duration', `maxDurationMs must be a whole number of milliseconds between 1 and ${SYNC_MAX_MS}`)
+  }
   const now = o.now ?? (() => Math.floor(Date.now() / 1000))
   const fsOps = o.fsOps ?? realFs
   const base = checkBaseUrl(o.baseUrl)

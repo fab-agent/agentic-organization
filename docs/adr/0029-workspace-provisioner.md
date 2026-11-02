@@ -57,7 +57,7 @@ never leave a half-installed workspace.
    create-then-write fallback: on a file system without hard links the lock is refused
    (`locking_unsupported`) and the state directory must be on an ordinary local one. Whether the
    lock was published and whether the temp file could be tidied afterwards are separate
-   facts, so a failed cleanup never strands a lock that exists; old temp files of ours are swept. Unlock
+   facts, so a failed cleanup never strands a lock that exists; temp files of ours are swept only once older than a lock may be (an hour), so a live preparer's file is never taken. Unlock
    removes only a file with our token. A lock is *stale* when (a) its process is gone, or
    (b) it is older than an hour, which is the answer to pid reuse, or (c) it cannot be read
    as a lock and is older than ten seconds; a lock that cannot be read at all is left alone.
@@ -70,7 +70,7 @@ never leave a half-installed workspace.
    state write and before activation, and a run that finds it lost stops.
    The hour is only safe if a sync ends long before it, so a sync stops between steps
    (each request after one minute, the whole sync after 20 minutes, checked before every
-   file is staged and once more before anything irreversible, with a stable `sync_timeout`).
+   file written (each target, not only each download) and once more before anything irreversible, with a stable `sync_timeout`; a time budget that is not a whole number of milliseconds from 1 up to those 20 minutes is refused as `bad_duration` before anything is touched; the timeout message says no new update was applied, not that nothing changed, since a rollback of an interrupted update may have run first).
    That bound is **cooperative**: a blocked disk call cannot be interrupted from JavaScript, so
    it is not a watchdog, and a machine suspended for longer, or a clock that jumps, is outside
    what this protects.
