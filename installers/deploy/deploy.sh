@@ -6,21 +6,23 @@
 # user and refuses --user for anybody else. The installer itself never runs as root.
 set -eu
 
-die() { printf 'deploy.sh: %s\n' "$*" >&2; exit "${2:-1}"; }
+die() { printf 'deploy.sh: %s\n' "$1" >&2; exit "${2:-1}"; }
 
 [ $# -ge 1 ] || die "usage: deploy.sh install|check --config FILE [--user NAME]" 2
 CMD="$1"; shift
-CONF=""; TARGET=""
+CONF=""; TARGET=""; EXTRA=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --config) [ $# -ge 2 ] || die "--config needs a value" 2; CONF="$2"; shift 2 ;;
+    --pins-only) EXTRA="--pins-only"; shift ;;
     --user) [ $# -ge 2 ] || die "--user needs a value" 2; TARGET="$2"; shift 2 ;;
     *) die "unknown option: $1" 2 ;;
   esac
 done
 [ -n "$CONF" ] && [ -f "$CONF" ] || die "--config FILE is required and must exist" 2
 HERE="$(cd "$(dirname "$0")" && pwd)"
-CONF="$(cd "$(dirname "$CONF")" && pwd)/$(basename "$CONF")"
+# the path goes to deploy.mjs exactly as given (command substitution would drop a trailing newline
+# and name a different file); deploy.mjs resolves it and refuses control characters
 command -v node >/dev/null 2>&1 || die "Node.js 20 or newer is required (not found)" 2
 
 if [ "$(id -u)" -eq 0 ]; then
@@ -30,17 +32,17 @@ if [ "$(id -u)" -eq 0 ]; then
   case "$TARGET" in *[!A-Za-z0-9._-]*) die "unusual user name: $TARGET" 2 ;; esac
   id "$TARGET" >/dev/null 2>&1 || die "no such user: $TARGET" 2
   if [ "$(uname -s)" = "Darwin" ]; then
-    UHOME="$(dscl . -read "/Users/$TARGET" NFSHomeDirectory | awk '{print $2}')"
+    UHOME="$(dscl . -read "/Users/$TARGET" NFSHomeDirectory | head -n 1 | sed 's/^NFSHomeDirectory: //')"
   else
     UHOME="$(getent passwd "$TARGET" | cut -d: -f6)"
   fi
   [ -n "$UHOME" ] && [ -d "$UHOME" ] || die "$TARGET has no home directory" 2
   if command -v runuser >/dev/null 2>&1; then
-    exec runuser -u "$TARGET" -- env -i HOME="$UHOME" PATH="$PATH" node "$HERE/deploy.mjs" "$CMD" --config "$CONF"
+    exec runuser -u "$TARGET" -- env -i HOME="$UHOME" PATH="$PATH" node "$HERE/deploy.mjs" "$CMD" --config "$CONF" $EXTRA
   fi
-  exec sudo -n -u "$TARGET" -H env -i HOME="$UHOME" PATH="$PATH" node "$HERE/deploy.mjs" "$CMD" --config "$CONF"
+  exec sudo -n -u "$TARGET" -H env -i HOME="$UHOME" PATH="$PATH" node "$HERE/deploy.mjs" "$CMD" --config "$CONF" $EXTRA
 fi
 if [ -n "$TARGET" ] && [ "$TARGET" != "$(id -un)" ]; then
   die "running as $(id -un): cannot act for $TARGET (run as root to switch users)" 3
 fi
-exec node "$HERE/deploy.mjs" "$CMD" --config "$CONF"
+exec node "$HERE/deploy.mjs" "$CMD" --config "$CONF" $EXTRA

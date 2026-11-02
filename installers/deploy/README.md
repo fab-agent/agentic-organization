@@ -35,14 +35,18 @@ Needs Node.js 20+ on the machine (deploy it first; `3pa` needs it anyway).
 ## Detect (the MDM "is it compliant?" rule)
 
 `deploy.sh check --config ...` / `deploy.ps1 check -Config ...` change nothing and exit **0 only if**
-this user has the intended bundle (by SHA-256) and the intended pinned root key, release key and
-release URL; otherwise 1, with the reason on stdout. `install` is idempotent: when the check would
+this user has the intended bundle (and Herdr + launcher, when configured; by SHA-256) and the
+intended pinned root key, release key and release URL; otherwise 1, with the reason on stdout
+(2 = the settings themselves are invalid). `install` is idempotent: when the check would
 pass, it does nothing.
 
-A user who ran `3pa self-update` has a *newer signed* bundle: `check` then reports "not the intended
-one". Decide per fleet: update `deploy.conf` to the new bundle's hash (the installer will not
-downgrade a pinned key, and a newer bundle needs no reinstall), or use the self-update path only and
-detect on the pinned keys.
+A user who ran `3pa self-update` has a *newer signed* bundle than `deploy.conf` names. `check` notes
+that and stays compliant; `install` never puts the older bootstrap bundle back over it (it re-installs
+the installed file onto itself and only adds what is missing). To detect on the trust setup alone,
+use `check --pins-only` (PowerShell: `-PinsOnly`).
+
+The helper supports the platform default install location only (`~/.local`, `%LOCALAPPDATA%\3pa`) and
+honours `THREEPA_WORKSPACE_DIR` for the state folder in both `install` and `check`.
 
 ## Updates, rollback, rotation
 

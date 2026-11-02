@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -37,7 +37,7 @@ const run = (args) => {
 
 test('settings file: only KEY=VALUE, known keys, no tricks', () => {
   const good = parseConfig(readFileSync(path.join(HERE, 'deploy.conf.example'), 'utf8').replace(/^HERDR_FILE=$/m, 'HERDR_FILE=').replace(/CLI_SHA256=0+/, 'CLI_SHA256=' + 'a'.repeat(64)))
-  assert.equal(good.BASE_URL, 'https://platform.example.com')
+  assert.equal(good.BASE_URL, 'https://platform.example.com/') // the installer's normal form
   for (const [text, pat] of [
     ['FOO=1\n', /unknown setting/], ['BASE_URL\n', /KEY=VALUE/], ['BASE_URL=a\nBASE_URL=b\n', /twice/],
     ['BASE_URL=$(touch x)\n', /not allowed/], ['BASE_URL=`x`\n', /not allowed/], ['BASE_URL="x"\n', /not allowed/], ['BASE_URL=a\\b\n', /not allowed/],
@@ -93,4 +93,96 @@ test('deploy.sh: refuses to act for someone else, and root needs a named user', 
     r = spawnSync('sh', [sh, 'check', '--config', f], { encoding: 'utf8', env: { ...ENV, HOME: fresh, USERPROFILE: fresh, LOCALAPPDATA: path.join(fresh, 'L') } })
     assert.equal(r.status, 1) // not installed yet: a real answer, not an error
   }
+})
+
+// ═══ Codex round 1 (D1-D7) ═══════════════════════════════════════════════════
+const fresh = (name) => { const h = path.join(T, name); mkdirSync(h, { recursive: true }); return { HOME: h, USERPROFILE: h, LOCALAPPDATA: path.join(h, 'L'), APPDATA: path.join(h, 'A') } }
+const runIn = (env, args) => { const r = spawnSync(process.execPath, [path.join(HERE, 'deploy.mjs'), ...args, ...(WIN ? ['--allow-elevated'] : [])], { encoding: 'utf8', env: { ...ENV, ...env } }); return { rc: r.status, out: (r.stdout ?? '') + (r.stderr ?? '') } }
+const stateOf = (h) => (WIN ? path.join(h.LOCALAPPDATA, '3pa', 'workspace') : path.join(h.HOME, '.config', '3pa', 'workspace'))
+const bundleOf = (h) => (WIN ? path.join(h.LOCALAPPDATA, '3pa', 'lib', '3pa', '3pa.mjs') : path.join(h.HOME, '.local', 'lib', '3pa', '3pa.mjs'))
+const libOf = (h) => path.dirname(bundleOf(h))
+
+test('D1: a custom THREEPA_WORKSPACE_DIR is honoured by install AND check', { skip: isRoot }, () => {
+  const h = fresh('d1'); const custom = path.join(T, 'd1-custom-state'); const env = { ...h, THREEPA_WORKSPACE_DIR: custom }
+  const f = conf({}, 'd1.conf')
+  assert.equal(runIn(env, ['install', '--config', f]).rc, 0)
+  assert.ok(existsSync(path.join(custom, 'root.pub')), 'pinned where it was asked to be')
+  assert.ok(!existsSync(stateOf(h)), 'no second trust state in the default place')
+  assert.equal(runIn(env, ['check', '--config', f]).rc, 0)
+})
+
+test('D2: an older bootstrap bundle never replaces one installed by a signed self-update', { skip: isRoot }, () => {
+  const h = fresh('d2'); const f = conf({}, 'd2.conf')
+  assert.equal(runIn(h, ['install', '--config', f]).rc, 0)
+  writeFileSync(bundleOf(h), 'console.log("NEWER signed bundle")\n') // what self-update leaves behind
+  writeFileSync(path.join(stateOf(h), 'release-state.json'), JSON.stringify({ v: 1, channels: { stable: { seq: 99, version: '9.0.0', digest: 'a'.repeat(64) } } }))
+  let r = runIn(h, ['check', '--config', f]); assert.equal(r.rc, 0, r.out); assert.match(r.out, /newer than the settings/)
+  r = runIn(h, ['install', '--config', f]); assert.equal(r.rc, 0, r.out)
+  assert.match(readFileSync(bundleOf(h), 'utf8'), /NEWER signed bundle/, 'the newer bundle was kept')
+  // without that history, a different bundle IS drift and is put back
+  const g = fresh('d2b'); assert.equal(runIn(g, ['install', '--config', f]).rc, 0)
+  writeFileSync(bundleOf(g), 'tampered\n')
+  assert.equal(runIn(g, ['check', '--config', f]).rc, 1)
+  assert.equal(runIn(g, ['install', '--config', f]).rc, 0); assert.equal(sha(bundleOf(g)), CLI_SHA)
+  // --pins-only ignores bundle differences but not the trust setup
+  writeFileSync(bundleOf(g), 'tampered again\n')
+  assert.equal(runIn(g, ['check', '--config', f, '--pins-only']).rc, 0)
+  assert.equal(runIn(g, ['check', '--config', conf({ ROOT_PUB: OTHER }, 'd2-other.conf'), '--pins-only']).rc, 1)
+})
+
+test('D3: the release URL is compared in the installer\'s own normal form', { skip: isRoot }, () => {
+  const h = fresh('d3')
+  for (const [i, url] of ['HTTPS://dl.example', 'https://dl.example/a/b?x=1', 'http://localhost:8080/r.json', 'https://DL.example:443/r.json'].entries()) {
+    const f = conf({ RELEASE_URL: url }, `d3-${i}.conf`)
+    assert.equal(runIn(h, ['install', '--config', f]).rc, 0, url)
+    const r = runIn(h, ['check', '--config', f]); assert.equal(r.rc, 0, `${url}: ${r.out}`)
+    assert.match(runIn(h, ['install', '--config', f]).out, /already installed as intended/, url)
+  }
+  for (const bad of ['http://dl.example/r', 'https://u:p@dl.example/r', 'https://dl.example/r#x', 'nonsense'])
+    assert.equal(runIn(h, ['check', '--config', conf({ RELEASE_URL: bad }, 'd3-bad.conf')]).rc, 2, bad)
+})
+
+test('D4: a Herdr binary added to the settings later is installed (and detected), not skipped', { skip: isRoot }, () => {
+  const h = fresh('d4'); assert.equal(runIn(h, ['install', '--config', conf({}, 'd4a.conf')]).rc, 0)
+  const herdr = path.join(T, WIN ? 'herdr.exe' : 'herdr'); copyFileSync(process.execPath, herdr)
+  const f = conf({ HERDR_FILE: path.basename(herdr), HERDR_SHA256: sha(herdr) }, 'd4b.conf')
+  assert.equal(runIn(h, ['check', '--config', f]).rc, 1)
+  const r = runIn(h, ['install', '--config', f]); assert.equal(r.rc, 0, r.out); assert.doesNotMatch(r.out, /already installed/)
+  assert.ok(existsSync(path.join(libOf(h), WIN ? 'herdr.exe' : 'herdr')))
+  assert.equal(runIn(h, ['check', '--config', f]).rc, 0)
+  // a different Herdr hash is drift too
+  assert.equal(runIn(h, ['check', '--config', conf({ HERDR_FILE: path.basename(herdr), HERDR_SHA256: 'f'.repeat(64) }, 'd4c.conf')]).rc, 1)
+})
+
+test('D7: a malformed key in the settings is a configuration error, never "compliant"', { skip: isRoot }, () => {
+  const h = fresh('d7'); mkdirSync(stateOf(h), { recursive: true }); writeFileSync(path.join(stateOf(h), 'root.pub'), 'not-a-key\n')
+  const f = conf({ ROOT_PUB: 'not-a-key', RELEASE_PUB: undefined, RELEASE_URL: undefined }, 'd7.conf')
+  const r = runIn(h, ['check', '--config', f]); assert.equal(r.rc, 2); assert.match(r.out, /not a valid Ed25519 public key/)
+  assert.equal(runIn(h, ['install', '--config', f]).rc, 2)
+})
+
+test('settings: limits and the config path', () => {
+  assert.throws(() => parseConfig('BASE_URL=https://x\n'.repeat(1) + 'ROOT_PUB=' + 'a'.repeat(5000) + '\n'), /too long/)
+  assert.throws(() => parseConfig('#'.repeat(70 * 1024)), /too large/)
+  const r = runIn({}, ['check', '--config', path.join(T, 'x\ny.conf')]); assert.equal(r.rc, 2); assert.match(r.out, /control characters/)
+})
+
+test('D5/D6: deploy.sh passes the config path untouched and keeps a home directory with spaces', { skip: WIN }, () => {
+  const sh = path.join(HERE, 'deploy.sh')
+  // D5: a path ending in a newline is a different file; deploy.sh must not quietly use the other one
+  const a = conf({}, 'settings'); writeFileSync(path.join(T, 'settings\n'), 'garbage\n')
+  if (!isRoot) { // (as root the user rule answers first; D6 below covers that branch)
+    const r = spawnSync('sh', [sh, 'check', '--config', path.join(T, 'settings\n')], { encoding: 'utf8', env: ENV })
+    assert.equal(r.status, 2, r.stdout + r.stderr); assert.match(r.stdout + r.stderr, /control characters/)
+  }
+  // D6: a macOS-style home with a space, with every system tool replaced by a recording shim
+  const shim = path.join(T, 'shims'); mkdirSync(shim, { recursive: true })
+  const mk = (n, body) => { writeFileSync(path.join(shim, n), `#!/bin/sh\n${body}\n`); chmodSync(path.join(shim, n), 0o755) }
+  const uhome = path.join(T, 'User Home'); mkdirSync(uhome, { recursive: true }); mkdirSync(path.join(T, 'User'), { recursive: true })
+  mk('uname', 'echo Darwin'); mk('id', 'case "$1" in -u) echo 0;; *) exit 0;; esac')
+  mk('stat', 'echo alice'); mk('dscl', `echo "NFSHomeDirectory: ${uhome}"`)
+  mk('runuser', 'echo "RUNUSER $*"'); mk('node', 'echo node')
+  const o = spawnSync('/bin/sh', [sh, 'check', '--config', a], { encoding: 'utf8', env: { PATH: `${shim}:/usr/bin:/bin`, HOME: T } })
+  assert.match(o.stdout, new RegExp(`HOME=${uhome.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} `), o.stdout + o.stderr)
+  assert.match(o.stdout, /runuser -u alice|RUNUSER -u alice/)
 })
