@@ -15,7 +15,7 @@
  */
 
 import {
-  closeSync, lstatSync, mkdirSync, openSync, readFileSync, rmSync, fsyncSync,
+  closeSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, rmSync, fsyncSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -126,12 +126,20 @@ export function hasHistoryFor(state: WorkspaceState, key: string): boolean {
 /** `null` when there is no state yet (first enrolment); throws when it exists but is bad. */
 export function loadState(dir: string): WorkspaceState | null {
   const file = join(dir, 'state.json')
-  if (!lexists(file)) return null
-  const st = lstatSync(file)
-  if (st.isSymbolicLink() || !st.isFile()) throw new StateError('state_corrupt', 'state.json is not a regular file')
+  let text: string
+  try {
+    if (!lexists(file)) return null
+    const st = lstatSync(file)
+    if (st.isSymbolicLink() || !st.isFile()) throw new StateError('state_corrupt', 'state.json is not a regular file')
+    text = readFileSync(file, 'utf8')
+  } catch (e) {
+    if (e instanceof StateError) throw e
+    // We could not look: that is neither "no state yet" nor a damaged file.
+    throw new StateError('state_unreadable', 'state.json could not be read; nothing was changed')
+  }
   let parsed: unknown
   try {
-    parsed = JSON.parse(readFileSync(file, 'utf8'))
+    parsed = JSON.parse(text)
   } catch {
     throw new StateError('state_corrupt', 'state.json is not valid JSON')
   }
@@ -160,48 +168,77 @@ function alive(pid: number): boolean {
   }
 }
 
-interface LockInfo { raw: string; pid: number; token: string }
+interface LockInfo { raw: string; pid: number; token: string; valid: boolean }
 
 function readLock(path: string): LockInfo | null {
   let raw: string
   try {
     raw = readFileSync(path, 'utf8')
-  } catch {
-    return null
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw new StateError('locked', 'the sync lock could not be read') // cannot look: do not touch it
   }
   try {
     const j = JSON.parse(raw) as { pid?: unknown; token?: unknown }
-    return { raw, pid: typeof j.pid === 'number' ? j.pid : NaN, token: typeof j.token === 'string' ? j.token : '' }
+    const valid = typeof j.pid === 'number' && typeof j.token === 'string'
+    return { raw, pid: typeof j.pid === 'number' ? j.pid : NaN, token: typeof j.token === 'string' ? j.token : '', valid }
   } catch {
-    return { raw, pid: NaN, token: '' }
+    return { raw, pid: NaN, token: '', valid: false }
   }
 }
 
 /** A lock is stale when its process is gone, or when it is older than any real sync could
- * take (a pid can be reused by an unrelated process, so "alive" alone never frees it). */
+ * take (a pid can be reused by an unrelated process, so "alive" alone never frees it). A file
+ * that cannot be read as a lock at all is given a few seconds before it counts as stale. */
 function isStale(info: LockInfo, path: string, maxAgeMs: number): boolean {
-  const dead = !(Number.isInteger(info.pid) && alive(info.pid))
-  let old = false
+  let ageMs = 0
   try {
-    old = Date.now() - lstatSync(path).mtimeMs > maxAgeMs
+    ageMs = Date.now() - lstatSync(path).mtimeMs
   } catch { /* gone */ }
-  return dead || old
+  if (!info.valid) return ageMs > INVALID_LOCK_GRACE_MS
+  const dead = !(Number.isInteger(info.pid) && alive(info.pid))
+  return dead || ageMs > maxAgeMs
 }
 
-const LOCK_MAX_AGE_MS = 60 * 60 * 1000
+/** A sync is cut off well before this (see SYNC_MAX_MS in the provisioner). */
+export const LOCK_MAX_AGE_MS = 60 * 60 * 1000
 const TAKEOVER_MAX_AGE_MS = 30 * 1000
+const INVALID_LOCK_GRACE_MS = 10 * 1000
 
 /** Test seams: after the stale holder was read / after the stale lock was removed. */
-export const lockHooks: { afterReadStale?: () => void; afterRemoveStale?: () => void } = {}
+export const lockHooks: { afterReadStale?: () => void; afterRemoveStale?: () => void; beforePublish?: () => void } = {}
 
+/** Create `path` with its COMPLETE content in one atomic step: the content is written to a
+ * private temp file first and then hard-linked into place, which fails if `path` exists. A
+ * reader can therefore never see an empty or half-written lock. (Where hard links are not
+ * available it falls back to create-then-write.) */
 function createExclusive(path: string, body: string): boolean {
+  const tmp = `${path}.tmp-${randomBytes(6).toString('hex')}`
+  const fd = openSync(tmp, 'wx', 0o600)
   try {
-    const fd = openSync(path, 'wx', 0o600)
+    writeAll(fd, Buffer.from(body))
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+  try {
+    lockHooks.beforePublish?.()
+    linkSync(tmp, path)
+    return true
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code
+    if (code === 'EEXIST') return false
+    if (code !== 'EPERM' && code !== 'ENOSYS' && code !== 'EOPNOTSUPP' && code !== 'EXDEV' && code !== 'ENOTSUP') throw e
+  } finally {
+    rmSync(tmp, { force: true })
+  }
+  try {
+    const fd2 = openSync(path, 'wx', 0o600)
     try {
-      writeAll(fd, Buffer.from(body))
-      fsyncSync(fd)
+      writeAll(fd2, Buffer.from(body))
+      fsyncSync(fd2)
     } finally {
-      closeSync(fd)
+      closeSync(fd2)
     }
     return true
   } catch (e) {
@@ -267,13 +304,21 @@ export async function withLock<T>(dir: string, fn: (assertOwned: () => void) => 
       if (!createExclusive(lock, body)) throw busy() // a normal acquirer was first
       acquired = true
     } finally {
-      if (readLock(mutex)?.token === mtoken) rmSync(mutex, { force: true })
+      try {
+        if (readLock(mutex)?.token === mtoken) rmSync(mutex, { force: true })
+      } catch { /* leave it: it goes stale */ }
     }
   }
   if (!acquired) throw new StateError('locked', 'could not take the sync lock')
   fsyncDir(dir)
 
-  const owned = () => readLock(lock)?.token === token
+  const owned = () => {
+    try {
+      return readLock(lock)?.token === token
+    } catch {
+      return false
+    }
+  }
   try {
     return await fn(() => {
       if (!owned()) throw new StateError('lock_lost', 'the sync lock was taken over; nothing further was written')

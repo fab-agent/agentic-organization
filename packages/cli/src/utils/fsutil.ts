@@ -86,13 +86,20 @@ export function writeFileAtomic(
   fsyncDir(dirname(path))
 }
 
-/** True when something is at `path`, including a dangling link (existsSync follows links
- * and says false for those). */
+/** Test seam: replaces lstat for `lexists`. */
+export const fsHooks: { lstat?: (path: string) => unknown } = {}
+
+/** True when something is at `path`, including a dangling link (existsSync follows links and
+ * says false for those). It is `false` ONLY when nothing is there (ENOENT, ENOTDIR): any
+ * other failure (EIO, EACCES...) is thrown, because "I could not look" is not "it is not
+ * there" - deciding that a backup does not exist is how a recovery deletes the only copy. */
 export function lexists(path: string): boolean {
   try {
-    lstatSync(path)
+    ;(fsHooks.lstat ?? lstatSync)(path)
     return true
-  } catch {
-    return false
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code
+    if (code === 'ENOENT' || code === 'ENOTDIR') return false
+    throw e
   }
 }

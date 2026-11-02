@@ -375,7 +375,7 @@ test('state is written atomically with private permissions and a lock keeps a se
 test('a lock left by a dead process is taken over', async () => {
   const { stateDir } = setup()
   saveState(stateDir, freshState())
-  writeFileSync(join(stateDir, 'sync.lock'), '999999999')
+  writeFileSync(join(stateDir, 'sync.lock'), JSON.stringify({ pid: 999999999, token: 'dead' }))
   let ran = false
   await withLock(stateDir, async () => { ran = true })
   assert.ok(ran)
@@ -804,6 +804,7 @@ test('re-enroll: a failed attempt leaves the existing state exactly where it was
 // ═══ CODEX-PROVISIONER round 2 ═══════════════════════════════════════════════
 
 import { stateHooks } from '../src/utils/workspace-state.ts'
+import { fsHooks } from '../src/utils/fsutil.ts'
 import { utimesSync } from 'node:fs'
 
 /** An app home with a real interrupted update, plus the pieces of its journal. */
@@ -978,7 +979,7 @@ test('N3: if the new state cannot be written, the old active state is still ther
   const before = rf(join(stateDir, 'state.json'), 'utf8')
   stateHooks.beforeSave = () => { throw Object.assign(new Error('EIO'), { code: 'EIO' }) }
   try {
-    assert.equal(await code(syncWorkspace(opts({ reEnroll: true }))), 'EIO')
+    assert.equal(await code(syncWorkspace(opts({ reEnroll: true }))), 'fs_error')
   } finally {
     stateHooks.beforeSave = undefined
   }
@@ -1049,4 +1050,195 @@ test('N7: http is accepted for localhost, 127.0.0.1 and [::1] only', () => {
   for (const bad of ['http://[::2]:8000', 'http://0.0.0.0:8000', 'http://127.0.0.2:8000', 'http://localhost.:8000x']) {
     assert.throws(() => checkBaseUrl(bad), (e: ProvisionError) => /^base_url_/.test(e.code), bad)
   }
+})
+
+
+// ═══ CODEX-PROVISIONER round 3 ═══════════════════════════════════════════════
+
+// R1 ── "I could not look" is not "it is not there" ─────────────────────────────
+
+function failStatOn(suffix: string): () => void {
+  const orig = lstatReal
+  let hit = false
+  fsHooks.lstat = (p: string) => {
+    if (!hit && p.endsWith(suffix)) {
+      hit = true
+      throw Object.assign(new Error('EIO'), { code: 'EIO' })
+    }
+    return orig(p)
+  }
+  return () => { fsHooks.lstat = undefined }
+}
+import { lstatSync as lstatReal } from 'node:fs'
+
+test('R1: one failed look at the backup during recovery keeps the backup and the journal', async () => {
+  const s = await interrupted()
+  const restore = failStatOn('mod-finance-dashboard') // the aside path of the old mod
+  try {
+    assert.throws(() => recoverInterrupted(s.appHome), (e: ProvisionError) => e.code === 'recovery_required')
+  } finally {
+    restore()
+  }
+  const trash = rd(s.appHome).find((x) => x.startsWith('.3pa-trash-'))!
+  assert.ok(rd(join(s.appHome, trash)).includes('mod-finance-dashboard'), 'the only copy of the old mod is still there')
+  assert.ok(ex(s.journalPath), 'the journal is still there')
+  // with the file system healthy again the same journal recovers completely
+  assert.equal(recoverInterrupted(s.appHome), true)
+  assert.equal(read(join(s.appHome, 'mods', 'finance-dashboard', 'main.js')), 'export default 1;\n')
+})
+
+test('R1: an unreadable existing state.json is not "no state yet"', async () => {
+  const { stateDir, opts } = setup()
+  await syncWorkspace(opts())
+  const restore = failStatOn('state.json')
+  try {
+    assert.throws(() => loadState(stateDir), (e: StateError) => e.code === 'state_unreadable')
+  } finally {
+    restore()
+  }
+  const restore2 = failStatOn('state.json')
+  try {
+    assert.equal(await code(syncWorkspace(opts())), 'state_unreadable') // never falls back to a fresh state
+  } finally {
+    restore2()
+  }
+  assert.ok(loadState(stateDir), 'the real file is untouched')
+})
+
+test('R1: lexists is false only when nothing is there', () => {
+  const { base } = setup()
+  assert.equal(lexistsFn(join(base, 'nope')), false)
+  assert.equal(lexistsFn(join(base, 'nope', 'deeper')), false)
+  wf(join(base, 'f'), '')
+  assert.equal(lexistsFn(join(base, 'f', 'under-a-file')), false) // ENOTDIR
+  assert.equal(lexistsFn(join(base, 'f')), true)
+  sl(join(base, 'gone'), join(base, 'dangling'))
+  assert.equal(lexistsFn(join(base, 'dangling')), true) // a dangling link is something
+  fsHooks.lstat = () => { throw Object.assign(new Error('EACCES'), { code: 'EACCES' }) }
+  try {
+    assert.throws(() => lexistsFn(join(base, 'f')), (e: { code: string }) => e.code === 'EACCES')
+  } finally {
+    fsHooks.lstat = undefined
+  }
+})
+import { lexists as lexistsFn } from '../src/utils/fsutil.ts'
+
+test('R1: a stat error in the middle of a sync is a stable code and changes nothing', async () => {
+  const { w, appHome, opts } = setup()
+  await syncWorkspace(opts())
+  w.content.mods['finance-dashboard']!['main.js'] = 'v2'
+  const restore = failStatOn('finance-dashboard')
+  try {
+    assert.equal(await code(syncWorkspace(opts())), 'fs_error')
+  } finally {
+    restore()
+  }
+  assert.equal(read(join(appHome, 'mods', 'finance-dashboard', 'main.js')), 'export default 1;\n')
+})
+
+// R2 ── a lock is published whole, never empty ──────────────────────────────────
+
+test('R2: a lock file is never visible empty or half written', async () => {
+  const { stateDir } = setup()
+  saveState(stateDir, freshState())
+  const lock = join(stateDir, 'sync.lock')
+  let seen: string | null | undefined
+  lockHooks.beforePublish = () => { seen = ex(lock) ? rf(lock, 'utf8') : null }
+  try {
+    await withLock(stateDir, async () => undefined)
+  } finally {
+    lockHooks.beforePublish = undefined
+  }
+  assert.equal(seen, null, 'before it is published there is no lock file at all (not an empty one)')
+})
+
+test('R2: a runner paused just before publishing cannot be mistaken for a dead owner', async () => {
+  const { stateDir } = setup()
+  saveState(stateDir, freshState())
+  const lock = join(stateDir, 'sync.lock')
+  // B is "paused before publishing"; meanwhile A acquires normally
+  let aRan = false
+  let bResult = ''
+  let first = true
+  lockHooks.beforePublish = () => {
+    if (!first) return
+    first = false
+    // while B is paused, A takes the (still absent) lock and runs
+    lockHooks.beforePublish = undefined
+    void withLock(stateDir, async () => { aRan = true }).catch(() => undefined)
+  }
+  try {
+    bResult = await code(withLock(stateDir, async () => 'B ran'))
+  } finally {
+    lockHooks.beforePublish = undefined
+  }
+  assert.ok(['locked', 'NO_ERROR'].includes(bResult))
+  assert.ok(aRan || bResult === 'NO_ERROR')
+  assert.ok(!ex(lock) || JSON.parse(rf(lock, 'utf8')).token, 'whatever lock exists is complete')
+})
+
+test('R2: an unreadable lock file is respected until it is old enough to be called stale', async () => {
+  const { stateDir } = setup()
+  saveState(stateDir, freshState())
+  const lock = join(stateDir, 'sync.lock')
+  wf(lock, '') // empty: not a valid lock, but brand new
+  assert.equal(await code(withLock(stateDir, async () => 'no')), 'locked')
+  const old = new Date(Date.now() - 60 * 1000)
+  utimesSync(lock, old, old)
+  let ran = false
+  await withLock(stateDir, async () => { ran = true })
+  assert.ok(ran)
+})
+
+test('R2: a lock that cannot be read at all is left alone', async () => {
+  const { stateDir } = setup()
+  saveState(stateDir, freshState())
+  const lock = join(stateDir, 'sync.lock')
+  mk(lock) // a folder where the lock file should be: reading it fails with EISDIR
+  assert.equal(await code(withLock(stateDir, async () => 'no')), 'locked')
+  assert.ok(ex(lock))
+  rm(lock, { recursive: true })
+})
+
+// R3 ── the settings write is under the lock, so the sweep cannot race it ───────
+
+test('R3: nothing is written to the app home before the lock is held', async () => {
+  const { appHome, stateDir, opts } = setup()
+  saveState(stateDir, freshState())
+  wf(join(stateDir, 'sync.lock'), JSON.stringify({ pid: process.pid, token: 'other-run' })) // another run holds it
+  assert.equal(await code(syncWorkspace(opts())), 'locked')
+  assert.ok(!ex(join(appHome, 'settings.json')), 'no settings write without the lock')
+  rm(join(stateDir, 'sync.lock'))
+})
+
+test('R3: telemetry is still turned off before the first request is made', async () => {
+  const { w, appHome, opts } = setup()
+  let telemetryAtFirstRequest: unknown = 'not checked'
+  const orig = w.fetchImpl
+  w.fetchImpl = async (u, i) => {
+    if (telemetryAtFirstRequest === 'not checked') telemetryAtFirstRequest = JSON.parse(rf(join(appHome, 'settings.json'), 'utf8')).telemetry
+    return orig(u, i)
+  }
+  await syncWorkspace(opts())
+  assert.equal(telemetryAtFirstRequest, false)
+})
+
+// time limits ──────────────────────────────────────────────────────────────────
+
+test('a sync that takes too long stops with a stable code and changes nothing', async () => {
+  const { w, appHome, opts } = setup()
+  const orig = w.fetchImpl
+  w.fetchImpl = async (u, i) => { await new Promise((r) => setTimeout(r, 30)); return orig(u, i) }
+  assert.equal(await code(syncWorkspace(opts({ maxDurationMs: 5 }))), 'sync_timeout')
+  assert.ok(!ex(join(appHome, 'layouts', 'finance-v2.json')))
+  assert.deepEqual(leftovers(appHome), [])
+})
+
+test('every request carries a timeout signal and never follows a redirect', async () => {
+  const { w, opts } = setup()
+  const seen: RequestInit[] = []
+  const orig = w.fetchImpl
+  w.fetchImpl = async (u, i) => { seen.push(i ?? {}); return orig(u, i) }
+  await syncWorkspace(opts())
+  assert.ok(seen.length > 3 && seen.every((i) => i.signal instanceof AbortSignal && i.redirect === 'error'))
 })

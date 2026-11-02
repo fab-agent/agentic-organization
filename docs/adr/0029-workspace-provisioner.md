@@ -51,19 +51,28 @@ never leave a half-installed workspace.
    corrupt, only a genuinely missing file is "no state yet"); `--re-enroll` keeps a copy
    of the old file and replaces it with one atomic rename of the new one, so a failed
    attempt - even a disk error while writing - leaves the old state where it was.
-8. **One run at a time.** The lock file holds the pid and a random token, and unlock removes
-   only a file with our token. A stale lock (its process is gone, or it is older than an hour,
-   since a pid can be reused) is removed only by a run that holds the separate takeover mutex
-   `sync.lock.takeover`, and that run judges the lock again after taking the mutex. A paused
-   process that read a stale lock earlier therefore cannot remove the live lock of whoever took
-   over in the meantime; after removing the stale lock the run creates its own exclusively, and
-   backs off if a normal acquirer was faster. `assertOwned()` is checked before the recovery,
-   before every state write and before activation, and a run that finds it lost stops. **Limit:**
-   Node has no portable kernel file lock. A process that dies while holding the takeover mutex
-   leaves a mutex that is cleared after 30 seconds, and two runs that both see that stale mutex
-   can still race (a doubly nested window), and `assertOwned()` followed by a write is not one
-   atomic step. The single-writer guarantee is very strong, not kernel-enforced; it also rests
-   on the journal (item 10) making any overlap detectable and reversible.
+8. **One run at a time.** The lock file holds the pid and a random token. It is published
+   whole: the content is written to a private temp file and hard-linked into place (which
+   fails if a lock exists), so no reader ever sees an empty or half-written lock. Unlock
+   removes only a file with our token. A lock is *stale* when (a) its process is gone, or
+   (b) it is older than an hour, which is the answer to pid reuse, or (c) it cannot be read
+   as a lock and is older than ten seconds; a lock that cannot be read at all is left alone.
+   A stale lock is removed only by a run holding the separate takeover mutex
+   `sync.lock.takeover`, and that run judges staleness again after taking the mutex, so a
+   paused process that read a stale lock earlier cannot remove the live lock of whoever took
+   over in the meantime; after removing it the run creates its own lock exclusively and backs
+   off if a normal acquirer was faster. The mutex is itself stale when its process is gone or
+   it is older than 30 seconds. `assertOwned()` is checked before the recovery, before every
+   state write and before activation, and a run that finds it lost stops.
+   The hour is safe because a sync is cut off long before it (each request after one minute,
+   the whole sync after 20 minutes, both with a stable `sync_timeout`); a machine that is
+   suspended for longer than that, or a clock that jumps, is outside what this protects.
+   **Limits, stated plainly:** Node has no portable kernel file lock. `assertOwned()` followed
+   by a write is not one atomic step, and unlock / mutex release are read-then-remove. Two runs
+   that both see the same stale takeover mutex can still race. So the serialization is very
+   strong under these assumptions (no kernel-level enforcement; syncs end within minutes; one
+   user's own processes), not guaranteed by the operating system. The journal (item 10) makes a
+   **crashed** run recoverable; it does not make two overlapping writers safe.
 9. **Download into a fresh staging directory**, checking size and SHA-256 for each file
    (the response is capped at the manifest's size; files are created with `O_EXCL`, written
    completely - short writes are continued, zero progress is an error - and measured on

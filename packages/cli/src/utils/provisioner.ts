@@ -38,7 +38,7 @@ import {
   type ClientState, type Expected, ManifestError, digest, parseWire, verifyCrl, verifyFile, verifyManifest,
 } from './workspace-manifest.js'
 import {
-  type WorkspaceState, ensurePrivateDir, freshState, hasHistoryFor, loadState, saveState, withLock,
+  StateError, type WorkspaceState, ensurePrivateDir, freshState, hasHistoryFor, loadState, saveState, withLock,
 } from './workspace-state.js'
 
 export const AUD = 'herdr-provisioner'
@@ -53,6 +53,8 @@ const MANAGED_FILE = '.3pa-managed.json'
 const JOURNAL_FILE = '.3pa-journal.json'
 const DEFAULT_MAX_FILE = 16 * 1024 * 1024
 const MAX_RESPONSE = 256 * 1024
+const SYNC_MAX_MS = 20 * 60 * 1000
+const REQUEST_MAX_MS = 60 * 1000
 
 const own = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k)
 const HEX64 = /^[0-9a-f]{64}$/
@@ -93,6 +95,9 @@ export interface SyncOptions {
   reEnroll?: boolean
   maxFileBytes?: number
   fsOps?: FsOps
+  /** The whole sync is cut off after this long (default 20 minutes, far below the age at
+   * which a lock counts as stale), and each request after one minute. */
+  maxDurationMs?: number
 }
 
 export interface SyncResult {
@@ -248,12 +253,26 @@ async function readLimited(res: Response, max: number): Promise<Uint8Array> {
 
 async function get(o: SyncOptions, base: string, path: string, max: number): Promise<{ status: number; body: Uint8Array }> {
   const f = o.fetchImpl ?? fetch
-  const res = await f(`${base}${path}`, {
-    headers: { Authorization: `Bearer ${o.webToken}` },
-    redirect: 'error', // never send the token somewhere else
-  })
-  return { status: res.status, body: await readLimited(res, max) }
+  const left = deadlines.get(o) !== undefined ? deadlines.get(o)! - Date.now() : REQUEST_MAX_MS
+  if (left <= 0) throw new ProvisionError('sync_timeout', 'the sync took too long and was stopped; nothing was changed')
+  let res: Response
+  try {
+    res = await f(`${base}${path}`, {
+      headers: { Authorization: `Bearer ${o.webToken}` },
+      redirect: 'error', // never send the token somewhere else
+      signal: AbortSignal.timeout(Math.min(REQUEST_MAX_MS, left)),
+    })
+    return { status: res.status, body: await readLimited(res, max) }
+  } catch (e) {
+    if ((e as Error)?.name === 'TimeoutError' || (e as Error)?.name === 'AbortError') {
+      throw new ProvisionError('sync_timeout', 'the platform did not answer in time; nothing was changed')
+    }
+    throw e
+  }
 }
+
+/** When each sync must be finished by (a stale lock is only taken after an hour). */
+const deadlines = new WeakMap<SyncOptions, number>()
 
 /** A short, value-free code. Whatever the server sends is reduced to a fixed alphabet. */
 function failureCode(body: Uint8Array, status: number): string {
@@ -510,12 +529,28 @@ export async function syncWorkspace(opts: SyncOptions): Promise<SyncResult> {
   const base = checkBaseUrl(o.baseUrl)
   ensurePrivateDir(o.stateDir)
   checkAppHome(o.appHome)
-  ensureTelemetryOff(o.appHome)
+  deadlines.set(o, Date.now() + (o.maxDurationMs ?? SYNC_MAX_MS))
 
+  try {
+    return await runSync(o, base, now, fsOps)
+  } catch (e) {
+    const errno = (e as NodeJS.ErrnoException)?.code
+    if (!(e instanceof ProvisionError) && !(e instanceof StateError) && !(e instanceof ManifestError) && typeof errno === 'string' && /^E[A-Z0-9]+$/.test(errno)) {
+      // A file operation failed unexpectedly (a disk error, a permission). Say so plainly;
+      // nothing was deleted on the strength of a failed look.
+      throw new ProvisionError('fs_error', `a file operation failed (${errno}); the workspace was not changed`)
+    }
+    throw e
+  }
+}
+
+async function runSync(o: SyncOptions, base: string, now: () => number, fsOps: FsOps): Promise<SyncResult> {
   return withLock(o.stateDir, async (assertOwned) => {
-    // A crashed or half-rolled-back earlier run is finished first (while we hold the lock).
+    // A crashed or half-rolled-back earlier run is finished first (while we hold the lock),
+    // and so is the settings write: a temp file belongs to whoever holds the lock.
     assertOwned()
     recoverInterrupted(o.appHome, fsOps)
+    ensureTelemetryOff(o.appHome)
 
     let state: WorkspaceState
     let replaceOld = false
