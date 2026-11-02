@@ -26,25 +26,38 @@ role layout themselves. Facts about Herdr, read from the pinned source of `herdr
    with timeouts. It never edits `shared.json`, never signals or restarts Herdr.
 2. **Once per change, not on every sync.** `sync` reports `layoutChanged` when the installed layout id
    differs from the one the machine had (a first install counts). Only then a small **pending record**
-   (`activation.json` in the private state folder: layout name, time) is written. A change of the layout
+   (`activation.json` in the private state folder: unique request id, layout name, time) is written. A change of the layout
    file's *content* is not a layout change: Herdr reloads those live. A person who later switches to
    another layout on purpose is not fought: the record is removed once it has been honoured, and an
    unanswered one expires after 7 days.
-3. **Honoured only when it can be verified.** With a window open the switch is done and `status` is read
+3. **One worker serves a request; a newer request is never lost.** A worker **claims** the record by one
+   atomic rename (`activation.json` -> `activation.claimed.<random>`): of several workers (a launcher
+   started three times, a sync and a launcher) exactly one gets it and the others stop at once, so the
+   same request is never switched twice and waiting workers do not pile up. A request written afterwards
+   is a different file that no other worker can remove. A claim that is given back (no window, refused
+   switch) is restored with a hard link, which fails if a newer request already exists - the newer one
+   wins. Just before the switch the worker looks again: if a newer request is waiting it is
+   `superseded` and the older layout is not switched to. A claim whose worker died is restored by the next
+   worker once it is 5 minutes old. The record and its folder are trusted only if the folder is the caller's
+   own private one (not a link, not shared; on Windows the state folder's ACL is the installer's job,
+   ADR-0032); the file is read without following a link and at most 4 KiB.
+4. **Honoured only when it can be verified.** With a window open the switch is done and `status` is read
    again; only if the window now shows the layout is the record cleared. A refusal, or a window that says
    yes but does not show it, keeps the record (`failed`). No window means the record stays (`no_window`).
-4. **Where it runs.**
+5. **Where it runs.**
    - `3pa workspace sync` tries once straight after a successful sync when the Herdr binary is known
      (`THREEPA_HERDR_BIN`, which the wrapper the installer wrote sets; or `--herdr-bin`); `--no-activate`
      turns it off. A failure is one dim line and never changes the sync's result.
-   - `3pa workspace activate [--wait N] [--quiet]` does it on demand and can wait up to 120 s for the
-     window to open.
+   - `3pa workspace activate [--wait N] [--quiet]` does it on demand. N is a real deadline (status
+     calls count against it, each with the remaining time as its timeout), at most 120 s, for the window
+     to appear; after that the switch and its check take at most 45 s more. A record that expires while
+     waiting is not served.
    - The `herdr-fab` launcher starts `3pa workspace activate --wait 60 --quiet` **in the background**
      before it starts Herdr (POSIX `( ... & )`, Windows `start "" /b`), silent, so the first start after
      an update lands on the right layout without the launcher waiting for it.
-5. **Inputs are narrow.** The layout name comes from the signed manifest and is re-validated against the
+6. **Inputs are narrow.** The layout name comes from the signed manifest and is re-validated against the
    layout name grammar (`[a-z0-9][a-z0-9._-]{0,63}`) before it is stored and again when read; a damaged,
-   oversized, foreign or future-dated record means "nothing to do", never a switch to an arbitrary name.
+   oversized, foreign, expired or future-dated (beyond 5 minutes of clock skew) record means "nothing to do", never a switch to an arbitrary name.
    The Herdr binary path comes from the installer's wrapper or the flag, never from the manifest; it must
    be an absolute path to a real file (not a link).
 
@@ -60,7 +73,11 @@ role layout themselves. Facts about Herdr, read from the pinned source of `herdr
 ## Verification
 
 CLI: strict pending record (absent, damaged, foreign keys, bad name, oversized, expired, future); a
-request for a bad name is refused; clearing keeps a newer request; the exact argument vectors and app
+request for a bad name is refused; a folder that is shared or a link is not trusted; three concurrent
+workers send exactly one switch; a newer request written while another is served is never removed (same
+name and different name); a request arriving after the window is found supersedes; a dead worker's claim
+comes back and never overwrites a newer request; a slow `status` cannot stretch the wait (virtual clock); an
+expiring record is not served; the exact argument vectors and app
 home; switched / already / no window (with polling and the wait cap) / refused / not shown afterwards;
 the binary must be absolute, existing, not a link; a real process runner with a stand-in app script.
 Provisioner: `layoutChanged` for first install, content-only change, new id, no-op. End to end with the

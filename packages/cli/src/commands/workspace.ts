@@ -147,7 +147,7 @@ async function activateCmd(args: string[]): Promise<void> {
     if (!Number.isFinite(wait) || wait < 0 || wait > MAX_WAIT_SECONDS) throw new ActivationError('bad_wait')
     const out = await activate({ stateDir: workspaceStateDir(), appHome: appHome(args), herdrBin: bin, waitSeconds: wait })
     const quiet = args.includes('--quiet')
-    if (!quiet) console.log('  ' + ({ nothing: 'Nothing to switch.', switched: 'Layout switched.', already: 'That layout is already shown.', no_window: 'Herdr is not open; the switch stays pending.', failed: 'The switch did not take; it stays pending.' } as const)[out])
+    if (!quiet) console.log('  ' + ({ nothing: 'Nothing to switch.', switched: 'Layout switched.', already: 'That layout is already shown.', no_window: 'Herdr is not open; the switch stays pending.', failed: 'The switch did not take; it stays pending.', superseded: 'A newer layout request is waiting; it decides.' } as const)[out])
   } catch (e) {
     console.error(chalk.red(`  activate: ${e instanceof ActivationError ? e.code : 'error'}`))
     process.exit(1)
