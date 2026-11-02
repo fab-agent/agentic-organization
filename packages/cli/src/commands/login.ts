@@ -65,6 +65,8 @@ export function clearSession(): boolean {
 async function api(base: string, path: string, init?: RequestInit): Promise<any> {
   const r = await fetch(`${base}${path}`, {
     ...init,
+    // A redirect would re-send the password / id_token (and the body of a 307/308) elsewhere.
+    redirect: 'error',
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   })
   const body = await r.json().catch(() => ({}))

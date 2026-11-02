@@ -212,6 +212,52 @@ class Signer:
     crl_number: int
 
 
+@dataclass(frozen=True)
+class CrlView:
+    """The published revocation list and its number, independent of the signing key: a
+    revoked signing key must not stop clients from learning that it is revoked."""
+
+    crl: dict | None
+    crl_number: int
+
+
+def _load_crl(
+    root_fd: int, root_pub: str, now: int
+) -> tuple[dict | None, int, frozenset]:
+    crl, number, revoked = None, 0, frozenset()
+    if _lexists(root_fd, "crl.json"):  # a dangling link or odd file is not "absent"
+        try:
+            crl = json.loads(_read_fd(root_fd, "crl.json", limit=1024 * 1024))
+            st = wm.verify_crl(crl, root_pub, wm.ClientState(), now)
+        except WorkspaceUnavailable:
+            raise WorkspaceUnavailable("crl_invalid") from None
+        except (wm.ManifestError, ValueError) as e:
+            raise WorkspaceUnavailable("crl_invalid") from e
+        number, revoked = st.crl_number, st.revoked
+    return crl, number, revoked
+
+
+def load_crl(now: int) -> CrlView:
+    """Read the root public key and the CRL only (no signing key needed)."""
+    root_fd = _open_dir(None, workspace_dir())
+    try:
+        try:
+            root_pub = (
+                os.getenv("WORKSPACE_ROOT_PUB")
+                or _read_fd(root_fd, "root.pub", limit=4096).decode().strip()
+            )
+        except WorkspaceUnavailable:
+            raise
+        except (ValueError, UnicodeDecodeError) as e:
+            raise WorkspaceUnavailable("signing_material_invalid") from e
+        except OSError as e:
+            raise WorkspaceUnavailable("file_unreadable") from e
+        crl, number, _ = _load_crl(root_fd, root_pub, now)
+        return CrlView(crl, number)
+    finally:
+        os.close(root_fd)
+
+
 def load_signer(now: int) -> Signer:
     root_fd = _open_dir(None, workspace_dir())
     try:
@@ -239,18 +285,9 @@ def load_signer(now: int) -> Signer:
         if wm.key_id(pub) != cp["kid"]:
             raise WorkspaceUnavailable("signing_key_cert_mismatch")
 
-        crl, crl_number = None, 0
-        if _lexists(root_fd, "crl.json"):  # a dangling link or odd file is not "absent"
-            try:
-                crl = json.loads(_read_fd(root_fd, "crl.json", limit=1024 * 1024))
-                st = wm.verify_crl(crl, root_pub, wm.ClientState(), now)
-            except WorkspaceUnavailable:
-                raise WorkspaceUnavailable("crl_invalid") from None
-            except (wm.ManifestError, ValueError) as e:
-                raise WorkspaceUnavailable("crl_invalid") from e
-            if cp["kid"] in st.revoked:
-                raise WorkspaceUnavailable("signing_key_revoked")
-            crl_number = st.crl_number
+        crl, crl_number, revoked = _load_crl(root_fd, root_pub, now)
+        if cp["kid"] in revoked:
+            raise WorkspaceUnavailable("signing_key_revoked")
         return Signer(priv, cert, root_pub, cp["epoch"], cp["kid"], crl, crl_number)
     finally:
         os.close(root_fd)
@@ -273,7 +310,7 @@ def _parse_highwater(value: object) -> int:
     return n
 
 
-def enforce_crl_highwater(session, signer: Signer) -> None:
+def enforce_crl_highwater(session, signer: Signer | CrlView) -> None:
     """The highest valid revocation list this server has ever served never goes
     backwards, and once one was served it cannot silently disappear (a restored old file
     or a deleted one would otherwise lower the bootstrap checkpoint). The mark is raised

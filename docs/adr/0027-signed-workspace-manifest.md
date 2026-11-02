@@ -118,14 +118,28 @@ revocation list, last clock reading) must be written atomically under a lock, mo
 and persisted even when a manifest is rejected (`ManifestError.state`). The same OS user
 can still delete it, which is why the bootstrap floors are mandatory.
 
-**Portable names.** Paths, mod names and layout ids must be valid on Windows, macOS and
-Linux: no `..`, absolute, backslash, drive or alternate-stream colon, control
-characters or `<>"|?*`; no Windows device names (`CON`, `NUL`, `COM1`... with any
-extension); no trailing dot or space; NFC only; each component at most 255 UTF-8 bytes;
-two paths that are equal after NFC and case folding collide, and a file and a directory
+**Portable names.** Mod names, layout ids and every path component are **ASCII only**
+(`[A-Za-z0-9._@+-]`, at most 255 per component, 200 per path): no Unicode normalisation or
+case-folding table has to be shared between the signer and each verifier, which is how two
+implementations disagreed about `ß`/`ss` and `ı`/`i`. A path may not have an empty, `.` or
+`..` component, end with a dot, or start with a Windows device name (`CON`, `NUL`, `COM1`...,
+with any extension); two paths equal after lower-casing collide, and a file and a directory
 of the same name cannot coexist. Sizes of the layout and every mod file count against a
 256 MiB total; a manifest has at most 64 mods and 512 files per mod. The provisioner
-still has to resolve real paths and refuse symlinks and reparse points when it writes.
+still has to resolve real paths and refuse symlinks and reparse points when it writes,
+and to create files exclusively.
+
+**One spelling for base64.** Keys and signatures are standard base64 with exactly the right
+padding, no stray `=`, and no spare bits set (decode, re-encode, compare), so an Ed25519
+signature has exactly one accepted encoding. `client_version` supplied by the caller must be
+`major.minor.patch`; anything else is `bad_client_version` rather than a pass or a crash.
+
+**Which error you get.** For a document with several faults the first one *in reading
+order* decides: a float or `-0` at its token, a duplicate key when its object closes, a
+syntax error where it occurs; nesting beyond 32 and lone surrogates are reported after the
+parse. The TypeScript parser stops at 500 levels to bound its recursion and reports
+`too_deep` there, so for inputs nested deeper than that only "refused" is common to both.
+A string input with a raw lone surrogate is `bad_encoding` (after the size check).
 
 ## What this does not do
 

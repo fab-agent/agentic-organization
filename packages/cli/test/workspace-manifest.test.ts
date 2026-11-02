@@ -166,3 +166,32 @@ test('several faults in one document: the first in reading order decides, like P
   assert.equal(code('[' .repeat(40) + '1' + ']'.repeat(40)), 'too_deep')
   assert.equal(code('{"a":1,"a":2}'), 'duplicate_key')
 })
+
+
+test('V5: an explicit null client_version is a malformed trusted value, not "absent"', () => {
+  const c = vectors.verify_cases.find((x: { name: string }) => x.name === 'valid')
+  const base = { rootPub: vectors.root_pub, now: c.now, state: emptyState() }
+  for (const bad of [null, 5, true, {}, '']) {
+    assert.throws(
+      () => verifyWire(c.wire, { ...base, expected: { ...c.expected, client_version: bad as unknown as string } }),
+      (e: ManifestError) => e.code === 'bad_client_version',
+      String(bad),
+    )
+  }
+})
+
+test('V2: the size limit is checked before the encoding, like Python', () => {
+  const big = '{"a":"\ud800' + 'x'.repeat(300_000) + '"}'
+  assert.throws(() => parseWire(big), (e: ManifestError) => e.code === 'wire_too_large')
+  assert.throws(() => parseWire('{"a":"\ud800"}'), (e: ManifestError) => e.code === 'bad_encoding')
+})
+
+test('records keyed by a name like "constructor" are data (own properties only)', () => {
+  const c = vectors.verify_cases.find((x: { name: string }) => x.name === 'valid')
+  const state = emptyState()
+  // no history for any person: a prototype member must not count as history
+  assert.throws(
+    () => verifyWire(c.wire, { rootPub: vectors.root_pub, now: c.now, state, expected: { company_id: 'co1', person_id: 'p1', aud: 'herdr-provisioner', client_version: '1.0.0' } }),
+    (e: ManifestError) => e.code === 'bootstrap_floor_required',
+  )
+})

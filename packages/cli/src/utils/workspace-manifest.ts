@@ -10,6 +10,12 @@
  * canonical form is byte-identical to Python's: keys sorted by UTF-16 code unit,
  * everything outside U+0020-U+007E escaped as lower-case \uXXXX.
  *
+ * Untrusted JSON must enter through `verifyWire` / `parseWire`: a plain JS object cannot tell
+ * `1` from `1.0`, so `canonicalBytes` on an already-parsed object is only for data this
+ * program built itself. Documents nested deeper than 500 levels are refused as `too_deep`
+ * while still being read (a recursion bound); beyond that depth the first-fault order that
+ * Python gives is not reproduced - both refuse.
+ *
  * Paths are ASCII-only (`[A-Za-z0-9._@+-]` per component), so there are no normalisation or
  * case-folding tables to keep in step with Python. A collision the provisioner still misses
  * on a case-insensitive filesystem aborts the install, because files are created with O_EXCL.
@@ -163,10 +169,11 @@ export function digest(payload: unknown): string {
 /** Strict parser: size cap, duplicate keys, floats/exponents, `-0`, NaN/Infinity,
  * integers beyond +/-(2^53-1), lone surrogates and nesting beyond the profile. */
 export function parseWire(data: string | Uint8Array, maxBytes = MAX_WIRE_BYTES): Json {
-  // A string that cannot be encoded as UTF-8 (a raw lone surrogate) is refused, never repaired.
-  if (typeof data === 'string' && hasLoneSurrogate(data)) throw new ManifestError('bad_encoding')
   const raw = typeof data === 'string' ? Buffer.from(data, 'utf8') : Buffer.from(data)
   if (raw.length > maxBytes) throw new ManifestError('wire_too_large')
+  // A string that cannot be encoded as UTF-8 (a raw lone surrogate) is refused, never repaired.
+  // (Encoded, a lone surrogate is 3 bytes either way, so the size check above agrees with Python.)
+  if (typeof data === 'string' && hasLoneSurrogate(data)) throw new ManifestError('bad_encoding')
   let text: string
   try {
     text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(raw)
@@ -230,7 +237,7 @@ export function parseWire(data: string | Uint8Array, maxBytes = MAX_WIRE_BYTES):
       const e = text[i + 1]
       i += 2
       const simple: Record<string, string> = { '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' }
-      if (e !== undefined && e in simple) out += simple[e]
+      if (e !== undefined && Object.hasOwn(simple, e)) out += simple[e]
       else if (e === 'u') {
         const hex = text.slice(i, i + 4)
         if (!/^[0-9a-fA-F]{4}$/.test(hex)) throw bad()
@@ -271,7 +278,7 @@ export function parseWire(data: string | Uint8Array, maxBytes = MAX_WIRE_BYTES):
       if (text[i] !== ':') throw bad()
       i++
       const v = value(depth + 1)
-      if (k in out) duplicate = true // reported when the object closes, as Python does
+      if (Object.hasOwn(out, k)) duplicate = true // reported when the object closes, as Python does
       out[k] = v
       ws()
       if (text[i] === ',') {
@@ -543,7 +550,7 @@ export interface VerifyOptions {
 
 function verifyInner(envelope: unknown, o: VerifyOptions, state: ClientState): [Obj, ClientState] {
   const { rootPub, expected, now } = o
-  const clientVersion = expected.client_version ?? '0.0.0'
+  const clientVersion = expected.client_version === undefined ? '0.0.0' : expected.client_version
   if (typeof clientVersion !== 'string' || !VERSION.test(clientVersion)) {
     throw new ManifestError('bad_client_version')
   }
@@ -579,7 +586,7 @@ function verifyInner(envelope: unknown, o: VerifyOptions, state: ClientState): [
   const mg = expected.min_generation ?? null
   const me = expected.min_epoch ?? null
   const mc = expected.min_crl_number ?? null
-  if (state.epoch === 0 || !(key in state.generations)) {
+  if (state.epoch === 0 || !Object.hasOwn(state.generations, key)) {
     if (mg === null || me === null || mc === null) throw new ManifestError('bootstrap_floor_required')
   }
   if (me !== null && epoch < me) throw new ManifestError('epoch_rollback')

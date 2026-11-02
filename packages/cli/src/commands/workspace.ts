@@ -18,7 +18,7 @@ import { join } from 'node:path'
 import * as p from '@clack/prompts'
 import chalk from 'chalk'
 
-import { ProvisionError, scanDrift, syncWorkspace } from '../utils/provisioner.js'
+import { ProvisionError, checkBaseUrl, scanDrift, syncWorkspace } from '../utils/provisioner.js'
 import { StateError, loadState, workspaceStateDir } from '../utils/workspace-state.js'
 import { loadSession, webSignIn } from './login.js'
 
@@ -48,6 +48,10 @@ const MESSAGES: Record<string, string> = {
   state_corrupt: 'The local sync state is damaged. It is not reset on its own (that would allow an old workspace to be replayed). Use --re-enroll to start over.',
   locked: 'Another workspace sync is already running.',
   settings_invalid: 'Herdr settings.json is not valid JSON; fix or remove it, then run again.',
+  recovery_required: 'An update was interrupted and could not be rolled back completely. The previous items were kept (see the message); do not delete them. Run the sync again once the cause is fixed.',
+  base_url_insecure: 'The platform URL must be https:// (http:// is accepted only for localhost).',
+  base_url_invalid: 'The platform URL is not valid (no credentials, query or fragment allowed).',
+  lock_lost: 'The sync lock was taken over by another run; nothing further was written. Run the sync again.',
   app_home_unsafe: 'The Herdr app home contains a link where a real folder is expected; it was left untouched.',
 }
 
@@ -62,11 +66,7 @@ export async function workspace(args: string[]): Promise<void> {
 async function sync(args: string[]): Promise<void> {
   p.intro(chalk.bold('3pa workspace sync'))
   try {
-    const base = (flag(args, '--base') || process.env.FABAGENT_BASE_URL || loadSession()?.base_url || '').replace(/\/+$/, '')
-    if (!base.startsWith('https://') && !base.startsWith('http://localhost')) {
-      p.cancel('Platform URL needed (--base https://...); plain http is only accepted for localhost.')
-      process.exit(1)
-    }
+    const base = checkBaseUrl(flag(args, '--base') || process.env.FABAGENT_BASE_URL || loadSession()?.base_url || '')
     const pub = rootPub(args)
     const webToken = process.env.FABAGENT_WEB_TOKEN || (await webSignIn(base, args))
     if (webToken === null) return void p.cancel('cancelled')
@@ -87,7 +87,13 @@ async function sync(args: string[]): Promise<void> {
     )
   } catch (e) {
     const code = e instanceof ProvisionError || e instanceof StateError ? e.code : 'error'
-    const hint = MESSAGES[code] ?? (code.startsWith('manifest_') ? 'The manifest was refused (' + code.slice(9) + '); nothing was installed.' : code.startsWith('server_') ? 'The platform cannot issue a workspace right now (' + code.slice(7) + ').' : (e as Error).message)
+    const known = e instanceof ProvisionError || e instanceof StateError
+    const hint =
+      MESSAGES[code] ??
+      (code.startsWith('manifest_') ? 'The manifest was refused (' + code.slice(9) + '); nothing was installed.'
+        : code.startsWith('server_') ? 'The platform cannot issue a workspace right now (' + code.slice(7) + ').'
+        : known ? (e as Error).message
+        : process.env.THREEPA_DEBUG ? (e as Error).message : 'Unexpected error (set THREEPA_DEBUG=1 for details).')
     p.cancel(chalk.red(hint) + chalk.dim(`  [${code}]`))
     process.exit(1)
   }
@@ -108,6 +114,7 @@ function status(args: string[]): void {
   }
   console.log(`  generation ${st.installed.generation}, epoch ${st.installed.epoch}`)
   const d = scanDrift(home)
+  if (d.interrupted) console.log('  ' + chalk.yellow('An update was interrupted; run 3pa workspace sync to finish rolling it back.'))
   const lines = [
     ...d.missing.map((x) => `missing   ${x}`),
     ...d.modified.map((x) => `modified  ${x}`),

@@ -17,47 +17,77 @@ never leave a half-installed workspace.
 
 `3pa workspace sync` (library: `packages/cli/src/utils/provisioner.ts`):
 
-1. **Sign in, keep nothing.** A web session token from the existing `3pa login` helper
-   (password, `--oidc`, or `FABAGENT_WEB_TOKEN` for unattended use), held in memory only.
-   It is not the persona token (ADR-0026 decision 5). Requests send it only to the
-   configured platform URL and treat a redirect as an error.
-2. **Pinned root.** The root public key comes from the installer / MDM (`--root-pub`,
+1. **Sign in, keep nothing.** A web session token from the `3pa login` helper (password,
+   `--oidc`, or `FABAGENT_WEB_TOKEN` for unattended use), held in memory only. It is not
+   the persona token (ADR-0026 decision 5). Every request, including the sign-in POSTs,
+   goes only to the configured platform URL and treats a redirect as an error (a redirect
+   would carry the password or id_token to another host).
+2. **The platform URL is parsed, not matched.** `https://` anywhere; `http://` only for the
+   exact host names `localhost` and `127.0.0.1`; no credentials, query or fragment. The
+   library checks this before sending anything, so a look-alike such as
+   `http://localhost.example` never receives the token.
+3. **Pinned root.** The root public key comes from the installer / MDM (`--root-pub`,
    `FABAGENT_WORKSPACE_ROOT_PUB`, or `<state dir>/root.pub`) and is never fetched from
    the server.
-3. **Verify first** with the TypeScript verifier (`workspace-manifest.ts`, same verdicts as
-   the Python one on a shared set of vectors) and the strict wire parser. Nothing else is
-   trusted before it accepts.
-4. **Identity is pinned on first use** from the signed-in session's own reply
+4. **Revocation first.** The root-signed revocation list is fetched and ingested before the
+   manifest, and the state is saved at once, so a manifest that is refused, unavailable
+   (`503`) or fails the identity check cannot cost the client a revocation. The platform
+   serves the list even when its own signing key has been revoked.
+5. **Verify** with the TypeScript verifier (same verdicts as the Python one on a shared set
+   of 60 vectors) and the strict wire parser. Nothing else is trusted before it accepts.
+6. **Identity is pinned on first use** from the signed-in session's own reply
    (`identity` in `/me/workspace`) and compared on every later run; a different person
-   needs an explicit `--re-enroll`. Bootstrap floors come from the same session reply and
-   are required only when there is no history for that person (ADR-0027).
-5. **Save the accepted state before touching any file**, atomically (temp file, fsync,
-   rename) with mode 0600 in a 0700 directory, under an exclusive lock (a lock left by a
-   dead process is taken over). A manifest that is refused after a revocation list was
-   taken still saves that list. A corrupt state file is never reset silently; `--re-enroll`
-   moves it aside and starts over from the server's floors.
-6. **Download into a fresh staging directory**, checking size and SHA-256 for each file
-   (the response is size-capped to the manifest's size, files are created with `O_EXCL`
-   so a path collision aborts). Nothing live changes until every file has passed.
-7. **Activate as a transaction.** Replaced items are moved into a trash directory, staged
-   ones renamed in, and any failure restores the old items; the trash and staging are
-   removed at the end. A failed sync leaves the previous workspace exactly as it was.
-   Directory renames are not a single atomic operation; Herdr hot-reloads mods, so a
-   panel may reload once.
-8. **Only manage what we installed.** `.3pa-managed.json` in the app home lists the layout
-   and mods (with file hashes) the provisioner installed. A layout or mod that exists and
-   is not in that record stops the sync before any change (`--adopt` overrides). Names
-   Herdr ships (`main`, `terminals`, `win98`; the built-in mods) are refused, because Herdr
-   rewrites them whole on every start. A link in the app home, or where a real folder is
-   expected, is refused and never followed.
-9. **Telemetry off before first launch.** `settings.json` gets `"telemetry": false`, other
-   keys kept; an unreadable settings file is reported and left alone.
-10. **Unchanged content does nothing**, even though the server issues a new generation per
-    request: the content digest of `{layout, mods}` is compared, and the disk is checked
-    for drift first (a damaged managed file is repaired).
-11. **Drift is a diagnostic, not attestation** (`3pa workspace status`, exit code 2):
-    missing, modified or extra files in managed mods, and mods that are neither managed nor
-    shipped by Herdr. The same user can edit the record too (ADR-0026 decision 4).
+   needs an explicit `--re-enroll`. Bootstrap floors come from the same reply and are
+   required only when there is no history for that person (ADR-0027). This is a stated
+   trust assumption: whoever can alter the TLS-protected session reply at enrolment can
+   choose the first identity and floors. A stronger model needs the installer / MDM to
+   provide the identity and a checkpoint.
+7. **State is checked, written atomically and never reset silently.** Every field of
+   `state.json` is validated (types, safe-integer ranges, hash and id formats, one entry
+   per person), because JavaScript would otherwise coerce a damaged counter into a
+   comparison that passes. It is written with a full-length write loop, fsync, rename and a
+   directory sync, mode 0600 in a 0700 directory. The accepted state is saved **before** any
+   file is touched. A corrupt file stops the run; `--re-enroll` moves it aside only when the
+   new state replaces it, so a failed attempt changes nothing.
+8. **One run at a time, and a run knows if it lost the lock.** The lock file holds the pid
+   and a random token; unlock removes only a file with our token; a stale lock is taken over
+   by moving it aside and checking that what was moved is what was judged stale (a live lock
+   found there is put back and the run backs off); `assertOwned()` is checked before every
+   state write and before activation. Node has no portable OS file lock, so a multi-process
+   race on the takeover itself is narrowed, not eliminated, and a process that ends up not
+   holding the lock stops before it writes.
+9. **Download into a fresh staging directory**, checking size and SHA-256 for each file
+   (the response is capped at the manifest's size; files are created with `O_EXCL`, written
+   completely - short writes are continued, zero progress is an error - and measured on
+   disk). One content listed with two sizes is refused before downloading.
+10. **Activation is a journalled transaction.** The plan (which items go where, where each
+    old item is kept, the previous managed record) is written to `.3pa-journal.json` before
+    the first rename. Old items are moved to a trash folder and never deleted until the
+    end; the managed record is written inside the transaction; **deleting the journal is
+    the commit**. A failure rolls everything back; a crash is found on the next start and
+    rolled back first (the journal is validated: only paths under the app home with the
+    expected names are acted on). If a rollback cannot finish, the trash and journal are
+    kept and the run stops with `recovery_required`. Directory renames are not one atomic
+    operation; Herdr hot-reloads mods, so a panel may reload once.
+11. **Only manage what we installed.** `.3pa-managed.json` lists the layout and mods (with
+    file hashes) the provisioner installed and is validated field by field before use.
+    Ownership is "own property of that record", never "has that name": a mod called
+    `constructor` or `toString` is an ordinary name. An existing layout or mod that is not
+    in the record stops the sync before any change (`--adopt` overrides). Names Herdr ships
+    are refused. A link (also a dangling one) where a folder or file is expected is refused.
+12. **Links are never trusted, not even to identical bytes.** The drift scan and the
+    "nothing to do" check use `lstat`: a managed file that became a link is drift and is
+    repaired by the next sync.
+13. **Telemetry off before first launch.** `settings.json` gets `"telemetry": false`, other
+    keys kept; an unreadable settings file is reported and left alone. This is the one write
+    that happens before the manifest is verified, on purpose.
+14. **Unchanged content does nothing**, even though the server issues a new generation per
+    request: the content digest of `{layout, mods}` is compared, and the disk is checked for
+    drift first (a damaged managed file is repaired).
+15. **Errors carry codes, not server text.** A server `reason` is passed on only if it is
+    `[a-z0-9_]{1,48}`; otherwise the code is `http_<status>`. Unexpected errors print a
+    generic line (`THREEPA_DEBUG=1` for details). Drift is a diagnostic, not attestation
+    (`3pa workspace status`, exit code 2; it also reports an interrupted update).
 
 ## What this does not do
 
@@ -72,10 +102,9 @@ never leave a half-installed workspace.
 
 ## Consequences
 
-- A test suite with a fake platform covers install, no-op, change, removal, tampered / short
-  / oversized downloads, activation failure with restore, unmanaged and shipped names,
-  links, settings, replay, identity, revocation, corrupt state, lock and drift; and an end
-  to end test starts the real backend and runs the real CLI against it.
+- Tests (fake platform, real signatures) cover every item above, including a child process
+  that is killed in the middle of an activation at each rename and a rollback that itself
+  fails; an end-to-end test starts the real backend and runs the real CLI against it.
 - `/me/workspace` now also returns `identity: {company_id, person_id}`.
 - The root public key must be distributed with the installer; without it the command stops
   with `root_pub_missing`.

@@ -1368,10 +1368,13 @@ def test_io_error_on_signing_material_is_a_503(
     monkeypatch.setattr(ws.os, "open", tracking_open)
     monkeypatch.setattr(ws.os, "fstat", failing)
     assert _reason(_get(client, people["emp_user"])) == "file_unreadable"
-    assert (
-        _reason(client.get("/me/workspace/crl", headers=_h(people["emp_user"])))
-        == "file_unreadable"
-    )
+    crl = client.get("/me/workspace/crl", headers=_h(people["emp_user"]))
+    if (
+        which == "root.pub"
+    ):  # the list is verified under the root key, so it needs that file
+        assert _reason(crl) == "file_unreadable"
+    else:  # the list does not depend on the signing key or its certificate (P-05)
+        assert crl.status_code == 404
     assert _nothing_issued(db_session)
 
 
@@ -1445,3 +1448,19 @@ def test_response_names_the_callers_own_identity(client, env, people):
         "person_id": people["emp"].id,
     }
     assert body["identity"]["person_id"] == body["manifest"]["payload"]["person_id"]
+
+
+def test_crl_is_served_even_when_the_signing_key_is_revoked(client, env, people):
+    """Clients must be able to learn that the key is revoked (CODEX-PROVISIONER P-05)."""
+    _put_crl(env, 5, kids=[wm.key_id(env.sign_pub)])
+    assert _reason(_get(client, people["emp_user"])) == "signing_key_revoked"
+    r = client.get("/me/workspace/crl", headers=_h(people["emp_user"]))
+    assert r.status_code == 200 and r.json()["payload"]["number"] == 5
+
+
+def test_crl_endpoint_needs_no_signing_material_at_all(client, env, people):
+    (env.dir / "signing.key").unlink()
+    (env.dir / "signing.cert.json").unlink()
+    _put_crl(env, 2)
+    r = client.get("/me/workspace/crl", headers=_h(people["emp_user"]))
+    assert r.status_code == 200 and r.json()["payload"]["number"] == 2

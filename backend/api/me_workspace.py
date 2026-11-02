@@ -122,11 +122,11 @@ def get_workspace_crl(user: User = Depends(get_current_user)):
     the bootstrap floors, so this endpoint and /me/workspace can never disagree or
     lower each other."""
     try:
-        signer = ws.load_signer(int(time.time()))
+        view = ws.load_crl(int(time.time()))
         with get_session() as session:
-            ws.enforce_crl_highwater(session, signer)
+            ws.enforce_crl_highwater(session, view)
     except ws.WorkspaceUnavailable as e:
         raise _unavailable(e) from e
-    if signer.crl is None:
+    if view.crl is None:
         raise HTTPException(status_code=404, detail="No revocation list published")
-    return signer.crl
+    return view.crl
