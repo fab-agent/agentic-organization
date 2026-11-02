@@ -48,8 +48,10 @@ program.
    absolute path from System32, because a first CI run showed that a `whoami` from Git for
    Windows can come first on PATH and answers differently. The CLI cannot check mode bits there
    (ADR-0029) and does not try.
-7. **Launcher and wrapper are `.cmd` files.** Because a path can contain neither `"` nor `%`
-   (decision 5), double-quoting is sufficient; the platform URL has `%` doubled. The launcher
+7. **Launcher and wrapper are `.cmd` files**, both starting with `setlocal
+   DisableDelayedExpansion` so that `!` in a path or URL stays literal even when the caller runs
+   `cmd /v:on` (tested under `/v:on` and `/v:off`). Because a path can contain neither `"` nor
+   `%` (decision 5), double-quoting is sufficient; the platform URL has `%` doubled. The launcher
    runs `3pa workspace sync` and starts Herdr only if it succeeds. The wrapper `3pa.cmd` (and
    the POSIX wrapper, changed in the same commit) sets `THREEPA_WORKSPACE_DIR` and
    `HERDR_APP_HOME` for this install unless the user already set them, so `3pa self-update` and
