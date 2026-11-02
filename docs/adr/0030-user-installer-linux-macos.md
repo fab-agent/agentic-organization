@@ -36,9 +36,11 @@ workspace has been verified. ADR-0026 lists user installers as the third deliver
 6. **The platform URL follows the CLI rule on the parsed URL** (https anywhere; http only for
    localhost, 127.0.0.1, `[::1]`; no credentials, query or fragment) and is baked into the
    launcher.
-   **Locations are checked on their real paths** (links and `..` resolved): absolute, no control
-   characters or backslashes, never `/`, the home directory or a parent of it, and bin, lib,
-   state and app home must not equal or contain one another. **Existing state is inspected
+   **Locations are checked on their real paths** (links resolved; bin and lib are resolved too,
+   since either may itself be a link): absolute, no control characters, backslashes or `..`
+   components (the file system and a path library resolve `..` in a different order relative to
+   links, so such a path is refused rather than interpreted), never `/`, the home directory or a
+   parent of it, and bin, lib, state and app home must not equal or contain one another. **Existing state is inspected
    before anything is changed**: a state folder that is a link, someone else's, or unreadable,
    or a `root.pub` that is not a regular file, stops the install ("cannot look" is never "not
    there"), and the pinned-key comparison happens before any write.
@@ -46,14 +48,19 @@ workspace has been verified. ADR-0026 lists user installers as the third deliver
    only if that succeeds; otherwise it prints a message and exits non-zero. Values written
    into the generated script are single-quote escaped (tested with a path containing a quote
    and a space). Without a Herdr binary only the CLI and the key are installed.
-8. **Uninstall removes what the installer added** (wrappers, and by name the files in its marked
-   `lib/3pa` folder) and keeps the pinned key and sync history unless `--purge-state`, which
-   recurses only into a state folder carrying the installer's marker and refuses otherwise.
-   `--dry-run` with `--uninstall` is refused rather than ignored. Sync history is kept, because deleting it would let an
-   old workspace be replayed (ADR-0029). The Herdr app home is never touched.
+8. **Uninstall removes only what the installer creates, by name.** The wrappers, `3pa.mjs` and
+   `herdr` in its lib folder; the folder goes only if it ends up empty. `--purge-state` removes
+   the pinned key and the sync state/lock/backup files (`root.pub`, `state.json*`,
+   `sync.lock*`) and then the folder only if it is empty, so a state folder that already held
+   other files (even one the installer was pointed at) keeps them; there is no recursive
+   delete and no marker file to forge. `--dry-run` with `--uninstall` is refused rather than
+   ignored. Sync history is kept without `--purge-state`, because deleting it would let an old
+   workspace be replayed (ADR-0029). The Herdr app home is never touched.
 
 ## What this does not do (stated plainly)
 
+- The URL is judged after WHATWG normalisation, like the CLI (tab or newline characters inside
+  it are dropped by the parser, not rejected).
 - Needs Node.js 20+, `sha256sum` or `shasum`, and the usual `sh` tools (`sed`, `tr`, `cp`, `mv`).
 - Not transactional across a crash: a kill between two renames can leave the CLI installed
   without the launcher; running the installer again completes it.
@@ -68,7 +75,7 @@ workspace has been verified. ADR-0026 lists user installers as the third deliver
 
 ## Verification
 
-`installers/user/test.sh` (69 checks, run in CI on Linux and macOS): every refusal above,
+`installers/user/test.sh` (80 checks, run in CI on Linux and macOS): every refusal above,
 a hash mismatch leaving nothing behind, a full install, launcher flow and fail-closed
 behaviour, quote-in-path, root replacement, idempotence, uninstall and `--purge-state`.
 A CI step also installs the real bundle and runs `3pa workspace status`.

@@ -93,21 +93,29 @@ check_paths() {
     const fail = (m) => { process.stderr.write(m + "\n"); process.exit(1) }
     const raw = { prefix: process.env.P_PREFIX, state: process.env.P_STATE, "app home": process.env.P_APP }
     const home = real(process.env.P_HOME)
-    const loc = {}
     for (const [k, v] of Object.entries(raw)) {
       if (!path.isAbsolute(v)) fail(k + " path must be absolute")
       if (/[\x00-\x1f\x7f\\]/.test(v)) fail(k + " path must not contain control characters or backslashes")
-      loc[k] = real(v)
-      if (loc[k] === path.parse(loc[k]).root || loc[k] === home || home.startsWith(loc[k] + path.sep)) {
-        fail(k + " path may not be / , your home directory or a parent of it")
+      // `..` is resolved by the file system AFTER links, but by path.resolve BEFORE them: the
+      // two can disagree, so a path that contains one is refused instead of interpreted.
+      if (v.split("/").includes("..")) fail(k + " path must not contain ..")
+    }
+    // bin and lib are checked where they really are (either may itself be a link)
+    const spots = {
+      prefix: real(raw.prefix),
+      bin: real(path.join(raw.prefix, "bin")), lib: real(path.join(raw.prefix, "lib", "3pa")),
+      state: real(raw.state), "app home": real(raw["app home"]),
+    }
+    for (const [k, v] of Object.entries(spots)) {
+      if (v === path.parse(v).root || v === home || home.startsWith(v + path.sep)) {
+        fail(k + " location may not be / , your home directory or a parent of it")
       }
     }
-    const bin = path.join(loc.prefix, "bin"), lib = path.join(loc.prefix, "lib", "3pa")
-    const spots = { bin, lib, state: loc.state, "app home": loc["app home"] }
+    // the prefix only has to be a safe place to put bin/ and lib/ under; it may contain them
+    delete spots.prefix
     const within = (a, b) => a === b || a.startsWith(b + path.sep)
     const names = Object.keys(spots)
     for (let i = 0; i < names.length; i++) for (let j = i + 1; j < names.length; j++) {
-      if (names[i] === "bin" && names[j] === "lib") continue
       if (within(spots[names[i]], spots[names[j]]) || within(spots[names[j]], spots[names[i]])) {
         fail(names[i] + " and " + names[j] + " locations overlap; choose separate folders")
       }
@@ -116,7 +124,6 @@ check_paths() {
 check_paths || die "unsafe location (see above)"
 
 LIB="$PREFIX/lib/3pa"; BIN="$PREFIX/bin"
-MARK_LIB="$LIB/.3pa-installer"; MARK_STATE="$STATE_DIR/.3pa-installer-state"
 
 # Quote a value for a single-quoted shell string (the launcher is generated code). The
 # trailing x keeps a final newline, which command substitution would otherwise drop.
@@ -134,16 +141,18 @@ if [ "$UNINSTALL" -eq 1 ]; then
   for f in "$BIN/3pa" "$BIN/herdr-fab"; do
     if [ -e "$f" ] || [ -L "$f" ]; then rm -f -- "$f"; say "removed $f"; fi
   done
-  # Only a folder this installer marked as its own is emptied, and only by name.
-  if [ -f "$MARK_LIB" ]; then
-    rm -f -- "$LIB/3pa.mjs" "$LIB/herdr" "$MARK_LIB"
-    rmdir "$LIB" 2>/dev/null && say "removed $LIB" || say "kept $LIB (it holds files that are not ours)"
-  fi
+  # Only files this installer creates are removed, by name; folders go only if they end up empty.
+  rm -f -- "$LIB/3pa.mjs" "$LIB/herdr"
+  rmdir "$LIB" 2>/dev/null && say "removed $LIB" || true
+  [ ! -d "$LIB" ] || say "kept $LIB (it holds files that are not ours)"
   if [ "$PURGE" -eq 1 ]; then
-    if [ -d "$STATE_DIR" ] && [ ! -L "$STATE_DIR" ] && [ -f "$MARK_STATE" ]; then
-      rm -rf -- "$STATE_DIR"; say "removed $STATE_DIR (root key and sync history)"
-    elif [ -e "$STATE_DIR" ]; then
-      die "$STATE_DIR was not created by this installer (no marker); it was left alone"
+    if [ -d "$STATE_DIR" ] && [ ! -L "$STATE_DIR" ]; then
+      # the pinned key, the sync state and its lock/backup files; nothing else in that folder
+      for f in "$STATE_DIR"/root.pub "$STATE_DIR"/.root.pub.* "$STATE_DIR"/state.json* "$STATE_DIR"/sync.lock*; do
+        if [ -f "$f" ] && [ ! -L "$f" ]; then rm -f -- "$f"; fi
+      done
+      rmdir "$STATE_DIR" 2>/dev/null && say "removed $STATE_DIR (root key and sync history)" \
+        || say "removed the key and sync history in $STATE_DIR; kept the folder (it holds other files)"
     fi
   else
     say "kept $STATE_DIR (root key and sync history; --purge-state removes it)"
@@ -165,7 +174,6 @@ fi
 BASE_URL="$(BASE_URL="$BASE_URL" node -e '
   const bad = (m) => { process.stderr.write(m + "\n"); process.exit(1) }
   const raw = process.env.BASE_URL
-  if (/[\x00-\x1f\x7f]/.test(raw)) bad("--base-url is not a valid platform URL (no credentials, query or fragment)")
   let u; try { u = new URL(raw) } catch { bad("--base-url is not a valid platform URL (no credentials, query or fragment)") }
   const loop = u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "[::1]"
   if (u.protocol !== "https:" && !(u.protocol === "http:" && loop)) bad("--base-url must be https:// (http:// is accepted only for localhost)")
@@ -234,7 +242,6 @@ if [ -n "$HERDR" ]; then
 fi
 
 mkdir -p "$STATE_DIR"; chmod 700 "$STATE_DIR"
-: > "$MARK_STATE"; : > "$MARK_LIB"
 
 mv -f -- "$TMP1" "$LIB/3pa.mjs"; TMP1=""
 say "installed 3pa bundle -> $LIB/3pa.mjs"

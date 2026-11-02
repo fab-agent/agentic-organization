@@ -109,7 +109,7 @@ mkdir -p "$HOME/.config/herdr-app"; echo mine > "$HOME/.config/herdr-app/keep"; 
 expect_fail "prefix is /" "may not be" base --prefix /
 expect_fail "state is home" "may not be" base --state-dir "$HOME"
 expect_fail "state is a parent of home" "may not be" base --state-dir "$(dirname "$HOME")"
-expect_fail "prefix reaches home via .." "may not be" base --prefix "$HOME/sub/.."
+expect_fail "prefix reaches home via .." "must not contain" base --prefix "$HOME/sub/.."
 expect_fail "state inside lib" "overlap" base --state-dir "$HOME/.local/lib/3pa/state"
 expect_fail "app home equals state" "overlap" base --state-dir "$HOME/x" --app-home "$HOME/x"
 expect_fail "backslash in path" "control characters or backslashes" base --prefix "$HOME/a\\b"
@@ -118,9 +118,14 @@ b"
 ln -s "$HOME" "$T/homelink"
 expect_fail "symlink to home as state" "may not be" base --state-dir "$T/homelink"
 mkdir -p "$HOME/foreign"; echo mine > "$HOME/foreign/f"
-expect_fail "purge without marker" "not created by this installer" sh "$INST" --uninstall --purge-state --state-dir "$HOME/foreign"
+sh "$INST" --uninstall --purge-state --state-dir "$HOME/foreign" >/dev/null 2>&1
 [ -f "$HOME/foreign/f" ] && [ -f "$HOME/personal.txt" ] && [ -f "$HOME/.config/herdr-app/keep" ] && ok || bad "purge removed foreign data"
-base >/dev/null 2>&1 && sh "$INST" --uninstall --purge-state >/dev/null 2>&1 && [ ! -e "$HOME/.config/3pa/workspace" ] && [ -f "$HOME/personal.txt" ] && ok || bad "marked purge"
+# I10: a pre-existing folder with personal files is never emptied, even after an install into it
+mkdir -p "$HOME/pre"; echo mine > "$HOME/pre/personal.txt"
+base --state-dir "$HOME/pre" >/dev/null 2>&1 && sh "$INST" --uninstall --purge-state --state-dir "$HOME/pre" >/dev/null 2>&1
+[ -f "$HOME/pre/personal.txt" ] && [ ! -e "$HOME/pre/root.pub" ] && ok || bad "purge took a foreign file or left the key"
+rm -rf "$HOME/.local" "$HOME/.config/3pa"
+base >/dev/null 2>&1 && sh "$INST" --uninstall --purge-state >/dev/null 2>&1 && [ ! -e "$HOME/.config/3pa/workspace" ] && [ -f "$HOME/personal.txt" ] && ok || bad "purge of our own state"
 # a foreign file inside our lib folder survives uninstall
 base >/dev/null 2>&1; echo mine > "$HOME/.local/lib/3pa/other"; sh "$INST" --uninstall >/dev/null 2>&1
 [ -f "$HOME/.local/lib/3pa/other" ] && [ ! -e "$HOME/.local/lib/3pa/3pa.mjs" ] && ok || bad "uninstall must remove only its own files"
@@ -156,6 +161,26 @@ done
 for u in "http://platform.example" "http://localhost.evil.example" "https://u@platform.example" "ftp://x" "https://p.example/#f"; do
   sh "$INST" --base-url "$u" --root-pub "$KEY" --cli "$T/3pa.mjs" --cli-sha256 "$CS" --dry-run >/dev/null 2>&1 && bad "url wrongly accepted: $u" || ok
 done
+
+# ── Codex round 2 (I9-I12) ───────────────────────────────────────────────────
+rm -rf "$HOME/.local" "$HOME/.config/3pa"
+mkdir -p "$T/hop-target" "$HOME/.config/herdr-app"; ln -s "$T/hop-target" "$HOME/alias"
+expect_fail "state with .." "must not contain \.\." base --state-dir "$HOME/alias/../home"
+expect_fail "prefix with .." "must not contain \.\." base --prefix "$HOME/alias/../x"
+expect_fail "uninstall with .." "must not contain \.\." sh "$INST" --uninstall --purge-state --state-dir "$HOME/alias/../home"
+[ -f "$HOME/personal.txt" ] && ok || bad "personal file removed through .."
+mkdir -p "$T/p1"; ln -s "$HOME/.config/herdr-app" "$T/p1/bin"
+expect_fail "bin linked to app home" "overlap" base --prefix "$T/p1"
+echo mine > "$HOME/.config/herdr-app/3pa"
+expect_fail "uninstall: bin linked to app home" "overlap" sh "$INST" --uninstall --prefix "$T/p1"
+[ -f "$HOME/.config/herdr-app/3pa" ] && ok || bad "uninstall removed a file through the bin link"
+mkdir -p "$T/p2/lib"; ln -s "$HOME/.config/herdr-app" "$T/p2/lib/3pa"
+expect_fail "lib linked to app home" "overlap" base --prefix "$T/p2"
+[ ! -e "$HOME/.config/herdr-app/3pa.mjs" ] && ok || bad "install wrote through the lib link"
+mkdir -p "$T/p3"; ln -s "$HOME" "$T/p3/bin"
+expect_fail "bin linked to home" "may not be" base --prefix "$T/p3"
+# I12: the URL is judged after the same normalisation the CLI applies
+sh "$INST" --base-url "$(printf 'https://platform.example\t')" --root-pub "$KEY" --cli "$T/3pa.mjs" --cli-sha256 "$CS" --dry-run >/dev/null 2>&1 && ok || bad "tab-padded url"
 
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
