@@ -7,12 +7,14 @@ on:
     branches: [main]
     paths:
       - "installers/**"
+      - "docs/adr/0030-*.md"
       - "packages/cli/**"
       - ".github/workflows/installers.yml"
   pull_request:
     branches: [main]
     paths:
       - "installers/**"
+      - "docs/adr/0030-*.md"
       - "packages/cli/**"
       - ".github/workflows/installers.yml"
   workflow_dispatch:

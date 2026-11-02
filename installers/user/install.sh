@@ -1,7 +1,8 @@
 #!/bin/sh
 # User installer for Linux and macOS (ADR-0030).
 #
-# Puts four things on a workstation, all inside the user's home (no root, no system paths):
+# Puts four things on a workstation, all inside the user's home by default (no root, no
+# system paths):
 #   1. the `3pa` CLI bundle, checked against a SHA-256 you pass in,
 #   2. the pinned root public key (never fetched from the server),
 #   3. optionally the Herdr app binary, also checked against a SHA-256 you pass in,
@@ -21,6 +22,13 @@ umask 077
 
 die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
 say() { printf '  %s\n' "$*"; }
+
+# Every temp file we create is registered here and removed on any exit or interrupt.
+TMP1=""; TMP2=""
+cleanup() { [ -z "$TMP1" ] || rm -f -- "$TMP1"; [ -z "$TMP2" ] || rm -f -- "$TMP2"; }
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
 
 BASE_URL=""; ROOT_PUB=""; CLI=""; CLI_SHA=""; HERDR=""; HERDR_SHA=""
 PREFIX="${HOME:-}/.local"; APP_HOME=""; STATE_DIR=""
@@ -54,27 +62,89 @@ case "$(uname -s)" in
 esac
 [ "$(id -u)" -ne 0 ] || die "run as the person who will use the workspace, not as root"
 [ -n "${HOME:-}" ] && [ -d "$HOME" ] || die "HOME is not set to an existing directory"
+[ "$UNINSTALL" -eq 0 ] || [ "$DRY" -eq 0 ] || die "--dry-run applies to installing only; nothing was removed"
+[ "$UNINSTALL" -eq 1 ] || [ "$PURGE" -eq 0 ] || die "--purge-state belongs to --uninstall"
 
-case "$PREFIX" in /*) ;; *) die "--prefix must be an absolute path" ;; esac
+command -v node >/dev/null 2>&1 || die "Node.js 20 or newer is required (not found)"
+node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' \
+  || die "Node.js 20 or newer is required (found $(node -v))"
+
 [ -n "$STATE_DIR" ] || STATE_DIR="$HOME/.config/3pa/workspace"
 [ -n "$APP_HOME" ] || APP_HOME="$HOME/.config/herdr-app"
-for d in "$STATE_DIR" "$APP_HOME"; do
-  case "$d" in /*) ;; *) die "paths must be absolute: $d" ;; esac
-done
+
+# One place decides what a path may be. It works on the real locations (links resolved up to
+# the deepest part that exists), so `..` and symlinks cannot disguise a dangerous target.
+# Rules: absolute, no control characters or backslashes, never `/` or the home directory or a
+# parent of it, and the four locations (bin, lib, state, app home) must not equal or contain
+# one another - an uninstall or purge of one must never be able to take another with it.
+check_paths() {
+  P_HOME="$HOME" P_PREFIX="$PREFIX" P_STATE="$STATE_DIR" P_APP="$APP_HOME" node -e '
+    const fs = require("fs"), path = require("path")
+    const real = (p) => {
+      let head = path.resolve(p), tail = []
+      for (;;) {
+        try { return path.join(fs.realpathSync(head), ...tail.reverse()) } catch (e) {
+          if (e.code !== "ENOENT" && e.code !== "ENOTDIR") throw e
+          const up = path.dirname(head); if (up === head) return head
+          tail.push(path.basename(head)); head = up
+        }
+      }
+    }
+    const fail = (m) => { process.stderr.write(m + "\n"); process.exit(1) }
+    const raw = { prefix: process.env.P_PREFIX, state: process.env.P_STATE, "app home": process.env.P_APP }
+    const home = real(process.env.P_HOME)
+    const loc = {}
+    for (const [k, v] of Object.entries(raw)) {
+      if (!path.isAbsolute(v)) fail(k + " path must be absolute")
+      if (/[\x00-\x1f\x7f\\]/.test(v)) fail(k + " path must not contain control characters or backslashes")
+      loc[k] = real(v)
+      if (loc[k] === path.parse(loc[k]).root || loc[k] === home || home.startsWith(loc[k] + path.sep)) {
+        fail(k + " path may not be / , your home directory or a parent of it")
+      }
+    }
+    const bin = path.join(loc.prefix, "bin"), lib = path.join(loc.prefix, "lib", "3pa")
+    const spots = { bin, lib, state: loc.state, "app home": loc["app home"] }
+    const within = (a, b) => a === b || a.startsWith(b + path.sep)
+    const names = Object.keys(spots)
+    for (let i = 0; i < names.length; i++) for (let j = i + 1; j < names.length; j++) {
+      if (names[i] === "bin" && names[j] === "lib") continue
+      if (within(spots[names[i]], spots[names[j]]) || within(spots[names[j]], spots[names[i]])) {
+        fail(names[i] + " and " + names[j] + " locations overlap; choose separate folders")
+      }
+    }'
+}
+check_paths || die "unsafe location (see above)"
 
 LIB="$PREFIX/lib/3pa"; BIN="$PREFIX/bin"
+MARK_LIB="$LIB/.3pa-installer"; MARK_STATE="$STATE_DIR/.3pa-installer-state"
 
-# Quote a value for a single-quoted shell string (the launcher is generated code).
-sq() { printf "'%s'" "$(printf %s "$1" | sed "s/'/'\\\\''/g")"; }
+# Quote a value for a single-quoted shell string (the launcher is generated code). The
+# trailing x keeps a final newline, which command substitution would otherwise drop.
+sq() { printf "'%s'" "$(printf '%sx' "$1" | sed "s/'/'\\\\''/g")" | sed "s/x'\$/'/"; }
+
+# Hash through stdin so file-name escaping in the tools can never alter the digest.
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum < "$1" | cut -d' ' -f1
+  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 < "$1" | cut -d' ' -f1
+  else die "neither sha256sum nor shasum found"; fi
+}
 
 # ── uninstall ────────────────────────────────────────────────────────────────
 if [ "$UNINSTALL" -eq 1 ]; then
   for f in "$BIN/3pa" "$BIN/herdr-fab"; do
-    if [ -e "$f" ] || [ -L "$f" ]; then rm -f "$f"; say "removed $f"; fi
+    if [ -e "$f" ] || [ -L "$f" ]; then rm -f -- "$f"; say "removed $f"; fi
   done
-  [ -d "$LIB" ] && { rm -rf "$LIB"; say "removed $LIB"; }
+  # Only a folder this installer marked as its own is emptied, and only by name.
+  if [ -f "$MARK_LIB" ]; then
+    rm -f -- "$LIB/3pa.mjs" "$LIB/herdr" "$MARK_LIB"
+    rmdir "$LIB" 2>/dev/null && say "removed $LIB" || say "kept $LIB (it holds files that are not ours)"
+  fi
   if [ "$PURGE" -eq 1 ]; then
-    [ -d "$STATE_DIR" ] && { rm -rf "$STATE_DIR"; say "removed $STATE_DIR (root key and sync history)"; }
+    if [ -d "$STATE_DIR" ] && [ ! -L "$STATE_DIR" ] && [ -f "$MARK_STATE" ]; then
+      rm -rf -- "$STATE_DIR"; say "removed $STATE_DIR (root key and sync history)"
+    elif [ -e "$STATE_DIR" ]; then
+      die "$STATE_DIR was not created by this installer (no marker); it was left alone"
+    fi
   else
     say "kept $STATE_DIR (root key and sync history; --purge-state removes it)"
   fi
@@ -90,32 +160,21 @@ if [ -n "$HERDR" ] || [ -n "$HERDR_SHA" ]; then
   [ -n "$HERDR" ] && [ -n "$HERDR_SHA" ] || die "--herdr-bin and --herdr-sha256 go together"
 fi
 
-command -v node >/dev/null 2>&1 || die "Node.js 20 or newer is required (not found)"
-node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' \
-  || die "Node.js 20 or newer is required (found $(node -v))"
-
-# The URL rule is the one the CLI enforces (ADR-0029): https anywhere, http only for loopback.
-case "$BASE_URL" in
-  https://*) ;;
-  http://localhost|http://localhost/*|http://localhost:*|http://127.0.0.1|http://127.0.0.1/*|http://127.0.0.1:*|"http://[::1]"|"http://[::1]/"*|"http://[::1]:"*) ;;
-  *) die "--base-url must be https:// (http:// is accepted only for localhost)" ;;
-esac
+# The same rule as the CLI's checkBaseUrl (ADR-0029), on the parsed URL: https anywhere,
+# http only for localhost / 127.0.0.1 / [::1]; no credentials, query or fragment.
 BASE_URL="$(BASE_URL="$BASE_URL" node -e '
-  try {
-    const u = new URL(process.env.BASE_URL)
-    if (u.username || u.password || u.search || u.hash) process.exit(1)
-    process.stdout.write(u.origin + u.pathname.replace(/\/+$/, ""))
-  } catch { process.exit(1) }')" || die "--base-url is not a valid platform URL (no credentials, query or fragment)"
+  const bad = (m) => { process.stderr.write(m + "\n"); process.exit(1) }
+  const raw = process.env.BASE_URL
+  if (/[\x00-\x1f\x7f]/.test(raw)) bad("--base-url is not a valid platform URL (no credentials, query or fragment)")
+  let u; try { u = new URL(raw) } catch { bad("--base-url is not a valid platform URL (no credentials, query or fragment)") }
+  const loop = u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "[::1]"
+  if (u.protocol !== "https:" && !(u.protocol === "http:" && loop)) bad("--base-url must be https:// (http:// is accepted only for localhost)")
+  if (u.username || u.password || u.search || u.hash || !u.hostname) bad("--base-url is not a valid platform URL (no credentials, query or fragment)")
+  process.stdout.write(u.origin + u.pathname.replace(/\/+$/, ""))')" || exit 1
 
 hex64() { printf %s "$1" | grep -Eq '^[0-9a-f]{64}$'; }
 hex64 "$CLI_SHA" || die "--cli-sha256 must be 64 lowercase hex characters"
 [ -z "$HERDR_SHA" ] || hex64 "$HERDR_SHA" || die "--herdr-sha256 must be 64 lowercase hex characters"
-
-sha256_of() {
-  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
-  elif command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | cut -d' ' -f1
-  else die "neither sha256sum nor shasum found"; fi
-}
 
 # Root key: a file or the base64 itself; exactly the 32 raw bytes of an Ed25519 public key,
 # in canonical base64.
@@ -130,12 +189,29 @@ ROOT_PUB="$ROOT_PUB" node -e '
 [ -f "$CLI" ] && [ ! -L "$CLI" ] || die "--cli must be a regular file"
 if [ -n "$HERDR" ]; then [ -f "$HERDR" ] && [ ! -L "$HERDR" ] || die "--herdr-bin must be a regular file"; fi
 
-# An existing, different root key is a change of trust: never silently.
+# What is at the state folder and at root.pub is looked at BEFORE anything is changed, and
+# "cannot look" is never "not there": an unreadable pinned key stops the install.
 ROOT_FILE="$STATE_DIR/root.pub"
-if [ -f "$ROOT_FILE" ]; then
-  if [ "$(tr -d '\r\n ' < "$ROOT_FILE")" != "$ROOT_PUB" ] && [ "$REPLACE_ROOT" -ne 1 ]; then
-    die "a different root key is already pinned in $ROOT_FILE; pass --replace-root only if the change is intended"
-  fi
+EXISTING="$(STATE_DIR="$STATE_DIR" node -e '
+  const fs = require("fs"), path = require("path")
+  const bad = (m) => { process.stderr.write(m + "\n"); process.exit(1) }
+  const look = (p) => { try { return fs.lstatSync(p) } catch (e) {
+    if (e.code === "ENOENT" || e.code === "ENOTDIR") return null
+    bad("cannot inspect " + p + " (" + e.code + "); nothing was changed") } }
+  const dir = process.env.STATE_DIR
+  const d = look(dir)
+  if (d) {
+    if (d.isSymbolicLink() || !d.isDirectory()) bad(dir + " is a link or not a folder; nothing was changed")
+    if (typeof process.getuid === "function" && d.uid !== process.getuid()) bad(dir + " belongs to someone else; nothing was changed")
+    const f = look(path.join(dir, "root.pub"))
+    if (f) {
+      if (!f.isFile()) bad(path.join(dir, "root.pub") + " is not a regular file; nothing was changed")
+      let v; try { v = fs.readFileSync(path.join(dir, "root.pub"), "utf8") } catch (e) { bad("cannot read the pinned root key (" + e.code + "); nothing was changed") }
+      process.stdout.write(v.replace(/[\r\n ]/g, ""))
+    }
+  }')" || exit 1
+if [ -n "$EXISTING" ] && [ "$EXISTING" != "$ROOT_PUB" ] && [ "$REPLACE_ROOT" -ne 1 ]; then
+  die "a different root key is already pinned in $ROOT_FILE; pass --replace-root only if the change is intended"
 fi
 
 if [ "$DRY" -eq 1 ]; then
@@ -144,36 +220,40 @@ if [ "$DRY" -eq 1 ]; then
 fi
 
 # ── install ──────────────────────────────────────────────────────────────────
-# Copy first, then hash the COPY: a source that changes after the check cannot slip through.
-install_checked() { # src sha dest mode
-  tmp="$(dirname "$3")/.$(basename "$3").$$.tmp"
-  mkdir -p "$(dirname "$3")"
-  rm -f "$tmp"
-  cp "$1" "$tmp"
-  if [ "$(sha256_of "$tmp")" != "$2" ]; then rm -f "$tmp"; die "SHA-256 of $1 does not match; nothing was installed from it"; fi
-  chmod "$4" "$tmp"
-  mv -f "$tmp" "$3"
-}
+# Stage every artifact first: copy to a temp name next to its destination, then hash the COPY
+# (a source swapped after the check cannot slip through). Nothing goes live until all of them
+# match, so a wrong hash on the Herdr binary leaves the CLI and the key untouched as well.
+mkdir -p "$BIN" "$LIB"
+TMP1="$LIB/.3pa.mjs.$$.tmp"; rm -f -- "$TMP1"; cp "$CLI" "$TMP1"
+[ "$(sha256_of "$TMP1")" = "$CLI_SHA" ] || die "SHA-256 of $CLI does not match; nothing was installed"
+chmod 755 "$TMP1"
+if [ -n "$HERDR" ]; then
+  TMP2="$LIB/.herdr.$$.tmp"; rm -f -- "$TMP2"; cp "$HERDR" "$TMP2"
+  [ "$(sha256_of "$TMP2")" = "$HERDR_SHA" ] || die "SHA-256 of $HERDR does not match; nothing was installed"
+  chmod 755 "$TMP2"
+fi
 
-mkdir -p "$STATE_DIR" "$BIN" "$LIB"
-chmod 700 "$STATE_DIR"
-[ ! -L "$STATE_DIR" ] || die "$STATE_DIR is a symbolic link"
+mkdir -p "$STATE_DIR"; chmod 700 "$STATE_DIR"
+: > "$MARK_STATE"; : > "$MARK_LIB"
 
-install_checked "$CLI" "$CLI_SHA" "$LIB/3pa.mjs" 755
+mv -f -- "$TMP1" "$LIB/3pa.mjs"; TMP1=""
 say "installed 3pa bundle -> $LIB/3pa.mjs"
 
-printf '#!/bin/sh\nexec node %s "$@"\n' "$(sq "$LIB/3pa.mjs")" > "$BIN/.3pa.$$.tmp"
-chmod 755 "$BIN/.3pa.$$.tmp"; mv -f "$BIN/.3pa.$$.tmp" "$BIN/3pa"
+TMP1="$BIN/.3pa.$$.tmp"
+printf '#!/bin/sh\nexec node %s "$@"\n' "$(sq "$LIB/3pa.mjs")" > "$TMP1"
+chmod 755 "$TMP1"; mv -f -- "$TMP1" "$BIN/3pa"; TMP1=""
 say "installed $BIN/3pa"
 
-printf '%s\n' "$ROOT_PUB" > "$STATE_DIR/.root.pub.$$.tmp"
-chmod 644 "$STATE_DIR/.root.pub.$$.tmp"; mv -f "$STATE_DIR/.root.pub.$$.tmp" "$ROOT_FILE"
+TMP1="$STATE_DIR/.root.pub.$$.tmp"
+printf '%s\n' "$ROOT_PUB" > "$TMP1"
+chmod 644 "$TMP1"; mv -f -- "$TMP1" "$ROOT_FILE"; TMP1=""
 say "pinned root key -> $ROOT_FILE"
 
 if [ -n "$HERDR" ]; then
-  install_checked "$HERDR" "$HERDR_SHA" "$LIB/herdr" 755
+  mv -f -- "$TMP2" "$LIB/herdr"; TMP2=""
   say "installed Herdr -> $LIB/herdr"
   # Fail closed: if the workspace cannot be synced and verified, Herdr is not started.
+  TMP1="$BIN/.herdr-fab.$$.tmp"
   {
     printf '#!/bin/sh\n'
     printf 'set -eu\n'
@@ -182,8 +262,8 @@ if [ -n "$HERDR" ]; then
     printf 'export HERDR_APP_HOME=%s\n' "$(sq "$APP_HOME")"
     printf '%s workspace sync || { echo "herdr-fab: the workspace could not be synced and verified; not starting Herdr." >&2; exit 1; }\n' "$(sq "$BIN/3pa")"
     printf 'exec %s "$@"\n' "$(sq "$LIB/herdr")"
-  } > "$BIN/.herdr-fab.$$.tmp"
-  chmod 755 "$BIN/.herdr-fab.$$.tmp"; mv -f "$BIN/.herdr-fab.$$.tmp" "$BIN/herdr-fab"
+  } > "$TMP1"
+  chmod 755 "$TMP1"; mv -f -- "$TMP1" "$BIN/herdr-fab"; TMP1=""
   say "installed launcher $BIN/herdr-fab"
 else
   say "no Herdr binary given: installed the CLI and the root key only"

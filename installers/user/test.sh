@@ -12,9 +12,11 @@ if [ "$(id -u)" -eq 0 ]; then
   cp "$(readlink -f "$(command -v node)")" "$D/bin/node"
   chmod -R a+rX "$D"; chmod a+rx "$D"
   if command -v setpriv >/dev/null 2>&1; then
-    exec setpriv --reuid=65534 --regid=65534 --clear-groups env HOME=/nonexistent PATH="$D/bin:/usr/bin:/bin" sh "$D/test.sh"
+    setpriv --reuid=65534 --regid=65534 --clear-groups env HOME=/nonexistent PATH="$D/bin:/usr/bin:/bin" sh "$D/test.sh"
+  else
+    su -s /bin/sh nobody -c "PATH=$D/bin:/usr/bin:/bin sh $D/test.sh"
   fi
-  exec su -s /bin/sh nobody -c "PATH=$D/bin:/usr/bin:/bin sh $D/test.sh"
+  rc=$?; rm -rf "$D"; exit $rc
 fi
 HERE="$(cd "$(dirname "$0")" && pwd)"; INST="$HERE/install.sh"
 T="$(mktemp -d)"; trap 'rm -rf "$T"' EXIT
@@ -99,6 +101,61 @@ sh "$INST" --uninstall >/dev/null 2>&1
 [ -f "$HOME/.config/3pa/workspace/root.pub" ] && [ -f "$HOME/.config/herdr-app/keep" ] && ok || bad "uninstall removed state or app home"
 sh "$INST" --uninstall --purge-state >/dev/null 2>&1
 [ ! -e "$HOME/.config/3pa/workspace" ] && [ -f "$HOME/.config/herdr-app/keep" ] && ok || bad "purge-state"
+
+# ── Codex round 1 (I1-I8) ────────────────────────────────────────────────────
+rm -rf "$HOME/.local" "$HOME/.config"
+mkdir -p "$HOME/.config/herdr-app"; echo mine > "$HOME/.config/herdr-app/keep"; echo mine > "$HOME/personal.txt"
+# I1: dangerous locations are refused, and purge never removes what is not ours
+expect_fail "prefix is /" "may not be" base --prefix /
+expect_fail "state is home" "may not be" base --state-dir "$HOME"
+expect_fail "state is a parent of home" "may not be" base --state-dir "$(dirname "$HOME")"
+expect_fail "prefix reaches home via .." "may not be" base --prefix "$HOME/sub/.."
+expect_fail "state inside lib" "overlap" base --state-dir "$HOME/.local/lib/3pa/state"
+expect_fail "app home equals state" "overlap" base --state-dir "$HOME/x" --app-home "$HOME/x"
+expect_fail "backslash in path" "control characters or backslashes" base --prefix "$HOME/a\\b"
+expect_fail "newline in path" "control characters" base --prefix "$HOME/a
+b"
+ln -s "$HOME" "$T/homelink"
+expect_fail "symlink to home as state" "may not be" base --state-dir "$T/homelink"
+mkdir -p "$HOME/foreign"; echo mine > "$HOME/foreign/f"
+expect_fail "purge without marker" "not created by this installer" sh "$INST" --uninstall --purge-state --state-dir "$HOME/foreign"
+[ -f "$HOME/foreign/f" ] && [ -f "$HOME/personal.txt" ] && [ -f "$HOME/.config/herdr-app/keep" ] && ok || bad "purge removed foreign data"
+base >/dev/null 2>&1 && sh "$INST" --uninstall --purge-state >/dev/null 2>&1 && [ ! -e "$HOME/.config/3pa/workspace" ] && [ -f "$HOME/personal.txt" ] && ok || bad "marked purge"
+# a foreign file inside our lib folder survives uninstall
+base >/dev/null 2>&1; echo mine > "$HOME/.local/lib/3pa/other"; sh "$INST" --uninstall >/dev/null 2>&1
+[ -f "$HOME/.local/lib/3pa/other" ] && [ ! -e "$HOME/.local/lib/3pa/3pa.mjs" ] && ok || bad "uninstall must remove only its own files"
+rm -rf "$HOME/.local"
+
+# I2: an unreadable state folder stops the install, never "no key yet"
+base >/dev/null 2>&1; chmod 000 "$HOME/.config/3pa/workspace"
+expect_fail "unreadable pinned key" "nothing was changed" sh "$INST" --base-url "$B" --root-pub "$OTHER" --cli "$T/3pa.mjs" --cli-sha256 "$CS"
+chmod 700 "$HOME/.config/3pa/workspace"
+[ "$(cat "$HOME/.config/3pa/workspace/root.pub")" = "$KEY" ] && ok || bad "key was replaced under an unreadable folder"
+# I3: --uninstall --dry-run removes nothing and is refused
+expect_fail "uninstall dry-run" "installing only" sh "$INST" --uninstall --dry-run
+[ -x "$HOME/.local/bin/3pa" ] && ok || bad "dry-run uninstall removed files"
+# I4: a state symlink is refused BEFORE its target is touched
+rm -rf "$HOME/.config/3pa" "$HOME/.local"; mkdir -p "$T/target" "$HOME/.config/3pa"; chmod 755 "$T/target"; ln -s "$T/target" "$HOME/.config/3pa/workspace"
+expect_fail "state symlink" "link or not a folder" base
+[ "$(perm "$T/target")" = "755" ] && ok || bad "symlink target mode was changed"
+# I5: root.pub being a folder is refused, nothing written inside it
+rm -f "$HOME/.config/3pa/workspace"; mkdir -p "$HOME/.config/3pa/workspace/root.pub"
+expect_fail "root.pub is a folder" "not a regular file" base
+[ -z "$(ls -A "$HOME/.config/3pa/workspace/root.pub")" ] && ok || bad "temp moved into root.pub folder"
+rm -rf "$HOME/.config/3pa" "$HOME/.local"
+# I6: a failed copy leaves no temp file, and a wrong Herdr hash leaves the CLI and key uninstalled too
+expect_fail "wrong herdr hash" "does not match" base --herdr-bin "$T/herdr" --herdr-sha256 "$(printf 1%.0s $(seq 64))"
+[ ! -e "$HOME/.local/lib/3pa/3pa.mjs" ] && [ ! -e "$HOME/.config/3pa/workspace/root.pub" ] && [ ! -e "$HOME/.local/bin/3pa" ] && ok || bad "partial install after herdr hash mismatch"
+[ -z "$(ls -A "$HOME/.local/lib/3pa" 2>/dev/null)" ] && ok || bad "temp files left after hash mismatch"
+# I7: the hash does not depend on the folder name; a path ending in a newline is refused
+base --prefix "$T/we\\ird" >/dev/null 2>&1 && bad "backslash prefix accepted" || ok
+# I8: URL rule matches the CLI on parsed values
+for u in "HTTPS://platform.example" "http://127.1:8000" "http://2130706433:8000" "http://[0:0:0:0:0:0:0:1]:8000" "http://localhost:8080/path/"; do
+  sh "$INST" --base-url "$u" --root-pub "$KEY" --cli "$T/3pa.mjs" --cli-sha256 "$CS" --dry-run >/dev/null 2>&1 && ok || bad "url accepted by CLI but not installer: $u"
+done
+for u in "http://platform.example" "http://localhost.evil.example" "https://u@platform.example" "ftp://x" "https://p.example/#f"; do
+  sh "$INST" --base-url "$u" --root-pub "$KEY" --cli "$T/3pa.mjs" --cli-sha256 "$CS" --dry-run >/dev/null 2>&1 && bad "url wrongly accepted: $u" || ok
+done
 
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
