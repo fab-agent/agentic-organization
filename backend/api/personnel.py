@@ -391,7 +391,7 @@ def link_human(session, person, user_id: str, company_id: str) -> None:
     there is no unique key to stop it. The one row both invites always share is the account's own
     `User` row (it exists whether or not a membership does), so it is written first: that takes a
     write lock (SQLite and PostgreSQL alike), a concurrent invite waits here until this one commits,
-    and then sees the link when it checks. Invites for other accounts do not wait.
+    and then sees the link when it checks. On PostgreSQL invites for other accounts do not wait; SQLite has one writer at a time, so there they queue briefly too.
     """
     from models import User
 
