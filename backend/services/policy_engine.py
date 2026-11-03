@@ -888,7 +888,8 @@ def check_ready(persona_id: str) -> dict:
         return result("policy_unreadable")
     if default_effect not in VALID_EFFECTS:
         return result("invalid_default_effect")
-    # A sentinel (unparseable block) or a rule `evaluate` would reject: both deny everything.
+    # A sentinel (unparseable block) denies every call; a rule `evaluate` would reject denies the
+    # calls that reach it. Either way the policy is broken, so not ready (conservative).
     if any(
         r.get("effect") == "__malformed__" or _rule_schema_problem(r) for r in ruleset
     ):
