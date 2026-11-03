@@ -127,3 +127,48 @@ def test_a_request_field_cannot_choose_the_profile(client, env, people):  # noqa
     p = r.json()["manifest"]["payload"]
     assert p["layout"]["id"] == "terminals" and p["mods"] == []  # the managers profile
     assert r.json()["identity"]["person_id"] != people["emp"].id
+
+
+def test_two_invites_at_once_link_the_account_to_only_one_person(
+    auth_client, db_session, test_engine
+):
+    """Both invites pass through the same barrier right before linking: exactly one wins."""
+    import threading
+
+    from fastapi import HTTPException
+    from sqlmodel import Session, select
+
+    from api.personnel import link_human
+    from models import Personnel
+
+    co = auth_client._test_company
+    u = make_user(db_session, email="race@test.com", name="Race")
+    make_member(db_session, u.id, co.id, role="user")
+    a = make_personnel(db_session, co.id, name="A", slug="ra", type="human")
+    b = make_personnel(db_session, co.id, name="B", slug="rb", type="human")
+    db_session.commit()
+    ids, uid, cid = [a.id, b.id], u.id, co.id
+
+    barrier, out, errors = threading.Barrier(2), [], []
+
+    def worker(pid):
+        try:
+            with Session(test_engine, expire_on_commit=False) as s:
+                person = s.get(Personnel, pid)
+                barrier.wait()
+                try:
+                    link_human(s, person, uid, cid)
+                    out.append("linked")
+                except HTTPException as e:
+                    out.append(e.status_code)
+        except Exception as e:  # a worker that died must fail the test
+            errors.append(repr(e))
+
+    ts = [threading.Thread(target=worker, args=(i,)) for i in ids]
+    [t.start() for t in ts]
+    [t.join(timeout=60) for t in ts]
+    assert not errors, errors
+    assert sorted(map(str, out)) == ["409", "linked"]
+    db_session.expire_all()
+    linked = db_session.exec(select(Personnel).where(Personnel.user_id == uid)).all()
+    assert len(linked) == 1

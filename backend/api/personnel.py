@@ -2,6 +2,7 @@ import json as _json
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import update
 from sqlmodel import select
 
 from api.audit import log_action
@@ -381,6 +382,45 @@ def update_personnel(
         return _personnel_to_dict(person, session)
 
 
+def link_human(session, person, user_id: str, company_id: str) -> None:
+    """Link `person` to the account and commit, unless the account is already linked to another
+    human record of this company (409, nothing changed; ADR-0039).
+
+    The check and the link must not interleave with another invite for the same account and
+    company, and there is no unique key to stop it, so the account's membership row is written
+    first: that takes a write lock on it (SQLite and PostgreSQL alike), a concurrent invite waits
+    here until this one commits, and then sees the link when it checks.
+    """
+    from models import CompanyMember
+
+    session.flush()  # a membership added a moment ago must exist before it can be locked
+    session.exec(
+        update(CompanyMember)
+        .where(
+            CompanyMember.user_id == user_id,
+            CompanyMember.company_id == company_id,
+        )
+        .values(user_id=user_id)
+    )
+    taken = session.exec(
+        select(Personnel.id).where(
+            Personnel.user_id == user_id,
+            Personnel.company_id == company_id,
+            Personnel.type == "human",
+            Personnel.id != person.id,
+        )
+    ).first()
+    if taken:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Bu hesap bu şirkette zaten başka bir personele bağlı",
+        )
+    person.user_id = user_id
+    session.add(person)
+    session.commit()
+
+
 @router.post("/personnel/{person_id}/invite", status_code=201)
 def invite_personnel(
     person_id: str, body: dict, current_user: User = Depends(get_current_user)
@@ -475,25 +515,7 @@ def invite_personnel(
                 )
             )
 
-        # One account is one person in a company: linking it to a second human here would make
-        # "who is the caller" ambiguous for every endpoint that resolves the caller (ADR-0039).
-        taken = session.exec(
-            select(Personnel.id).where(
-                Personnel.user_id == user.id,
-                Personnel.company_id == company.id,
-                Personnel.type == "human",
-                Personnel.id != person.id,
-            )
-        ).first()
-        if taken:
-            session.rollback()
-            raise HTTPException(
-                status_code=409,
-                detail="Bu hesap bu şirkette zaten başka bir personele bağlı",
-            )
-        person.user_id = user.id
-        session.add(person)
-        session.commit()
+        link_human(session, person, user.id, company.id)
         user_id = user.id
 
     if temp_pw is not None:
