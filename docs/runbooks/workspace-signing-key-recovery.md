@@ -45,11 +45,11 @@ No one else holds it, so no revocation is needed, but the server cannot sign unt
 ## C. A wrong, too-high CRL number was signed
 
 The server keeps the highest valid list number it has accepted and **never lowers it**. Do not edit the stored mark. Publish a corrective list with an even higher number and the correct cumulative contents (`--previous` the wrong list is acceptable only if its revocations are right; otherwise list the correct kids with `--revoke`, understanding that clients refuse a list that drops a revocation they already hold).
-**Limit:** the number cannot exceed 2^53-1. If that exact maximum was signed and accepted, there is no higher number under this root and this checkpoint. The only way forward is a new root and a coordinated fresh start as in E; do not lower the mark or delete client state quietly, that removes the rollback protection for everyone.
+**Limit:** the number cannot exceed 2^53-1. If that exact maximum was signed and accepted, there is **no supported recovery today**: a new root does not help, because the server's stored high-water mark is not tied to a root and the number range does not restart. This needs a deliberate, reviewed change to the server checkpoint (new ADR and code), not a runbook step. Do not lower the mark, delete the row or delete client state quietly; that removes the rollback protection for everyone. Prevention: take CRL numbers from the ledger, increase by one, and double-check the number before signing.
 
 ## D. Server database rows were lost (restore, manual delete)
 
-Generation counters are per person. If they are gone, "never reused" no longer holds. Recover as in B: new key, epoch + 1 (from the ledger), which restarts every client's floor. The CRL checkpoint is stored too: put back the latest cumulative `crl.json` you issued (or publish a new one with a higher number) before serving, otherwise the server answers `crl_missing`/`crl_rollback`.
+Generation counters are per person. If they are gone, "never reused" no longer holds. Recover as in B: new key, epoch + 1 (from the ledger), which restarts every client's floor. The CRL checkpoint is stored too: put back the latest cumulative `crl.json` you issued (or publish a new one with a higher number) before serving, otherwise the server answers `crl_missing`/`crl_rollback`. That only happens while the stored high-water mark survives: if the mark was lost with the rows and no list is present, the server serves **without** a list and without any error, so do not rely on it to notice. Restore the latest cumulative list from the ledger and verify it by hand.
 
 ## E. Root key lost or stolen
 
@@ -62,7 +62,7 @@ Changing the root is a **new trust start**, not a rotation. Re-pinning does not 
 1. Offline: `root-init` a new root key; keep it offline; record its public key and key id in the ledger and confirm that fingerprint with people **out of band** (not through the same channel that delivers the pin).
 2. Server: set the new root public key where the server reads it (`WORKSPACE_ROOT_PUB` wins over `root.pub` if set; restart the process if it comes from the environment). Install a new signing key and a certificate issued under the new root, with an epoch **above** the highest the server and clients have seen (the server refuses a lower one against its stored state), and a CRL number above the last published, signed by the new root and listing every previously revoked key (the tool cannot carry the old root's list over with `--previous`; list the kids with `--revoke`).
 3. Clients: replace the pin (`installers/user ... --replace-root`, or MDM, `installers/deploy`) **and** reset the local sync state with a deliberate `3pa workspace sync --re-enroll`. `--replace-root` alone only changes the pin file.
-4. Track completion per machine (the monitoring page shows who has synced); keep untrusted whoever has not.
+4. Track completion per machine with something that identifies the device: your MDM or inventory output, or direct confirmation of the pinned fingerprint. The monitoring page is a diagnostic signal only: it keeps one self-reported line per person (no device id, no root fingerprint), so it cannot show that a machine pinned the new root. Keep a machine untrusted until it is confirmed that way; never release it on a self-report.
 
 ## What this does not cover
 
