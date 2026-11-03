@@ -386,3 +386,59 @@ def test_manifest_issue_slot_race_has_one_winner(pg):
     assert (
         race(t0 + timedelta(seconds=11)).count(True) == 1
     )  # after it: the UPDATE decides
+
+
+def test_account_link_race_has_one_winner(pg):
+    """ADR-0039: two invites that both pass the check cannot both link the account."""
+    import threading
+
+    from fastapi import HTTPException
+    from sqlmodel import Session, select
+
+    import database
+    from api.personnel import link_human
+    from models import Company, Personnel, User
+
+    with Session(database.engine) as setup:
+        co = Company(name="L Co", slug="l-co")
+        u = User(email="l@test.com", name="L")
+        setup.add_all([co, u])
+        setup.flush()
+        # no membership here on purpose: the lock must not depend on one existing
+        ps = [
+            Personnel(
+                company_id=co.id,
+                name=n,
+                slug=f"l-{n}",
+                title="t",
+                role="r",
+                type="human",
+            )
+            for n in ("a", "b", "c", "d")
+        ]
+        setup.add_all(ps)
+        setup.commit()
+        uid, cid, pids = u.id, co.id, [p.id for p in ps]
+
+    barrier, out, errors = threading.Barrier(4), [], []
+
+    def worker(pid):
+        try:
+            with Session(database.engine, expire_on_commit=False) as s:
+                person = s.get(Personnel, pid)
+                barrier.wait()
+                try:
+                    link_human(s, person, uid, cid)
+                    out.append("linked")
+                except HTTPException as e:
+                    out.append(e.status_code)
+        except Exception as e:
+            errors.append(repr(e))
+
+    ts = [threading.Thread(target=worker, args=(p,)) for p in pids]
+    [t.start() for t in ts]
+    [t.join(timeout=60) for t in ts]
+    assert not errors, errors
+    assert sorted(map(str, out)) == ["409", "409", "409", "linked"]
+    with Session(database.engine) as s:
+        assert len(s.exec(select(Personnel).where(Personnel.user_id == uid)).all()) == 1

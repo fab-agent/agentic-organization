@@ -2,6 +2,8 @@ import json as _json
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from api.audit import log_action
@@ -381,6 +383,39 @@ def update_personnel(
         return _personnel_to_dict(person, session)
 
 
+def link_human(session, person, user_id: str, company_id: str) -> None:
+    """Link `person` to the account and commit, unless the account is already linked to another
+    human record of this company (409, nothing changed; ADR-0039).
+
+    The check and the link must not interleave with another invite for the same account, and
+    there is no unique key to stop it. The one row both invites always share is the account's own
+    `User` row (it exists whether or not a membership does), so it is written first: that takes a
+    write lock (SQLite and PostgreSQL alike), a concurrent invite waits here until this one commits,
+    and then sees the link when it checks. On PostgreSQL invites for other accounts do not wait; SQLite has one writer at a time, so there they queue briefly too.
+    """
+    from models import User
+
+    session.flush()
+    session.exec(update(User).where(User.id == user_id).values(id=user_id))
+    taken = session.exec(
+        select(Personnel.id).where(
+            Personnel.user_id == user_id,
+            Personnel.company_id == company_id,
+            Personnel.type == "human",
+            Personnel.id != person.id,
+        )
+    ).first()
+    if taken:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Bu hesap bu şirkette zaten başka bir personele bağlı",
+        )
+    person.user_id = user_id
+    session.add(person)
+    session.commit()
+
+
 @router.post("/personnel/{person_id}/invite", status_code=201)
 def invite_personnel(
     person_id: str, body: dict, current_user: User = Depends(get_current_user)
@@ -417,7 +452,16 @@ def invite_personnel(
         user = existing or User(email=person.email, name=person.name)
         if not existing:
             session.add(user)
-            session.flush()
+            try:
+                session.flush()
+            except (
+                IntegrityError
+            ):  # the same new account was created by a concurrent invite
+                session.rollback()
+                raise HTTPException(
+                    status_code=409,
+                    detail="Bu hesap şu anda başka bir davetle oluşturuluyor; tekrar deneyin",
+                ) from None
 
         # An account that belongs to other companies keeps its credentials: being
         # invited here must never reset a password someone else's tenant relies on.
@@ -475,9 +519,7 @@ def invite_personnel(
                 )
             )
 
-        person.user_id = user.id
-        session.add(person)
-        session.commit()
+        link_human(session, person, user.id, company.id)
         user_id = user.id
 
     if temp_pw is not None:
