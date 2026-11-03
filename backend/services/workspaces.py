@@ -66,18 +66,26 @@ def person_for_user(
 ) -> tuple[Personnel, str]:
     """The caller's human Personnel record and company, or an HTTP error."""
     cid = resolve_company_id(session, user, company_id)
-    person = session.exec(
-        select(Personnel).where(
+    people = session.exec(
+        select(Personnel)
+        .where(
             Personnel.user_id == user.id,
             Personnel.company_id == cid,
             Personnel.type == "human",
         )
-    ).first()
-    if not person:
+        .limit(2)
+    ).all()
+    if not people:
         raise HTTPException(
             status_code=404, detail="No personnel record is linked to this account"
         )
-    return person, cid
+    if len(people) > 1:
+        # Two people for one account: which one is the caller? Never guess (ADR-0039).
+        raise HTTPException(
+            status_code=409,
+            detail="More than one personnel record is linked to this account",
+        )
+    return people[0], cid
 
 
 def _in_scope(session, dept_id: str | None, scope_id: str) -> bool:

@@ -475,6 +475,22 @@ def invite_personnel(
                 )
             )
 
+        # One account is one person in a company: linking it to a second human here would make
+        # "who is the caller" ambiguous for every endpoint that resolves the caller (ADR-0039).
+        taken = session.exec(
+            select(Personnel.id).where(
+                Personnel.user_id == user.id,
+                Personnel.company_id == company.id,
+                Personnel.type == "human",
+                Personnel.id != person.id,
+            )
+        ).first()
+        if taken:
+            session.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="Bu hesap bu şirkette zaten başka bir personele bağlı",
+            )
         person.user_id = user.id
         session.add(person)
         session.commit()

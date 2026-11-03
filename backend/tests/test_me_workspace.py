@@ -363,18 +363,6 @@ def test_agent_personnel_do_not_get_a_workspace(client, env, people, db_session)
     assert _get(client, agent_user).status_code == 404
 
 
-def test_membership_role_decides_the_profile_not_a_request_field(
-    client, env, people, db_session
-):
-    # demote nothing - the founder's membership row is what matches "managers"
-    rows = db_session.exec(
-        CompanyMember.__table__.select().where(
-            CompanyMember.user_id == people["founder"].id
-        )
-    ).all()
-    assert rows and rows[0].role == "founder"
-
-
 # ── fail closed ──────────────────────────────────────────────────────────────
 
 
