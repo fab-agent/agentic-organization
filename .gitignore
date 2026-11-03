@@ -32,6 +32,7 @@ data/
 docs/*
 !docs/adr/
 !docs/architecture/
+!docs/runbooks/
 !docs/ROADMAP.md
 plan.md
 TODO.md
