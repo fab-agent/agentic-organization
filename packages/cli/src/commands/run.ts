@@ -232,6 +232,10 @@ export async function run(args: string[]): Promise<void> {
   p.outro(chalk.dim('sandbox exited'))
 }
 
+/** Only these words from the server are ever printed (ADR-0038). */
+const READY_REASONS = new Set(['invalid_mode', 'invalid_default_effect', 'scope_unreadable', 'policy_unreadable', 'policy_malformed'])
+const POLICY_MODES = new Set(['off', 'dry_run', 'enforce'])
+
 function startHeartbeat(
   session: Session,
   signingKeyB64: string | null,
@@ -240,6 +244,7 @@ function startHeartbeat(
 ): NodeJS.Timeout {
   let misses = 0
   let mode = 'unknown'
+  let policyState: 'yes' | 'no' = 'yes'
   const timer = setInterval(async () => {
     try {
       const r = await fetch(`${session.base_url}/workstation/heartbeat`, {
@@ -253,8 +258,18 @@ function startHeartbeat(
       })
       if (!r.ok) throw new Error(String(r.status))
       misses = 0
-      const body = (await r.json().catch(() => ({}))) as { policy_mode?: string }
-      if (body.policy_mode && body.policy_mode !== mode) {
+      const body = (await r.json().catch(() => ({}))) as { policy_mode?: string; policy_ready?: boolean; policy_reason?: string }
+      // Alive is not the same as ready (ADR-0038): say so once per change, in fixed words.
+      const ready = body.policy_ready === false ? 'no' : 'yes'
+      if (ready !== policyState) {
+        if (ready === 'no') {
+          p.log.warn(chalk.yellow(`gateway is up but your policy cannot be applied right now (${READY_REASONS.has(body.policy_reason ?? '') ? body.policy_reason : 'unknown'}); tool calls may be denied until an administrator fixes it`))
+        } else if (policyState === 'no') {
+          p.log.info(chalk.green('policy is ready again'))
+        }
+        policyState = ready
+      }
+      if (typeof body.policy_mode === 'string' && POLICY_MODES.has(body.policy_mode) && body.policy_mode !== mode) {
         if (mode !== 'unknown') {
           p.log.warn(chalk.yellow(`policy mode changed: ${mode} → ${body.policy_mode}`))
         }

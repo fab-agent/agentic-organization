@@ -28,7 +28,16 @@
 	};
 	const REASON: Record<string, string> = {
 		no_reports: 'Henüz hiçbir istemci durum bildirmedi (3pa workspace sync sonrası otomatik gönderilir).',
+		no_live_sessions: 'Şu an çalışan 3pa oturumu yok.',
+		policy_not_checked: 'Çalışan oturumlar politika denetimi öncesi sürümden; hazır olup olmadıkları bilinmiyor.',
 		section_failed: 'Bu bölüm hesaplanamadı; ayrıntı sunucu günlüğünde.'
+	};
+	const NOT_READY: Record<string, string> = {
+		invalid_mode: 'politika modu geçersiz',
+		invalid_default_effect: 'varsayılan etki geçersiz',
+		scope_unreadable: 'kapsam okunamadı',
+		policy_unreadable: 'politika okunamadı',
+		policy_malformed: 'politika bloğu bozuk'
 	};
 	const LAYERS: Record<string, string> = { model: 'Model', prompt: 'Prompt', tool: 'Araç', policy: 'Politika' };
 
@@ -195,6 +204,29 @@
 							{/each}
 						</ul>
 					{/if}
+				{/if}
+			</section>
+
+			<section class="rounded-lg border p-4 space-y-1" aria-label="Oturumlar">
+				<div class="flex items-center justify-between">
+					<h2 class="font-medium">Oturumlar (canlı ve politika hazır)</h2>
+					<Badge variant={VARIANT[s.sessions.status]}>{LABEL[s.sessions.status]}</Badge>
+				</div>
+				<p class="text-xs text-muted-foreground">Canlı = son {Math.round((s.sessions.alive_within_seconds ?? 300) / 60)} dakikada sinyal verdi. Hazır = sunucu o kişinin politikasını o anda okuyup uygulayabildi (cihaz hakkında bir kanıt değildir). Hazır olmayan oturumda politika bozuktur ve araç çağrıları reddedilebilir.</p>
+				{#if s.sessions.reason}
+					<p class="text-sm text-muted-foreground">{REASON[s.sessions.reason] ?? s.sessions.reason}</p>
+				{/if}
+				{#if s.sessions.alive !== undefined}
+					<p class="text-sm">
+						{s.sessions.alive} canlı oturum · {s.sessions.ready} hazır · {s.sessions.not_ready} hazır değil{#if s.sessions.unchecked} · {s.sessions.unchecked} denetlenmemiş{/if}
+					</p>
+				{/if}
+				{#if s.sessions.not_ready_sessions?.length}
+					<ul class="text-sm text-muted-foreground">
+						{#each s.sessions.not_ready_sessions as n, i (i)}
+							<li>{n.name ?? 'bilinmeyen'} — {NOT_READY[n.reason] ?? n.reason}</li>
+						{/each}
+					</ul>
 				{/if}
 			</section>
 		</div>

@@ -128,8 +128,11 @@ def heartbeat(
     an operator flipping `enforce` mid-session without re-fetching `.well-known`.
     """
     from models import PersonaHeartbeat
-    from services.policy_engine import resolve_mode, resolve_scope
+    from services.policy_engine import check_ready
 
+    # Alive and policy-ready are different facts (ADR-0038): the ping is recorded whatever
+    # the policy state, and the answer says whether the policy can be applied right now.
+    ready = check_ready(principal.persona_id)
     now = datetime.utcnow()
     with get_session() as session:
         row = session.get(PersonaHeartbeat, principal.persona_id)
@@ -141,17 +144,19 @@ def heartbeat(
         row.session_ref = body.session_ref
         row.sandbox_digest = body.sandbox_digest
         row.opencode_version = body.opencode_version
+        row.policy_ready = ready["ready"]
+        row.policy_reason = ready["reason"]
+        row.policy_mode = ready["mode"]
         session.commit()
 
-    company_id, department_id, agent_config_id = resolve_scope(principal.persona_id)
-    mode, default_effect = resolve_mode(
-        company_id or principal.company_id, department_id, agent_config_id
-    )
     return {
         "ok": True,
-        "policy_mode": mode,
-        "default_effect": default_effect,
-        "fail_closed": mode == "enforce",
+        "policy_ready": ready["ready"],
+        "policy_reason": ready["reason"],
+        "policy_mode": ready["mode"],
+        "default_effect": ready["default_effect"],
+        # Not ready means the policy is broken: calls may be denied (ADR-0026, ADR-0038).
+        "fail_closed": (not ready["ready"]) or ready["mode"] == "enforce",
     }
 
 

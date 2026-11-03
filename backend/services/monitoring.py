@@ -29,6 +29,16 @@ from models import (
 logger = logging.getLogger("app")
 
 STALE_DAYS = 7
+ALIVE_SECONDS = 300  # a session pings every ~30 s (ADR-0009)
+READY_REASONS = frozenset(
+    {
+        "invalid_mode",
+        "invalid_default_effect",
+        "scope_unreadable",
+        "policy_unreadable",
+        "policy_malformed",
+    }
+)
 MAX_DRIFT_NAMES = 20
 ORDER = {"ok": 0, "unknown": 1, "warn": 2, "fail": 3}
 CERT_WARN_SECONDS = 14 * 24 * 3600
@@ -424,6 +434,59 @@ def _clients(company_id: str, now: datetime) -> dict:
     return out
 
 
+def _sessions(company_id: str, now: datetime) -> dict:
+    """Running `3pa run` sessions (ADR-0009) and whether their policy could be applied at the last
+    ping (ADR-0038). Alive and ready are different facts; the second is what the server could
+    resolve, not a statement about the machine."""
+    from models import PersonaHeartbeat
+
+    cutoff = now - timedelta(seconds=ALIVE_SECONDS)
+    with get_session() as session:
+        beats = session.exec(
+            select(PersonaHeartbeat).where(PersonaHeartbeat.company_id == company_id)
+        ).all()
+        names = {
+            p.id: p.name
+            for p in session.exec(
+                select(Personnel).where(Personnel.company_id == company_id)
+            ).all()
+        }
+    alive = [b for b in beats if b.last_seen >= cutoff]
+    # None = a session from before the check existed: not known, never counted as ready
+    not_ready = [b for b in alive if b.policy_ready is False]
+    unknown = [b for b in alive if b.policy_ready is None]
+    ready = [b for b in alive if b.policy_ready is True]
+    out: dict = {
+        "alive": len(alive),
+        "ready": len(ready),
+        "not_ready": len(not_ready),
+        "unchecked": len(unknown),
+        "seen_ever": len(beats),
+        "alive_within_seconds": ALIVE_SECONDS,
+        "not_ready_sessions": [
+            {
+                "name": names.get(b.persona_id),
+                "reason": b.policy_reason
+                if b.policy_reason in READY_REASONS
+                else "policy_unreadable",
+            }
+            for b in sorted(not_ready, key=lambda b: names.get(b.persona_id) or "")[
+                :MAX_DRIFT_NAMES
+            ]
+        ],
+    }
+    if not_ready:
+        out["status"] = "warn"
+    elif not alive:
+        # nobody running 3pa is normal (nights, leave): information, not a reason to degrade the whole view
+        out.update(status="ok", reason="no_live_sessions")
+    elif unknown and not ready:
+        out.update(status="unknown", reason="policy_not_checked")
+    else:
+        out["status"] = "ok"
+    return out
+
+
 def summary(company_id: str, *, deep: bool = False) -> dict:
     now = datetime.utcnow()
     sections = {
@@ -435,6 +498,7 @@ def summary(company_id: str, *, deep: bool = False) -> dict:
             "workspace", lambda: _workspace(company_id, int(time.time()))
         ),
         "clients": _guard("clients", lambda: _clients(company_id, now)),
+        "sessions": _guard("sessions", lambda: _sessions(company_id, now)),
     }
     return {
         "company_id": company_id,

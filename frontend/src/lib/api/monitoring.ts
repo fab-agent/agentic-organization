@@ -57,6 +57,15 @@ export type Monitoring = {
 				interrupted: boolean;
 			}[];
 		};
+		sessions: Section & {
+			alive?: number;
+			ready?: number;
+			not_ready?: number;
+			unchecked?: number;
+			seen_ever?: number;
+			alive_within_seconds?: number;
+			not_ready_sessions?: { name: string | null; reason: string }[];
+		};
 	};
 };
 
