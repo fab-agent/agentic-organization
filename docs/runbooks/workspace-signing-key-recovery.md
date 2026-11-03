@@ -4,11 +4,18 @@ Applies to the signed workspace manifest (ADR-0027, ADR-0028). This page orders 
 reasons are in those ADRs. Everything here is checked against `backend/scripts/manifest_keys.py`
 and `backend/services/workspace_service.py`.
 
+## Before you start
+
+- Keep a **ledger offline** of everything ever issued: signing key ids, certificate serials and epochs, CRL numbers. Choose new epochs, serials and CRL numbers from the ledger, never from a restored database.
+- Output files are never overwritten (the tool refuses). Use a new file name or a clean staging folder for each run.
+- Commands are `python scripts/manifest_keys.py <command>` run from `backend/` (so `.venv/bin/python scripts/manifest_keys.py ...`).
+- `GET /me/workspace` is limited to one per person per 10 s (ADR-0037). A checking call uses that person's slot: wait 10 s (30 s after a `503`) before running `3pa workspace sync` as the same person, or check with a different test person. A `429` there is not a signing failure.
+
 ## Who holds what
 
 | Key | Where | If lost | If stolen |
 | --- | --- | --- | --- |
-| **Root** private key | Offline machine only (never on the server, never given to an installer) | Cannot issue anything new. Existing manifests keep working until the certificate expires (at most 90 days). Recovery = new root, **re-pinned on every client** (reinstall or MDM push). | Same as lost, and treat every signed artifact as untrusted: re-pin a new root everywhere. |
+| **Root** private key | Offline machine only (never on the server, never given to an installer) | No new certificates or revocation lists can be issued. The server keeps issuing short manifests (at most 24 h each) with the signing key and certificate it already has, until that certificate ends (at most 90 days); then it stops. Files already installed on laptops are not removed. Recovery = a new root, see E. | **Everyone who still pins the old root is exposed**: the thief can certify a new signing key at a higher epoch and sign manifests those clients accept. Containment, not a quiet swap: see E. |
 | **Signing** private key (`WORKSPACE_DIR/signing.key`, mode 0600) | On the server | Server cannot sign: `503 workspace_unavailable`, clients keep what they have. Replace it (below). | **Raise the epoch with a new key and revoke the old one** (below). |
 
 The server never creates a root key or a certificate. Only the root (offline) can certify a signing key.
@@ -29,7 +36,7 @@ No one else holds it, so no revocation is needed, but the server cannot sign unt
 2. On the server: `signing-init` a fresh key, note its `public_key`.
 3. Offline: raise the epoch by one. `issue-cert ... --serial <next> --epoch <old epoch + 1>` for the **new** public key. A client that has seen epoch N refuses N-1, and a higher epoch restarts its generation floor, so a thief who pushed generations high cannot lock anyone out.
    A client that knows the old key id refuses a higher epoch certified for the **same** key (`epoch_needs_new_key`): the key must really be new.
-4. Offline: publish a **cumulative** revocation list containing the old key's id: `issue-crl --root root.key --number <previous number + 1> --revoke <old kid> --previous crl.json --out crl.json.new` (omit `--previous` only if no list was ever published). The number must be greater than the last one; a list that drops earlier revocations is refused by clients. A list carries a `next_update` (`--valid-days`, default 7, max 90). The verifier can refuse a stale list (`require_crl`), but `3pa workspace sync` does not turn that on today, so staleness is not enforced on clients; still plan the next list before it ends.
+4. Offline: publish a **cumulative** revocation list containing the old key's id: `issue-crl --root root.key --number <previous number + 1> --revoke <old kid> --previous crl.json --out crl.json.new` (omit `--previous` only if no list was ever published). The number must be greater than the last one; a list that drops earlier revocations is refused by clients. CRL numbers stop at 2^53-1 (9007199254740991); `issue-crl` refuses a higher one. A list carries a `next_update` (`--valid-days`, default 7, max 90). The verifier can refuse a stale list (`require_crl`), but `3pa workspace sync` does not turn that on today, so staleness is not enforced on clients; still plan the next list before it ends.
 5. On the server: install the new `signing.key`, `signing.cert.json` and `crl.json` (replace `crl.json` last). The server remembers the highest list number it has accepted and refuses to serve an older one (`crl_rollback`) or none after one was published (`crl_missing`).
 6. Check: `GET /me/workspace` is 200 with the new epoch; `GET /me/workspace/crl` returns the new number; a client sync succeeds (`3pa workspace sync`).
 7. Clients that have not synced yet still trust the old epoch until they see the new certificate or list. The next sync fetches the list first and then the manifest. Raising the epoch alone does not revoke the old key for a client that has not yet seen the new epoch or list, so ask people with long-offline machines to run `3pa workspace sync` once.
@@ -37,18 +44,25 @@ No one else holds it, so no revocation is needed, but the server cannot sign unt
 
 ## C. A wrong, too-high CRL number was signed
 
-The server keeps the highest valid list number it has accepted and **never lowers it**. Do not edit the stored mark. Publish a corrective list with an even higher number and the correct cumulative contents.
+The server keeps the highest valid list number it has accepted and **never lowers it**. Do not edit the stored mark. Publish a corrective list with an even higher number and the correct cumulative contents (`--previous` the wrong list is acceptable only if its revocations are right; otherwise list the correct kids with `--revoke`, understanding that clients refuse a list that drops a revocation they already hold).
+**Limit:** the number cannot exceed 2^53-1. If that exact maximum was signed and accepted, there is no higher number under this root and this checkpoint. The only way forward is a new root and a coordinated fresh start as in E; do not lower the mark or delete client state quietly, that removes the rollback protection for everyone.
 
 ## D. Server database rows were lost (restore, manual delete)
 
-Generation counters are per person. If they are gone, "never reused" no longer holds. Recover as in B: new key, epoch + 1. This restarts every client's floor.
+Generation counters are per person. If they are gone, "never reused" no longer holds. Recover as in B: new key, epoch + 1 (from the ledger), which restarts every client's floor. The CRL checkpoint is stored too: put back the latest cumulative `crl.json` you issued (or publish a new one with a higher number) before serving, otherwise the server answers `crl_missing`/`crl_rollback`.
 
 ## E. Root key lost or stolen
 
-1. Offline: `root-init` a new root key, store it offline. Print `public_key` and its key id.
-2. Re-pin the new root public key on every client by reinstalling (`installers/user`, `--replace-root`) or pushing it through MDM (`installers/deploy`, see its README).
-3. Issue a new signing cert under the new root (epoch can restart; clients that were re-pinned have no history under the new root).
-4. Until a client has the new root pinned it will refuse the new certificate. Plan for that window; nothing unsafe is accepted in the meantime.
+Changing the root is a **new trust start**, not a rotation. Re-pinning does not erase anything a client or the server remembers: epoch, generations, revoked keys and CRL number stay, and a new root that starts at epoch 1 or CRL 1 is refused (`epoch_rollback`, `crl_rollback`, `crl_not_cumulative`, `signing_epoch_behind_state`). Nothing about it is automatic or quiet.
+
+**Stolen root: contain first.** Until a client pins the new root, it accepts whatever the stolen root signs (a new signing key at a higher epoch and manifests the client accepts). There is no safe interim for those machines. Stop issuing workspaces from the server (remove `signing.key`), tell the people involved, and treat every machine that has not confirmed the new pin as untrusted for workspace content until it has.
+
+**Lost root (not stolen):** the old root cannot issue anything, so the same migration is needed before the current certificate ends.
+
+1. Offline: `root-init` a new root key; keep it offline; record its public key and key id in the ledger and confirm that fingerprint with people **out of band** (not through the same channel that delivers the pin).
+2. Server: set the new root public key where the server reads it (`WORKSPACE_ROOT_PUB` wins over `root.pub` if set; restart the process if it comes from the environment). Install a new signing key and a certificate issued under the new root, with an epoch **above** the highest the server and clients have seen (the server refuses a lower one against its stored state), and a CRL number above the last published, signed by the new root and listing every previously revoked key (the tool cannot carry the old root's list over with `--previous`; list the kids with `--revoke`).
+3. Clients: replace the pin (`installers/user ... --replace-root`, or MDM, `installers/deploy`) **and** reset the local sync state with a deliberate `3pa workspace sync --re-enroll`. `--replace-root` alone only changes the pin file.
+4. Track completion per machine (the monitoring page shows who has synced); keep untrusted whoever has not.
 
 ## What this does not cover
 
