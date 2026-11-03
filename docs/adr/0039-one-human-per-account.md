@@ -24,7 +24,7 @@ profile, its manifest, its files and its drift report. Found while reviewing `/m
    rather than act as the wrong person.
 2. **The invite flow cannot create the ambiguity.** Inviting a person whose resulting account is
    already linked to another human record of the same company answers `409` and changes nothing
-   (membership, password and link are rolled back). The check and the link are serialised per account and company: `link_human` first writes the account's membership row, which takes a write lock (SQLite and PostgreSQL alike), so a second invite for the same account waits until the first commits and then sees its link. Two invites at once therefore give one success and one `409`.
+   (membership, password and link are rolled back). The check and the link are serialised per account and company: `link_human` first writes the account's own `User` row (the one row two invites for the same account always share, whether or not a membership exists yet), which takes a write lock on SQLite and PostgreSQL alike, so a second invite for the same account waits until the first commits and then sees its link. Two invites for the same new e-mail race to create the account; the loser gets a clean `409` (retry) instead of an unhandled database error. Two invites at once therefore give one success and one `409`.
 3. **A person can still belong to several companies,** one record in each; `company_id` chooses.
 
 ## What this does not do
@@ -32,7 +32,7 @@ profile, its manifest, its files and its drift report. Found while reviewing `/m
 - It does not repair existing duplicates: an administrator unlinks one record (the affected person
   sees `409` until then). There is no database unique key yet because existing data may already
   contain duplicates and a migration must not fail on them; a cleaned deployment can add one later.
-- The serialisation holds only for invites; it is not a database constraint.
+- The serialisation holds only for invites (and locks the account's user row only for the moment of linking); it is not a database constraint.
 - Other ways to set `Personnel.user_id` (direct edits, imports) are not guarded here; the read side
   refuses ambiguity regardless.
 
@@ -41,5 +41,5 @@ profile, its manifest, its files and its drift report. Found while reviewing `/m
 `backend/tests/test_one_human_per_account.py`: two human records on one account give `409` on the
 manifest, file and report endpoints; another account is unaffected; an agent record on the same
 account is not a second human; one account in two companies still works (and needs `company_id`);
-two invites released together through a barrier link only one person (the test fails when the lock is removed; the same race runs on PostgreSQL in `test_pg_smoke.py`); the invite refuses a second link and leaves the link, the membership and the password untouched;
+two invites released together through a barrier link only one person, also for an account with no membership yet, and two invites for the same brand-new e-mail never end in a 500 (the test fails when the lock is removed; the same race runs on PostgreSQL in `test_pg_smoke.py`); the invite refuses a second link and leaves the link, the membership and the password untouched;
 the query cannot choose a role, department or person (the session's membership decides).

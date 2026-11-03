@@ -143,7 +143,7 @@ def test_two_invites_at_once_link_the_account_to_only_one_person(
 
     co = auth_client._test_company
     u = make_user(db_session, email="race@test.com", name="Race")
-    make_member(db_session, u.id, co.id, role="user")
+    # no membership in this company on purpose: the lock must not depend on one existing
     a = make_personnel(db_session, co.id, name="A", slug="ra", type="human")
     b = make_personnel(db_session, co.id, name="B", slug="rb", type="human")
     db_session.commit()
@@ -172,3 +172,43 @@ def test_two_invites_at_once_link_the_account_to_only_one_person(
     db_session.expire_all()
     linked = db_session.exec(select(Personnel).where(Personnel.user_id == uid)).all()
     assert len(linked) == 1
+
+
+def test_two_invites_for_the_same_new_email_do_not_end_in_a_500(
+    auth_client, db_session, test_engine
+):
+    """The account is created by whichever invite gets there first; the other is a clean 409
+    (or succeeds), never an unhandled IntegrityError."""
+    import threading
+
+    co = auth_client._test_company
+    a = make_personnel(db_session, co.id, name="NA", slug="na", type="human")
+    b = make_personnel(db_session, co.id, name="NB", slug="nb", type="human")
+    a.email = b.email = "brand-new@test.com"
+    db_session.add_all([a, b])
+    db_session.commit()
+
+    barrier, codes = threading.Barrier(2), []
+
+    def hit(pid):
+        barrier.wait()
+        codes.append(
+            auth_client.post(
+                f"/personnel/{pid}/invite", json={"role": "user"}
+            ).status_code
+        )
+
+    ts = [threading.Thread(target=hit, args=(p,)) for p in (a.id, b.id)]
+    [t.start() for t in ts]
+    [t.join(timeout=60) for t in ts]
+    assert len(codes) == 2 and 500 not in codes, codes
+    assert codes.count(201) >= 1
+    from models import Personnel
+
+    db_session.expire_all()
+    linked = [
+        p
+        for p in (db_session.get(Personnel, a.id), db_session.get(Personnel, b.id))
+        if p.user_id
+    ]
+    assert len(linked) == 1  # one account, one person

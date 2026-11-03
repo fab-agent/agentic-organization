@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from api.audit import log_action
@@ -386,22 +387,16 @@ def link_human(session, person, user_id: str, company_id: str) -> None:
     """Link `person` to the account and commit, unless the account is already linked to another
     human record of this company (409, nothing changed; ADR-0039).
 
-    The check and the link must not interleave with another invite for the same account and
-    company, and there is no unique key to stop it, so the account's membership row is written
-    first: that takes a write lock on it (SQLite and PostgreSQL alike), a concurrent invite waits
-    here until this one commits, and then sees the link when it checks.
+    The check and the link must not interleave with another invite for the same account, and
+    there is no unique key to stop it. The one row both invites always share is the account's own
+    `User` row (it exists whether or not a membership does), so it is written first: that takes a
+    write lock (SQLite and PostgreSQL alike), a concurrent invite waits here until this one commits,
+    and then sees the link when it checks. Invites for other accounts do not wait.
     """
-    from models import CompanyMember
+    from models import User
 
-    session.flush()  # a membership added a moment ago must exist before it can be locked
-    session.exec(
-        update(CompanyMember)
-        .where(
-            CompanyMember.user_id == user_id,
-            CompanyMember.company_id == company_id,
-        )
-        .values(user_id=user_id)
-    )
+    session.flush()
+    session.exec(update(User).where(User.id == user_id).values(id=user_id))
     taken = session.exec(
         select(Personnel.id).where(
             Personnel.user_id == user_id,
@@ -457,7 +452,16 @@ def invite_personnel(
         user = existing or User(email=person.email, name=person.name)
         if not existing:
             session.add(user)
-            session.flush()
+            try:
+                session.flush()
+            except (
+                IntegrityError
+            ):  # the same new account was created by a concurrent invite
+                session.rollback()
+                raise HTTPException(
+                    status_code=409,
+                    detail="Bu hesap şu anda başka bir davetle oluşturuluyor; tekrar deneyin",
+                ) from None
 
         # An account that belongs to other companies keeps its credentials: being
         # invited here must never reset a password someone else's tenant relies on.

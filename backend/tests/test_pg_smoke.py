@@ -397,14 +397,14 @@ def test_account_link_race_has_one_winner(pg):
 
     import database
     from api.personnel import link_human
-    from models import Company, CompanyMember, Personnel, User
+    from models import Company, Personnel, User
 
     with Session(database.engine) as setup:
         co = Company(name="L Co", slug="l-co")
         u = User(email="l@test.com", name="L")
         setup.add_all([co, u])
         setup.flush()
-        setup.add(CompanyMember(user_id=u.id, company_id=co.id, role="user"))
+        # no membership here on purpose: the lock must not depend on one existing
         ps = [
             Personnel(
                 company_id=co.id,
