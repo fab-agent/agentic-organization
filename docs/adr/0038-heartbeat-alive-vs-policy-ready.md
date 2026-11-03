@@ -20,8 +20,8 @@ had already been written, so the client saw "gateway failing" for a policy probl
 1. **A readiness check that follows the gate's own path.** `policy_engine.check_ready(persona_id)`
    resolves the scope, the mode and the applicable policies and parses their rules exactly as
    `decide` does, and evaluates nothing. Ready means that path succeeds and no block is malformed
-   (`policy_off` counts as ready and reports mode `off`). Otherwise it is not ready, with one of a
-   fixed set of codes: `scope_unreadable`, `invalid_mode`, `policy_unreadable`, `policy_malformed`.
+   (mode `off` counts as ready: the gate allows before reading any policy). It uses the same static checks as the evaluator: a rule the evaluator would reject and an invalid default effect are not ready either. Otherwise it is not ready, with one of a
+   fixed set of codes: `scope_unreadable`, `invalid_mode`, `invalid_default_effect`, `policy_unreadable`, `policy_malformed`.
    Exception text is never returned or stored.
 2. **The heartbeat records both facts and never fails because of policy.** The ping (`last_seen`) is
    always written. The answer adds `policy_ready`, `policy_reason`, `policy_mode`;
@@ -31,7 +31,7 @@ had already been written, so the client saw "gateway failing" for a policy probl
 3. **Monitoring gets a `sessions` section** (founder/executive only, same rule as the rest): sessions
    alive in the last 5 minutes, how many of them were ready at their last ping, how many were not
    (with name and fixed reason, at most 20), and how many were never checked. Status: `warn` when any
-   live session is not ready; `unknown` when nothing is live (`no_live_sessions`) or live sessions
+   live session is not ready; `ok` with reason `no_live_sessions` when nothing is live (normal at night; it must not degrade the whole view), `unknown` when live sessions
    are all unchecked; otherwise `ok`. Only the company's own sessions are counted. A stored reason
    that is not on the fixed list is shown as `policy_unreadable`.
 4. **The CLI says it once.** When the answer flips to not ready, `3pa run` prints one line with the
@@ -55,4 +55,4 @@ database error (reason fixed, error text absent); `off`; the ping is stored even
 a stale session is not alive, a session from before the check is "unchecked" and never ready,
 another company's sessions are never counted, an out-of-list stored reason is not shown, the endpoint
 carries the section and stays closed to anonymous callers; migration columns match the model.
-The CLI message is not covered by an automated test (the heartbeat loop is not exported).
+`policy_mode` in the answer stays whenever the mode could be resolved, even if the policy read then fails (old clients keep their value). The CLI prints only words from a fixed list (reason codes and modes), whatever the server sends. Readiness and `decide` are tested against the same bad inputs (bad rule schema, bad default effect). The CLI message is not covered by an automated test (the heartbeat loop is not exported).

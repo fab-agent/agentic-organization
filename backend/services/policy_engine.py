@@ -848,53 +848,52 @@ def resolve_mode(
 
 
 def check_ready(persona_id: str) -> dict:
-    """Can the policy that the gate would apply to this persona be read and parsed *now*?
-    Same resolution path as `decide` (ADR-0038); it evaluates nothing. Returns
-    {"ready": bool, "reason": code|None, "mode": str|None, "default_effect": str|None}.
-    The reason is one of a fixed set of codes, never exception text."""
+    """Can the policy that the gate would apply to this persona be read, parsed and applied *now*?
+    Same resolution path and the same static checks as `decide`/`evaluate` (ADR-0038); it
+    evaluates no request. Returns {"ready", "reason", "mode", "default_effect"}; `mode` and
+    `default_effect` are given whenever they could be resolved, even if something later is not
+    ready. The reason is one of a fixed set of codes, never exception text."""
+    mode: str | None = None
+    default_effect: str | None = None
+
+    def result(reason: str | None) -> dict:
+        return {
+            "ready": reason is None,
+            "reason": reason,
+            "mode": mode,
+            # only a valid value is ever given back, never stored text that failed validation
+            "default_effect": default_effect
+            if default_effect in VALID_EFFECTS
+            else None,
+        }
+
     try:
         company_id, department_id, agent_config_id = resolve_scope(persona_id)
         mode, default_effect = resolve_mode(company_id, department_id, agent_config_id)
         if mode == "off":
-            return {
-                "ready": True,
-                "reason": None,
-                "mode": mode,
-                "default_effect": default_effect,
-            }
+            return result(None)  # the gate allows before reading any policy
         ruleset = load_ruleset(
             applicable_policy_contents(company_id, department_id, agent_config_id)
         )
     except PolicyResolutionError as e:
         text = str(e)
-        reason = (
+        return result(
             "invalid_mode"
             if text.startswith("invalid policy mode")
             else "scope_unreadable"
             if text.startswith(("scope", "persona"))
             else "policy_unreadable"
         )
-        return {"ready": False, "reason": reason, "mode": None, "default_effect": None}
     except Exception:  # anything else is still "not known to be ready"
-        return {
-            "ready": False,
-            "reason": "policy_unreadable",
-            "mode": None,
-            "default_effect": None,
-        }
-    if any(r.get("effect") == "__malformed__" for r in ruleset):
-        return {
-            "ready": False,
-            "reason": "policy_malformed",
-            "mode": mode,
-            "default_effect": default_effect,
-        }
-    return {
-        "ready": True,
-        "reason": None,
-        "mode": mode,
-        "default_effect": default_effect,
-    }
+        return result("policy_unreadable")
+    if default_effect not in VALID_EFFECTS:
+        return result("invalid_default_effect")
+    # A sentinel (unparseable block) or a rule `evaluate` would reject: both deny everything.
+    if any(
+        r.get("effect") == "__malformed__" or _rule_schema_problem(r) for r in ruleset
+    ):
+        return result("policy_malformed")
+    return result(None)
 
 
 def audit_decision(req: PolicyDecisionRequest, decision: PolicyDecision) -> bool:

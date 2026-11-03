@@ -92,6 +92,53 @@ def test_policy_off_counts_as_ready_and_says_off(auth_client, db_session):
     assert r["ready"] is True and r["mode"] == "off"
 
 
+def test_check_ready_agrees_with_decide_on_a_bad_rule_schema(auth_client, db_session):
+    p, _ = _persona(db_session, auth_client._test_company)
+    db_session.add(
+        Policy(
+            company_id=auth_client._test_company.id,
+            name="schema",
+            slug="schema",
+            content='```policy\n[{"match":{},"effect":"banana"}]\n```',
+            scope="company",
+        )
+    )
+    db_session.commit()
+    r = pe.check_ready(p.id)
+    d = pe.decide(pe.PolicyDecisionRequest(tool="read", persona_id=p.id))
+    assert d.fail_closed  # the gate does deny everything...
+    assert (r["ready"], r["reason"]) == (False, "policy_malformed")  # ...and we say so
+
+
+def test_check_ready_agrees_with_decide_on_a_bad_default_effect(
+    auth_client, db_session
+):
+    p, _ = _persona(db_session, auth_client._test_company)
+    db_session.add(AppConfig(key="policy.default_effect", value="SECRET_BAD_EFFECT"))
+    db_session.commit()
+    r = pe.check_ready(p.id)
+    d = pe.decide(pe.PolicyDecisionRequest(tool="read", persona_id=p.id))
+    assert d.fail_closed
+    assert (r["ready"], r["reason"]) == (False, "invalid_default_effect")
+    assert "SECRET" not in repr(r)
+
+
+def test_the_mode_is_kept_when_only_the_policy_read_fails(
+    auth_client, db_session, monkeypatch
+):
+    p, token = _persona(db_session, auth_client._test_company)
+    db_session.add(AppConfig(key="policy.mode", value="enforce"))
+    db_session.commit()
+
+    def boom(*a, **k):
+        raise pe.PolicyResolutionError("policy read failed")
+
+    monkeypatch.setattr(pe, "applicable_policy_contents", boom)
+    body = _beat(auth_client, token).json()
+    assert body["policy_ready"] is False and body["policy_mode"] == "enforce"
+    assert body["fail_closed"] is True
+
+
 # ── the heartbeat ────────────────────────────────────────────────────────────
 
 
@@ -161,7 +208,7 @@ def test_a_session_that_stopped_pinging_is_not_alive(auth_client, db_session):
     db_session.commit()
     s = monitoring._sessions(co.id, datetime.utcnow())
     assert s["alive"] == 0 and s["seen_ever"] == 1
-    assert (s["status"], s["reason"]) == ("unknown", "no_live_sessions")
+    assert (s["status"], s["reason"]) == ("ok", "no_live_sessions")
 
 
 def test_an_old_session_without_the_check_is_unknown_never_ready(

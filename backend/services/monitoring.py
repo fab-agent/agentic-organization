@@ -31,7 +31,13 @@ logger = logging.getLogger("app")
 STALE_DAYS = 7
 ALIVE_SECONDS = 300  # a session pings every ~30 s (ADR-0009)
 READY_REASONS = frozenset(
-    {"invalid_mode", "scope_unreadable", "policy_unreadable", "policy_malformed"}
+    {
+        "invalid_mode",
+        "invalid_default_effect",
+        "scope_unreadable",
+        "policy_unreadable",
+        "policy_malformed",
+    }
 )
 MAX_DRIFT_NAMES = 20
 ORDER = {"ok": 0, "unknown": 1, "warn": 2, "fail": 3}
@@ -472,7 +478,8 @@ def _sessions(company_id: str, now: datetime) -> dict:
     if not_ready:
         out["status"] = "warn"
     elif not alive:
-        out.update(status="unknown", reason="no_live_sessions")
+        # nobody running 3pa is normal (nights, leave): information, not a reason to degrade the whole view
+        out.update(status="ok", reason="no_live_sessions")
     elif unknown and not ready:
         out.update(status="unknown", reason="policy_not_checked")
     else:

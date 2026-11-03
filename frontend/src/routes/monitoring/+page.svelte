@@ -34,6 +34,7 @@
 	};
 	const NOT_READY: Record<string, string> = {
 		invalid_mode: 'politika modu geçersiz',
+		invalid_default_effect: 'varsayılan etki geçersiz',
 		scope_unreadable: 'kapsam okunamadı',
 		policy_unreadable: 'politika okunamadı',
 		policy_malformed: 'politika bloğu bozuk'

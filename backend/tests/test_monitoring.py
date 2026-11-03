@@ -87,6 +87,7 @@ def test_shape_and_no_secret_material(client, world):
         "eval",
         "workspace",
         "clients",
+        "sessions",
     }
     assert body["status"] in {"ok", "unknown", "warn", "fail"}
     assert body["sections"]["service"]["database"] == "ok"
