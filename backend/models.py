@@ -930,6 +930,20 @@ class WorkspaceManifestState(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class WorkspaceIssueStamp(SQLModel, table=True):
+    """When a person was last issued a signed manifest (ADR-0037). One row per (company, person),
+    only ever used to space issuance out; it carries no other information."""
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "person_id", name="uq_workspace_issue_stamp"),
+    )
+
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    company_id: str = Field(foreign_key="company.id", index=True)
+    person_id: str = Field(foreign_key="personnel.id", index=True)
+    issued_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class WorkspaceClientReport(SQLModel, table=True):
     """The latest drift report a person's client sent (ADR-0035): a self-reported diagnostic
     claim, never a fact and never an input to any access, policy or signing decision. Counts

@@ -19,12 +19,14 @@ from sqlmodel import select
 from api.auth import get_current_user
 from api.well_known import _cfg
 from database import get_session
-from models import User, WorkspaceClientReport
+from models import User, WorkspaceClientReport, WorkspaceIssueStamp
 from services import audit_chain
 from services import workspace_service as ws
 from services.workspaces import person_for_user
 
 router = APIRouter(prefix="/me/workspace", tags=["workspace"])
+
+ISSUE_MIN_INTERVAL = timedelta(seconds=10)
 
 
 def configured_gateway_url(session) -> str:
@@ -56,6 +58,23 @@ def get_workspace(
 ):
     with get_session() as session:
         person, cid = person_for_user(session, user, company_id)
+        # Spacing comes before anything is allocated or signed, and the check is itself a
+        # write: see claim_slot (ADR-0037). A refusal changes nothing else.
+        if not claim_slot(
+            session,
+            WorkspaceIssueStamp,
+            "issued_at",
+            cid,
+            person.id,
+            {},
+            datetime.utcnow(),
+            ISSUE_MIN_INTERVAL,
+        ):
+            raise HTTPException(
+                status_code=429,
+                detail={"error": "rate_limited", "reason": "try_again_later"},
+                headers={"Retry-After": str(int(ISSUE_MIN_INTERVAL.total_seconds()))},
+            )
         try:
             out = ws.issue_manifest(
                 session,
@@ -155,43 +174,64 @@ class DriftReport(BaseModel):
     interrupted: bool
 
 
-def store_report(session, company_id: str, person_id: str, values: dict, now) -> bool:
-    """Write the person's latest report unless one was stored less than REPORT_MIN_INTERVAL ago.
-    True = stored, False = too soon. The time check IS the write (one conditional UPDATE), so
-    several requests that all saw an old row cannot all pass; the first INSERT is protected by
-    the unique key. Commits on success, rolls back otherwise."""
+def claim_slot(
+    session,
+    model,
+    time_col: str,
+    company_id: str,
+    person_id: str,
+    values: dict,
+    now,
+    interval,
+) -> bool:
+    """Take this person's slot in `model` unless one was taken less than `interval` ago.
+    True = taken (and `values` written), False = too soon. The time check IS the write (one
+    conditional UPDATE), so several requests that all saw an old row cannot all pass; the first
+    INSERT is protected by the unique key. Commits on success, rolls back otherwise."""
+    col = getattr(model, time_col)
     done = session.exec(
-        update(WorkspaceClientReport)
+        update(model)
         .where(
-            WorkspaceClientReport.company_id == company_id,
-            WorkspaceClientReport.person_id == person_id,
-            WorkspaceClientReport.received_at <= now - REPORT_MIN_INTERVAL,
+            model.company_id == company_id,
+            model.person_id == person_id,
+            col <= now - interval,
         )
-        .values(**values, received_at=now)
+        .values(**values, **{time_col: now})
     )
     if done.rowcount == 1:
         session.commit()
         return True
     session.rollback()
     exists = session.exec(
-        select(WorkspaceClientReport.id).where(
-            WorkspaceClientReport.company_id == company_id,
-            WorkspaceClientReport.person_id == person_id,
+        select(model.id).where(
+            model.company_id == company_id, model.person_id == person_id
         )
     ).first()
     if exists:
-        return False  # a report is already on file and it is recent
+        return False  # a row is already on file and it is recent
     session.add(
-        WorkspaceClientReport(
-            company_id=company_id, person_id=person_id, received_at=now, **values
-        )
+        model(company_id=company_id, person_id=person_id, **{time_col: now}, **values)
     )
     try:
         session.commit()
-    except IntegrityError:  # two first reports at once: the other one won
+    except IntegrityError:  # two first requests at once: the other one won
         session.rollback()
         return False
     return True
+
+
+def store_report(session, company_id: str, person_id: str, values: dict, now) -> bool:
+    """Write the person's latest report unless one was stored less than REPORT_MIN_INTERVAL ago."""
+    return claim_slot(
+        session,
+        WorkspaceClientReport,
+        "received_at",
+        company_id,
+        person_id,
+        values,
+        now,
+        REPORT_MIN_INTERVAL,
+    )
 
 
 @router.post("/report", status_code=204)

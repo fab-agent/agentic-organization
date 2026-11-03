@@ -327,3 +327,62 @@ def test_drift_report_race_has_one_winner(pg):
             select(WorkspaceClientReport).where(WorkspaceClientReport.person_id == pid)
         ).one()
         assert row.missing == [i for i, ok in second if ok][0] + 1
+
+
+def test_manifest_issue_slot_race_has_one_winner(pg):
+    """ADR-0037: eight requests that all see no/old stamp take the slot exactly once."""
+    import threading
+    from datetime import datetime, timedelta
+
+    from sqlmodel import Session
+
+    import database
+    from api.me_workspace import claim_slot
+    from models import Company, Personnel, WorkspaceIssueStamp
+
+    with Session(database.engine) as setup:
+        co = Company(name="I Co", slug="i-co")
+        setup.add(co)
+        setup.flush()
+        p = Personnel(
+            company_id=co.id, name="P", slug="p-i", title="t", role="r", type="human"
+        )
+        setup.add(p)
+        setup.commit()
+        cid, pid = co.id, p.id
+
+    def race(now):
+        results, errors = [], []
+        barrier = threading.Barrier(8)
+
+        def worker():
+            try:
+                with Session(database.engine) as s:
+                    barrier.wait()
+                    results.append(
+                        claim_slot(
+                            s,
+                            WorkspaceIssueStamp,
+                            "issued_at",
+                            cid,
+                            pid,
+                            {},
+                            now,
+                            timedelta(seconds=10),
+                        )
+                    )
+            except Exception as e:
+                errors.append(repr(e))
+
+        ts = [threading.Thread(target=worker) for _ in range(8)]
+        [t.start() for t in ts]
+        [t.join() for t in ts]
+        assert not errors, errors
+        return results
+
+    t0 = datetime.utcnow()
+    assert race(t0).count(True) == 1  # first ever: the unique key decides
+    assert race(t0 + timedelta(seconds=5)).count(True) == 0  # inside the window
+    assert (
+        race(t0 + timedelta(seconds=11)).count(True) == 1
+    )  # after it: the UPDATE decides
