@@ -789,6 +789,15 @@ test('P-12: a server reason with unexpected characters is not echoed', async () 
   assert.equal(await code(syncWorkspace(opts())), 'http_502')
 })
 
+test('rate limit: a 429 from the platform changes nothing and is a plain, retryable code', async () => {
+  const { w, stateDir, opts } = setup()
+  await syncWorkspace(opts())
+  const before = rf(join(stateDir, 'state.json'), 'utf8')
+  w.failManifest = new Response(JSON.stringify({ detail: { error: 'rate_limited', reason: 'try_again_later' } }), { status: 429, headers: { 'Retry-After': '10' } })
+  assert.equal(await code(syncWorkspace(opts())), 'server_try_again_later')
+  assert.equal(rf(join(stateDir, 'state.json'), 'utf8'), before)
+})
+
 // re-enroll ──────────────────────────────────────────────────────────────────────
 
 test('re-enroll: a failed attempt leaves the existing state exactly where it was', async () => {

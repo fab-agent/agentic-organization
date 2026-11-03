@@ -48,6 +48,17 @@ def patch_engine(test_engine, monkeypatch):
 # ── App / TestClient ──────────────────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def no_issue_spacing(monkeypatch):
+    """Most tests fetch a manifest many times in a row; the spacing (ADR-0037) has its own
+    tests, which put the real interval back."""
+    from datetime import timedelta
+
+    import api.me_workspace as mw
+
+    monkeypatch.setattr(mw, "ISSUE_MIN_INTERVAL", timedelta(0))
+
+
 @pytest.fixture()
 def client(patch_engine):
     """TestClient with seed, env-key sync, and init_db suppressed.

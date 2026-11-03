@@ -62,6 +62,7 @@ const MESSAGES: Record<string, string> = {
   state_not_recorded: 'The workspace was updated, but the sync state could not be saved. Run the sync again.',
   locking_unsupported: 'The state directory is on a file system without hard links. Point THREEPA_WORKSPACE_DIR at a normal local folder.',
   sync_timeout: 'The sync took too long (or the platform did not answer) and was stopped; no new update was applied. Run the sync again.',
+  server_try_again_later: 'The platform asks for a short pause between workspace requests. Wait about ten seconds and run again; nothing was changed.',
   bad_duration: 'The time limit given to the sync is not valid.',
   app_home_unsafe: 'The Herdr app home contains a link where a real folder is expected; it was left untouched.',
 }
