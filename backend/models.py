@@ -601,6 +601,11 @@ class PersonaHeartbeat(SQLModel, table=True):
     session_ref: str | None = None
     sandbox_digest: str | None = None
     opencode_version: str | None = None
+    # What the server could resolve for this persona at the last ping (ADR-0038). None = the
+    # session predates the check. A server-side fact about the policy, not about the device.
+    policy_ready: bool | None = None
+    policy_reason: str | None = None
+    policy_mode: str | None = None
 
 
 class PersonaTokenState(SQLModel, table=True):

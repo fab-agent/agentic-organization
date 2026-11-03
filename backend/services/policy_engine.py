@@ -847,6 +847,56 @@ def resolve_mode(
     return mode, default_effect
 
 
+def check_ready(persona_id: str) -> dict:
+    """Can the policy that the gate would apply to this persona be read and parsed *now*?
+    Same resolution path as `decide` (ADR-0038); it evaluates nothing. Returns
+    {"ready": bool, "reason": code|None, "mode": str|None, "default_effect": str|None}.
+    The reason is one of a fixed set of codes, never exception text."""
+    try:
+        company_id, department_id, agent_config_id = resolve_scope(persona_id)
+        mode, default_effect = resolve_mode(company_id, department_id, agent_config_id)
+        if mode == "off":
+            return {
+                "ready": True,
+                "reason": None,
+                "mode": mode,
+                "default_effect": default_effect,
+            }
+        ruleset = load_ruleset(
+            applicable_policy_contents(company_id, department_id, agent_config_id)
+        )
+    except PolicyResolutionError as e:
+        text = str(e)
+        reason = (
+            "invalid_mode"
+            if text.startswith("invalid policy mode")
+            else "scope_unreadable"
+            if text.startswith(("scope", "persona"))
+            else "policy_unreadable"
+        )
+        return {"ready": False, "reason": reason, "mode": None, "default_effect": None}
+    except Exception:  # anything else is still "not known to be ready"
+        return {
+            "ready": False,
+            "reason": "policy_unreadable",
+            "mode": None,
+            "default_effect": None,
+        }
+    if any(r.get("effect") == "__malformed__" for r in ruleset):
+        return {
+            "ready": False,
+            "reason": "policy_malformed",
+            "mode": mode,
+            "default_effect": default_effect,
+        }
+    return {
+        "ready": True,
+        "reason": None,
+        "mode": mode,
+        "default_effect": default_effect,
+    }
+
+
 def audit_decision(req: PolicyDecisionRequest, decision: PolicyDecision) -> bool:
     """
     Audit one policy decision into the tamper-evident chain (ADR-0005/0006).
