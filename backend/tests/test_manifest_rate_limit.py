@@ -8,7 +8,7 @@ from sqlmodel import select
 
 import api.me_workspace as mw
 from models import AuditEvent, WorkspaceIssueStamp
-from tests.test_me_workspace import _get, env, people  # noqa: F401
+from tests.test_me_workspace import _get, _h, env, people  # noqa: F401
 
 
 @pytest.fixture()
@@ -119,6 +119,8 @@ def test_files_and_crl_are_not_spaced(client, env, people, spaced):  # noqa: F81
             },
         )
         assert r.status_code == 200
+    for _ in range(3):  # the CRL answers 404 (none published) or 200, never 429
+        assert client.get("/me/workspace/crl", headers=_h(u)).status_code != 429
 
 
 def test_the_migration_matches_the_model():

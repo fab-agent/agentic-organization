@@ -27,9 +27,12 @@ issuance was not.
    that then fails with `503 workspace_unavailable` has used its slot; that answer already carries
    `Retry-After: 30`, longer than the window, so a client that obeys it is never refused.
 4. **Not limited:** `/me/workspace/files/{sha}` (a sync fetches one per file; it writes nothing) and
-   `/crl` (read-only). They need authentication and are not a write path.
-5. **The CLI** shows a plain message for the refusal (`server_try_again_later`), changes no local state,
-   and does not retry on its own.
+   `/crl`. The CRL endpoint produces no generation, signature or audit event; it may raise the stored
+   CRL high-water mark when a newer list is published, which is a security checkpoint that must not be
+   held back. Both need authentication.
+5. **The CLI** shows a plain message for the refusal (`server_try_again_later`): no new workspace was
+   installed, and it does not retry on its own. A newer revocation list fetched just before the refused
+   request is still kept (revocation information is never thrown away).
 
 ## What this does not do
 
@@ -42,5 +45,5 @@ issuance was not.
 Server: second request refused with the exact body and header; no audit event, no generation allocated
 on refusal; per-person (another person unaffected); works again after the window; 503 leaves a spaced
 slot; files and CRL are not limited; migration columns match the model; a PostgreSQL test races eight
-claims and requires exactly one winner. CLI: the refusal is a plain code and leaves the state file
-byte-identical.
+claims and requires exactly one winner. CLI: the refusal is a plain code and, with no new revocation list,
+leaves the state file byte-identical.
