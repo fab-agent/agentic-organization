@@ -10,7 +10,7 @@
 
 `POST /workstation/heartbeat` says a `3pa run` session is alive and returns the policy mode. It does
 not say whether the policy can actually be applied. Since ADR-0026 an unreadable scope, an invalid
-mode, an unreadable policy or a malformed policy block makes the gate deny every tool call. Such a
+mode, an unreadable policy, an invalid default effect or a malformed policy block makes the gate deny tool calls (all of them for the first four; for a bad rule, those that reach it). Such a
 session still pings, still looks alive, and nobody is told that every tool call in it is being
 denied. If resolution failed inside the heartbeat itself, the call returned `500` after the ping
 had already been written, so the client saw "gateway failing" for a policy problem.
@@ -25,7 +25,7 @@ had already been written, so the client saw "gateway failing" for a policy probl
    Exception text is never returned or stored.
 2. **The heartbeat records both facts and never fails because of policy.** The ping (`last_seen`) is
    always written. The answer adds `policy_ready`, `policy_reason`, `policy_mode`;
-   `fail_closed` is true when not ready (the gate denies in that state) or in `enforce`. `ok` keeps
+   `fail_closed` is true when not ready (calls **may** be denied: all of them when the scope, mode, default effect or policy read is the problem; for a bad rule only the calls that reach it, because the evaluator checks a rule's fields as far as it matches) or in `enforce`. `ok` keeps
    its old meaning (the ping was recorded). Three nullable columns on `personaheartbeat` keep the
    last answer (`policy_ready` is `NULL` for sessions that predate the check).
 3. **Monitoring gets a `sessions` section** (founder/executive only, same rule as the rest): sessions
@@ -36,7 +36,7 @@ had already been written, so the client saw "gateway failing" for a policy probl
    that is not on the fixed list is shown as `policy_unreadable`.
 4. **The CLI says it once.** When the answer flips to not ready, `3pa run` prints one line with the
    fixed code ("gateway is up but your policy cannot be applied right now ..."), and one line when it
-   recovers. It does not stop the sandbox (the gate already denies; stopping is ADR-0009's separate
+   recovers. It does not stop the sandbox (the gate already denies what it denies; stopping is ADR-0009's separate
    fail-closed rule for an unreachable gateway).
 
 ## What this does not do
@@ -45,7 +45,7 @@ had already been written, so the client saw "gateway failing" for a policy probl
   about the machine, the sandbox or whether the local opencode obeys it (ADR-0003 limits).
 - It is a point-in-time value: a policy edited after the last ping shows at the next ping (about 30 s).
 - No history, alerting or auto-revocation; a session that stops pinging simply stops being alive.
-- It does not change what the gate decides.
+- It does not change what the gate decides. Readiness is deliberately conservative: it checks every rule's fields statically, while the evaluator can skip a broken rule that never matches the call. So "not ready" means "the policy is broken and calls may be denied", not "every call is denied".
 
 ## Verification
 

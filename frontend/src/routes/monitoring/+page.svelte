@@ -212,7 +212,7 @@
 					<h2 class="font-medium">Oturumlar (canlı ve politika hazır)</h2>
 					<Badge variant={VARIANT[s.sessions.status]}>{LABEL[s.sessions.status]}</Badge>
 				</div>
-				<p class="text-xs text-muted-foreground">Canlı = son {Math.round((s.sessions.alive_within_seconds ?? 300) / 60)} dakikada sinyal verdi. Hazır = sunucu o kişinin politikasını o anda okuyup uygulayabildi (cihaz hakkında bir kanıt değildir). Hazır olmayan oturumda araç çağrıları reddedilir.</p>
+				<p class="text-xs text-muted-foreground">Canlı = son {Math.round((s.sessions.alive_within_seconds ?? 300) / 60)} dakikada sinyal verdi. Hazır = sunucu o kişinin politikasını o anda okuyup uygulayabildi (cihaz hakkında bir kanıt değildir). Hazır olmayan oturumda politika bozuktur ve araç çağrıları reddedilebilir.</p>
 				{#if s.sessions.reason}
 					<p class="text-sm text-muted-foreground">{REASON[s.sessions.reason] ?? s.sessions.reason}</p>
 				{/if}

@@ -139,6 +139,27 @@ def test_the_mode_is_kept_when_only_the_policy_read_fails(
     assert body["fail_closed"] is True
 
 
+def test_not_ready_is_conservative_a_broken_rule_the_call_never_reaches(
+    auth_client, db_session
+):
+    """Pinned on purpose: readiness reads every rule's fields, the evaluator stops at the first
+    field that does not match, so a call that misses the broken rule is still allowed."""
+    p, _ = _persona(db_session, auth_client._test_company)
+    db_session.add(
+        Policy(
+            company_id=auth_client._test_company.id,
+            name="skip",
+            slug="skip",
+            content='```policy\n[{"match":{"tool":"write","args":{"path":123}},"effect":"deny"}]\n```',
+            scope="company",
+        )
+    )
+    db_session.commit()
+    assert pe.check_ready(p.id)["reason"] == "policy_malformed"
+    d = pe.decide(pe.PolicyDecisionRequest(tool="read", persona_id=p.id))
+    assert d.effect == "allow"  # the gate did not reach the broken field
+
+
 # ── the heartbeat ────────────────────────────────────────────────────────────
 
 

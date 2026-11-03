@@ -263,7 +263,7 @@ function startHeartbeat(
       const ready = body.policy_ready === false ? 'no' : 'yes'
       if (ready !== policyState) {
         if (ready === 'no') {
-          p.log.warn(chalk.yellow(`gateway is up but your policy cannot be applied right now (${READY_REASONS.has(body.policy_reason ?? '') ? body.policy_reason : 'unknown'}); tool calls will be denied until an administrator fixes it`))
+          p.log.warn(chalk.yellow(`gateway is up but your policy cannot be applied right now (${READY_REASONS.has(body.policy_reason ?? '') ? body.policy_reason : 'unknown'}); tool calls may be denied until an administrator fixes it`))
         } else if (policyState === 'no') {
           p.log.info(chalk.green('policy is ready again'))
         }

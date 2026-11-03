@@ -155,7 +155,7 @@ def heartbeat(
         "policy_reason": ready["reason"],
         "policy_mode": ready["mode"],
         "default_effect": ready["default_effect"],
-        # Not ready means the gate denies every tool call (ADR-0026), so say so.
+        # Not ready means the policy is broken: calls may be denied (ADR-0026, ADR-0038).
         "fail_closed": (not ready["ready"]) or ready["mode"] == "enforce",
     }
 
