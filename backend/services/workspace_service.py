@@ -654,11 +654,16 @@ def allocate_generation(session, company_id: str, person_id: str, epoch: int) ->
     the signing epoch (ADR-0027), which restarts every client's floor."""
     try:
         for _ in range(8):
+            # populate_existing: after a lost compare-and-set another connection has changed the
+            # row, and a session that does not expire on commit would hand back its old copy, so
+            # every retry would lose again (ADR-0028).
             row = session.exec(
-                select(WorkspaceManifestState).where(
+                select(WorkspaceManifestState)
+                .where(
                     WorkspaceManifestState.company_id == company_id,
                     WorkspaceManifestState.person_id == person_id,
                 )
+                .execution_options(populate_existing=True)
             ).first()
             if row is None:
                 session.add(

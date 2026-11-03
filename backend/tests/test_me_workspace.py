@@ -588,6 +588,67 @@ def test_stale_compare_and_set_does_not_reuse_a_generation(env, people, db_sessi
     assert got == 11  # retried from the new value, never 2
 
 
+def test_a_lost_cas_to_another_connection_recovers_from_the_new_value(
+    env, people, db_session, test_engine, monkeypatch
+):
+    """The request session does not expire on commit (like the real one); a *different
+    connection* moves the row between its read and its update. One rival write must cost one
+    retry, not all eight (the retry used to be served the old cached row)."""
+    from sqlmodel import Session
+
+    co, pid = people["co"].id, people["emp"].id
+    ws.allocate_generation(db_session, co, pid, 1)  # generation 1
+    real_update = ws.update
+    state = {"hit": False}
+
+    def racing_update(*a, **k):
+        if not state["hit"]:
+            state["hit"] = True
+            with Session(test_engine) as other:  # an independent connection
+                other.execute(
+                    WorkspaceManifestState.__table__.update().values(generation=10)
+                )
+                other.commit()
+        return real_update(*a, **k)
+
+    monkeypatch.setattr(ws, "update", racing_update)
+    got = ws.allocate_generation(db_session, co, pid, 1)
+    assert (
+        got == 11
+    )  # one lost round, then the current value + 1, not generation_contention
+
+
+def test_a_higher_epoch_written_elsewhere_is_seen_on_the_retry(
+    env, people, db_session, test_engine, monkeypatch
+):
+    from sqlmodel import Session
+
+    co, pid = people["co"].id, people["emp"].id
+    ws.allocate_generation(db_session, co, pid, 1)
+    real_update = ws.update
+    state = {"hit": False}
+
+    def racing_update(*a, **k):
+        if not state["hit"]:
+            state["hit"] = True
+            with Session(test_engine) as other:
+                other.execute(
+                    WorkspaceManifestState.__table__.update().values(
+                        epoch=2, generation=1
+                    )
+                )
+                other.commit()
+        return real_update(*a, **k)
+
+    monkeypatch.setattr(ws, "update", racing_update)
+    # we are still an epoch-1 server: the retry must see epoch 2 and refuse, not spin
+    try:
+        ws.allocate_generation(db_session, co, pid, 1)
+        raise AssertionError("expected the behind-state refusal")
+    except ws.WorkspaceUnavailable as e:
+        assert e.reason == "signing_epoch_behind_state"
+
+
 # ── gateway_url comes from configuration only ────────────────────────────────
 
 
