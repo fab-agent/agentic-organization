@@ -10,9 +10,9 @@
 
 `POST /workstation/heartbeat` says a `3pa run` session is alive and returns the policy mode. It does
 not say whether the policy can actually be applied. Since ADR-0026 an unreadable scope, an invalid
-mode, an unreadable policy, an invalid default effect or a malformed policy block makes the gate deny tool calls (all of them for the first four; for a bad rule, those that reach it). Such a
-session still pings, still looks alive, and nobody is told that every tool call in it is being
-denied. If resolution failed inside the heartbeat itself, the call returned `500` after the ping
+mode, an unreadable policy, an invalid default effect or a malformed policy block makes the gate deny tool calls (all of them for the first three; for a bad rule or block, those that reach it). Such a
+session still pings, still looks alive, and nobody is told that its tool calls are being
+denied (all of them, or those that reach the broken rule). If resolution failed inside the heartbeat itself, the call returned `500` after the ping
 had already been written, so the client saw "gateway failing" for a policy problem.
 
 ## Decision
