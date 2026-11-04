@@ -12,13 +12,13 @@ Called by a signed-in user with `?company_id=`. The person is **not taken from t
 
 | Endpoint | Response |
 |---|---|
-| `GET /me/workspace?company_id=` | `{manifest, bootstrap}`: the signed envelope and first-install floors |
+| `GET /me/workspace?company_id=` | `{manifest, bootstrap, identity}`: the signed envelope, first-install floors and the caller's `{company_id, person_id}` (the client pins it on first use) |
 | `GET /me/workspace/files/{sha256}` | The file bytes; only for a hash in the caller's own profile |
 | `GET /me/workspace/crl` | The root-signed cumulative revocation list (if one is published) |
 | `POST /me/workspace/report` | The client's count-only report (below) |
 
 - **Profiles** are defined in `catalog/profiles.json`; the first matching profile wins (keys `roles`, `departments`, `companies`). Any error in the file returns 503 `profiles_invalid` for **everyone**.
-- **Every call takes a new generation number**, and the rate limit is claimed before anything is signed: **once per 10 seconds** per person (`429 try_again_later`, `Retry-After: 10`). A refused call changes nothing.
+- **Every manifest request takes a new generation number**, and the rate limit is claimed before anything is signed: **once per 10 seconds** per person (`429 try_again_later`, `Retry-After: 10`). A call refused by the rate limit (429) changes nothing; a call that fails later (503) can still use up the interval, and an audit failure uses up a generation. The limit applies to manifest issuance only; the file, CRL and report endpoints are separate.
 - `gateway_url` comes only from operator configuration (`https` required); it is never derived from request headers.
 - **One human record per account:** if two human records are linked to one account the call returns 409; the invite flow cannot create that pair (covered by a race test). Existing duplicate records are **not repaired automatically**, and the database has no unique key for it.
 
@@ -49,7 +49,7 @@ After `sync` the client sends **counts only**: the installed `epoch`/`generation
 
 ### Activating the layout
 
-If the layout id changed, `sync` leaves an activation request; the launcher runs Herdr's own command in the background with `activate --wait 60 --quiet`. Herdr's `shared.json` is **never written**. A request is served once; if the user later switches to another layout on purpose, that is not fought. With no window the command fails and the request expires after 7 days. **This behaviour was written from the source code and not verified in a running window.**
+If the layout id changed, `sync` leaves an activation request; the launcher runs Herdr's own command in the background with `activate --wait 60 --quiet`. Herdr's `shared.json` is **never written**. A request is normally served once (if the wall clock jumps forward by more than five minutes while a worker is alive, the same switch can repeat; see ADR-0036); if the user later switches to another layout on purpose, that is not fought. With no window the command reports `no_window` (the exit status is not necessarily an error), the request is kept and expires after 7 days. **This behaviour was written from the source code and not verified in a running window.**
 
 ## Key management
 

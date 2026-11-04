@@ -25,11 +25,11 @@ yanıtı bozmaz, `unknown / section_failed` döner ve ayrıntı yalnızca sunucu
 
 ### "Canlı" ile "politika hazır" aynı şey değildir
 
-`3pa run` çalışırken yaklaşık 30 saniyede bir nabız gönderir. Sunucu nabzı **her zaman** kaydeder ve yanıta
+`3pa run` çalışırken yaklaşık 30 saniyede bir nabız gönderir. Sunucu, kimliği doğrulanmış bir nabzı politika hazır olmasa bile kaydeder (yetkisiz/iptal edilmiş token'da kayıt yoktur) ve yanıta
 `policy_ready`, `policy_reason` (sabit kodlar: `scope_unreadable`, `invalid_mode`, `invalid_default_effect`,
 `policy_unreadable`, `policy_malformed`) ve `policy_mode` ekler. "Hazır değil", *politika bozuk ve çağrılar
 reddedilebilir* demektir; her çağrının reddedildiği anlamına gelmez. `3pa run` durum değişince tek satır yazar,
-sandbox'ı durdurmaz. Hazır olma bilgisi sunucunun *o an çözebildiğidir*; makinenin veya yerel opencode'un
+bu değişiklik nedeniyle sandbox'ı durdurmaz (ulaşılamayan gateway ayrı bir kuraldır). Hazır olma bilgisi sunucunun *o an çözebildiğidir*; makinenin veya yerel opencode'un
 politikaya uyduğunu kanıtlamaz.
 
 ### Bu sayfanın yapmadığı

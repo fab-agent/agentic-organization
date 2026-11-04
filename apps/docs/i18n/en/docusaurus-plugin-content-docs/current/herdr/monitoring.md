@@ -22,7 +22,7 @@ Each section is `ok`, `warn`, `fail` or `unknown`; the overall status is the wor
 
 ### "Alive" is not the same as "policy ready"
 
-While `3pa run` is running it sends a heartbeat about every 30 seconds. The server **always** records it and adds `policy_ready`, `policy_reason` (fixed codes: `scope_unreadable`, `invalid_mode`, `invalid_default_effect`, `policy_unreadable`, `policy_malformed`) and `policy_mode` to the answer. "Not ready" means *the policy is broken and calls may be denied*, not that every call is denied. `3pa run` prints one line when the state changes and does not stop the sandbox. Readiness is what the server could resolve at that moment; it does not prove that the machine or the local opencode obeys the policy.
+While `3pa run` is running it sends a heartbeat about every 30 seconds. The server records an authenticated heartbeat even when its policy is not ready (a revoked or invalid token records nothing) and adds `policy_ready`, `policy_reason` (fixed codes: `scope_unreadable`, `invalid_mode`, `invalid_default_effect`, `policy_unreadable`, `policy_malformed`) and `policy_mode` to the answer. "Not ready" means *the policy is broken and calls may be denied*, not that every call is denied. `3pa run` prints one line when the state changes and does not stop the sandbox because of that change (an unreachable gateway is a separate rule). Readiness is what the server could resolve at that moment; it does not prove that the machine or the local opencode obeys the policy.
 
 ### What this page does not do
 

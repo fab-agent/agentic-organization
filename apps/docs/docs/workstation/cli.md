@@ -50,7 +50,7 @@ geçersiz kılınabilir. `sandbox/run.sh` bu dosyayı okur.
 4. opencode'u konteyner içinde başlatır — gateway provider'ı, plugin ve
    guardrail prompt'u önceden yerleştirilmiş olarak.
 5. Heartbeat döngüsü: `POST /workstation/heartbeat` — durum bildirir ve
-   [imzalı komut kanalını](./injection-defense.md) yoklar (ör. uzaktan `stop`). Yanıt ayrıca `policy_ready`, `policy_reason` ve `policy_mode` taşır: politika sunucuda
+   [imzalı komut kanalını](./injection-defense.md) yoklar (ör. uzaktan `stop`). Nabız yanıtı `policy_ready`, `policy_reason` ve `policy_mode` taşır: politika sunucuda
 çözülemiyorsa `3pa run` bunu **tek satırla** bildirir (sandbox'ı durdurmaz). Bu, sunucunun o an çözebildiğidir; yerel
 makinenin politikaya uyduğunu kanıtlamaz → [İzleme](/herdr/monitoring).
 
@@ -58,8 +58,8 @@ makinenin politikaya uyduğunu kanıtlamaz → [İzleme](/herdr/monitoring).
 
 ## Heartbeat ve komut kanalı
 
-`3pa` çalışırken düzenli `POST /workstation/heartbeat` gönderir. Yanıtta
-bekleyen **imzalı komutlar** (`PersonaCommand`) gelir; `3pa` her birini Ed25519
+`3pa` çalışırken düzenli `POST /workstation/heartbeat` gönderir. Başarılı bir nabızdan sonra ayrı bir
+`GET /workstation/commands` ile bekleyen **imzalı komutları** (`PersonaCommand`) çeker; `3pa` her birini Ed25519
 ile doğrular, uygular ve `POST /workstation/commands/{id}/ack` ile onaylar.
 Sahip, panelden `POST /workstation/commands` ile bir oturuma komut kuyruklayabilir
 (ör. çalışan bir sandbox'ı uzaktan durdurmak).

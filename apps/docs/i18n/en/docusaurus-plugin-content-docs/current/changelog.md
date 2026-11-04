@@ -10,7 +10,7 @@ The platform's changes, newest first. For technical detail see the repository's 
 
 The ADRs below (0026–0039) are **"proposed"**; the code is on `main` and has passed CI.
 
-- **Fail-closed policy gate on the server:** an engine error, a broken policy or an unwritable audit record blocks the tool call (except `off`). Run `scripts/policy_inventory.py` before upgrading. → [Policy engine](/workstation/policy-engine)
+- **Fail-closed policy gate on the server:** an engine error or a broken policy can block the tool call (except `off`); an unwritable audit record blocks it in every mode. Run `scripts/policy_inventory.py` before upgrading. → [Policy engine](/workstation/policy-engine)
 - **Signed workspace:** `GET /me/workspace` (role → layout + mods), offline root key, signing certificate, revocation list, rollback protection; `3pa workspace sync|status|activate|report`; one call per person per 10 s. → [Workspace](/herdr/workspace)
 - **Installers:** Linux/macOS/Windows user installers, a signed release chain and `3pa self-update`, a vendor-neutral deployment contract. → [Install](/herdr/install)
 - **Monitoring:** `GET /admin/monitoring` and the `/monitoring` page; "alive" vs "policy ready" in the heartbeat; client-reported drift. → [Monitoring](/herdr/monitoring)

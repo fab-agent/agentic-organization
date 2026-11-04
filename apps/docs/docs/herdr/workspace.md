@@ -14,15 +14,15 @@ insan `Personnel` kaydı kullanılır. Kaydı olmayan, ajan kaydı olan veya üy
 
 | Uç nokta | Yanıt |
 |---|---|
-| `GET /me/workspace?company_id=` | `{manifest, bootstrap}`: imzalı zarf ve ilk kurulum tabanları |
+| `GET /me/workspace?company_id=` | `{manifest, bootstrap, identity}`: imzalı zarf, ilk kurulum tabanları ve çağıranın `{company_id, person_id}` kimliği (istemci ilk kullanımda sabitler) |
 | `GET /me/workspace/files/{sha256}` | Dosya baytları; yalnızca çağıranın kendi profilindeki hash için |
 | `GET /me/workspace/crl` | Kök tarafından imzalı, birikimli iptal listesi (yayınlandıysa) |
 | `POST /me/workspace/report` | İstemcinin sayı raporu (aşağıda) |
 
 - **Profiller** `catalog/profiles.json` ile tanımlanır; ilk eşleşen profil kazanır (`roles`, `departments`,
   `companies` anahtarları). Dosyada herhangi bir hata varsa **herkes için** 503 `profiles_invalid` döner.
-- **Her çağrı yeni bir üretim numarası (generation) alır** ve imza çağrıdan önce hız sınırına takılır: kişi başına
-  **10 saniyede bir** (`429 try_again_later`, `Retry-After: 10`). Reddedilen çağrı hiçbir şey değiştirmez.
+- **Her manifest isteği yeni bir üretim numarası (generation) alır** ve imza çağrıdan önce hız sınırına takılır: kişi başına
+  **10 saniyede bir** (`429 try_again_later`, `Retry-After: 10`). Hız sınırı nedeniyle reddedilen (429) çağrı hiçbir şey değiştirmez; sonradan başarısız olan bir çağrı (503) aralığı tüketebilir ve denetim hatası bir üretim numarası tüketir. Bu sınır yalnızca manifest üretimi içindir; dosya, CRL ve rapor uç noktaları ayrıdır.
 - `gateway_url` yalnızca operatör yapılandırmasından gelir (`https` zorunlu); istek başlıklarından türetilmez.
 - **Hesap başına tek insan kaydı:** aynı hesaba bağlı iki insan kaydı varsa 409 döner; davet akışı bu çifti
   oluşturamaz (yarış durumuna karşı testli). Var olan çift kayıtlar **otomatik onarılmaz** ve veritabanında
@@ -63,9 +63,10 @@ istemci istediğini gönderebilir. Aynı kişiden 30 saniyede bir rapor kabul ed
 ### Yerleşimi etkinleştirme
 
 Yerleşim kimliği değiştiyse `sync` bir etkinleştirme isteği bırakır; başlatıcı `activate --wait 60 --quiet` ile
-arka planda Herdr'in kendi komutunu çalıştırır. Herdr'in `shared.json` dosyasına **hiç yazılmaz**. İstek tek
-seferliktir; kullanıcı sonradan bilerek başka yerleşime geçerse buna karışılmaz. Pencere yoksa komut hata verir ve
-istek 7 gün sonra geçersiz olur. **Bu davranış kaynak koddan okunarak yazıldı, çalışan pencerede doğrulanmadı.**
+arka planda Herdr'in kendi komutunu çalıştırır. Herdr'in `shared.json` dosyasına **hiç yazılmaz**. İstek normalde tek
+seferliktir (sistem saati beş dakikadan fazla ileri sıçrarsa, çalışan bir işçi varken aynı geçiş yinelenebilir;
+bkz. ADR-0036); kullanıcı sonradan bilerek başka yerleşime geçerse buna karışılmaz. Pencere yoksa komut `no_window`
+bildirir (çıkış kodu mutlaka hata olmaz), istek korunur ve 7 gün sonra geçersiz olur. **Bu davranış kaynak koddan okunarak yazıldı, çalışan pencerede doğrulanmadı.**
 
 ## Anahtar yönetimi
 

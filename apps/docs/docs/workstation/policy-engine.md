@@ -56,14 +56,22 @@ mod tutar. En özel `PolicyConfig` kazanır; yoksa varsayılan `dry_run`.
 
 ### Sunucu tarafı politika kapısı (ADR-0026)
 
-Arka uçtaki tüm araç çağrıları tek bir kapıdan (`agent_runtime.policy_gate`) geçer: arka uç ajan araçları,
-akış araçları, MCP `org_policies` ve `/policy/decide`. Kapı **kapalı-başarısızdır**: motor hatası, okunamayan
-politika, bilinmeyen persona veya **denetim zincirine yazılamayan karar** çağrıyı engeller (`off` hariç her
-modda). Çözümleme hatası HTTP `503 policy_unavailable` olarak döner.
+Arka uçtaki araç çağrıları (arka uç ajan araçları, akış araçları, MCP `org_policies`) tek bir kapıdan
+(`agent_runtime.policy_gate`) geçer; `/policy/decide` uç noktası aynı `decide` + `audit_decision` çiftini doğrudan
+çağırır. İkisi de **kapalı-başarısızdır**:
 
-Politika gövdesindeki çalıştırılabilir bloklar katıdır: kapanmamış, ayrıştırılamayan veya kural biçimine uymayan
-blok kaydetme sırasında `422 malformed_policy` ile reddedilir; kayıtlı bir politika sonradan bozulursa, uygulandığı
-kişiler için her karar reddedilir. Sözleşme: `docs/architecture/policy-block-contract.md`.
+- Motor hatası, çözümlenemeyen mod/kapsam veya bilinmeyen persona çağrıyı engeller. `/policy/decide` bunu
+  **HTTP 200** ile `effect: deny`, `enforced: true`, `fail_closed: true` döndürerek bildirir; karar tüketicisi HTTP
+  koduna değil bu alanlara bakmalıdır. Çözümleme hatası bir uç noktadan dışarı kaçarsa (ör. yapılandırma okuyan
+  uç noktalar) `503 policy_unavailable` olur.
+- Karar **denetim zincirine yazılamazsa** çağrı **her modda, `off` dahil** engellenir. `off` yalnızca politika
+  kurallarının değerlendirilmesini atlar.
+
+Politika gövdesindeki çalıştırılabilir bloklar katıdır. Kapanmamış, ayrıştırılamayan veya kural biçimine uymayan blok
+kaydetme sırasında `422 malformed_policy` ile reddedilir. Kayıtlı bir politika sonradan bozulursa: ayrıştırılamayan
+blok o politikanın kapsamındaki kararları reddettirir; bir kuralın alanı bozuksa (ör. yanlış tipte `args`) kural
+yalnızca ona ulaşan çağrıları etkileyebilir. Yani çağrılar **reddedilebilir**, hepsi değil. Sözleşme:
+`docs/architecture/policy-block-contract.md`.
 
 **Yükseltme notu:** mevcut bir kurulumu yükseltmeden önce `scripts/policy_inventory.py` çalıştırın; artık
 ayrıştırılamayan bir politika veya yazılamayan denetim zinciri araç çağrılarını engeller.

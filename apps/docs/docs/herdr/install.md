@@ -13,7 +13,7 @@ kendi klasöründe çalışır, root/SYSTEM gerekmez.
 
 | Platform | Dosya | Not |
 |---|---|---|
-| Linux / macOS | `installers/user/install.sh` | `--base-url`, `--root-pub`, `--cli`, `--cli-sha256`; isteğe bağlı `--herdr-bin`, `--release-pub`, `--dry-run`, `--uninstall` |
+| Linux / macOS | `installers/user/install.sh` | `--base-url`, `--root-pub`, `--cli`, `--cli-sha256`; isteğe bağlı çiftler: `--herdr-bin` + `--herdr-sha256`, `--release-pub` + `--release-url`; ayrıca `--dry-run`, `--uninstall` |
 | Windows | `installers/user/windows/install.mjs` + `install.ps1` | Yükseltilmiş oturumu varsayılan reddeder (`--allow-elevated` ile açılır) |
 
 Kurucu şunları yerleştirir: `3pa` paketi (hash denetimli), sabitlenmiş kök açık anahtarı, isteğe bağlı Herdr
@@ -38,6 +38,10 @@ geri alınır* sorularının tek cevabıdır; Intune, Jamf, Ansible veya bir otu
 - `deploy.sh|deploy.ps1 install` kullanıcı olarak çalışır (macOS'ta root ise konsol kullanıcısına geçer; Windows'ta SYSTEM reddedilir). Zaten uyumluysa hiçbir şey yapmaz.
 - `check` hiçbir şeyi değiştirmez; yalnızca amaçlanan paket, giriş betikleri ve sabitlenmiş anahtarlar tam
   olarak yerindeyse 0 döner. Kendini güncelleyen filolarda `check --pins-only` kullanın.
-- `install`, ayrı içerikli bir dosyanın **üzerine yazmaz** (`--force-artifacts` açıkça ister).
+- `install`, içeriği ayarlardakinden farklı bir **`3pa` paketinin veya Herdr ikilisinin üzerine yazmaz**
+  (`--force-artifacts` açıkça ister). Giriş betikleri (`bin/3pa`, başlatıcı) ise bozulmuşsa yeniden yazılır.
+- Komut bayrakları kabuğa göre değişir: `deploy.sh install --config rollout/deploy.conf`,
+  PowerShell'de `deploy.ps1 install -Config rollout\deploy.conf`; `--pins-only`/`--force-artifacts` PowerShell'de
+  `-PinsOnly`/`-ForceArtifacts`.
 
 Ayrıntı: depodaki `installers/deploy/README.md`. Node.js 20+ makinede önceden bulunmalıdır.

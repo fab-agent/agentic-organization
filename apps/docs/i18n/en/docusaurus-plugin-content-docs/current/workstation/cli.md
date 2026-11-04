@@ -48,7 +48,7 @@ sidebar_position: 6
 
 ## Heartbeat and command channel
 
-While running, `3pa` sends a regular `POST /workstation/heartbeat`. The response carries pending **signed commands** (`PersonaCommand`); `3pa` verifies each with Ed25519, applies it and acknowledges it with `POST /workstation/commands/{id}/ack`. The owner can queue a command to a session from the panel with `POST /workstation/commands` (for example stopping a running sandbox remotely). The answer also carries `policy_ready`, `policy_reason` and `policy_mode`: if the policy cannot be resolved on the server, `3pa run` says so in **one line** (it does not stop the sandbox). This is what the server could resolve at that moment; it does not prove the local machine obeys the policy → [Monitoring](/herdr/monitoring).
+While running, `3pa` sends a regular `POST /workstation/heartbeat`. After a successful heartbeat it fetches pending **signed commands** (`PersonaCommand`) with a separate `GET /workstation/commands`; `3pa` verifies each with Ed25519, applies it and acknowledges it with `POST /workstation/commands/{id}/ack`. The owner can queue a command to a session from the panel with `POST /workstation/commands` (for example stopping a running sandbox remotely). The heartbeat answer carries `policy_ready`, `policy_reason` and `policy_mode`: if the policy cannot be resolved on the server, `3pa run` says so in **one line** (it does not stop the sandbox). This is what the server could resolve at that moment; it does not prove the local machine obeys the policy → [Monitoring](/herdr/monitoring).
 
 ---
 

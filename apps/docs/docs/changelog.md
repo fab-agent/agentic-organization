@@ -10,7 +10,7 @@ Platformun değişiklikleri, yeniden eskiye doğru. Teknik ayrıntı için depod
 
 Aşağıdakilerin ADR'leri (0026–0039) **"önerildi"** durumundadır; kod `main` dalındadır ve CI'dan geçmiştir.
 
-- **Sunucuda kapalı-başarısız politika kapısı:** motor hatası, bozuk politika veya yazılamayan denetim kaydı araç çağrısını engeller (`off` hariç). Yükseltmeden önce `scripts/policy_inventory.py`. → [Politika motoru](/workstation/policy-engine)
+- **Sunucuda kapalı-başarısız politika kapısı:** motor hatası ve bozuk politika araç çağrısını engelleyebilir (`off` hariç); yazılamayan denetim kaydı her modda engeller. Yükseltmeden önce `scripts/policy_inventory.py`. → [Politika motoru](/workstation/policy-engine)
 - **İmzalı çalışma alanı:** `GET /me/workspace` (rol → yerleşim + mod), çevrimdışı kök anahtar, imza sertifikası, iptal listesi, geri alma koruması; `3pa workspace sync|status|activate|report`; kişi başına 10 sn aralık. → [Çalışma alanı](/herdr/workspace)
 - **Kurucular:** Linux/macOS/Windows kullanıcı kurucuları, imzalı sürüm zinciri ve `3pa self-update`, MDM'den bağımsız dağıtım sözleşmesi. → [Kurulum](/herdr/install)
 - **İzleme:** `GET /admin/monitoring` ve `/monitoring` sayfası; nabızda "canlı" ve "politika hazır" ayrımı; istemcilerin kendi bildirdiği sapma. → [İzleme](/herdr/monitoring)

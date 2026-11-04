@@ -48,9 +48,12 @@ The `PolicyConfig` table keeps a mode per scope (`company` / `department` / `age
 
 ### Server-side policy gate (ADR-0026)
 
-Every tool call on the backend passes one gate (`agent_runtime.policy_gate`): backend agent tools, flow tools, MCP `org_policies` and `/policy/decide`. The gate **fails closed**: an engine error, an unreadable policy, an unknown persona or a **decision that cannot be written to the audit chain** blocks the call (in every mode except `off`). A resolution error returns HTTP `503 policy_unavailable`.
+Tool calls on the backend (backend agent tools, flow tools, MCP `org_policies`) pass one gate (`agent_runtime.policy_gate`); the `/policy/decide` endpoint calls the same `decide` + `audit_decision` pair directly. Both **fail closed**:
 
-Executable blocks in a policy body are strict: an unterminated block, one that does not parse, or one whose rules have the wrong shape is refused at save time with `422 malformed_policy`; if a stored policy breaks later, every decision for the people it applies to is denied. Contract: `docs/architecture/policy-block-contract.md`.
+- An engine error, an unresolvable mode/scope or an unknown persona blocks the call. `/policy/decide` reports this as **HTTP 200** with `effect: deny`, `enforced: true`, `fail_closed: true`; a decision consumer must read those fields, not only the HTTP status. If a resolution error escapes an endpoint (for example endpoints that read configuration) it becomes `503 policy_unavailable`.
+- If the decision **cannot be written to the audit chain** the call is blocked **in every mode, `off` included**. `off` only skips evaluating policy rules.
+
+Executable blocks in a policy body are strict. An unterminated block, one that does not parse, or one whose rules have the wrong shape is refused at save time with `422 malformed_policy`. If a stored policy breaks later: an unparseable block makes decisions in that policy's scope be denied; a bad field inside one rule (for example `args` of the wrong type) can affect only the calls that reach that rule. So calls **may** be denied, not all of them. Contract: `docs/architecture/policy-block-contract.md`.
 
 **Upgrade note:** before upgrading an existing install run `scripts/policy_inventory.py`; a policy that no longer parses, or an audit chain that cannot be written, now blocks tool calls.
 
