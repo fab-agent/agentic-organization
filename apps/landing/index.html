@@ -136,7 +136,7 @@
           {
             "@type": "Question",
             "name": "Nasıl kurulur?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Docker kurulu her sunucuda tek komutla: curl -fsSL https://raw.githubusercontent.com/fab-agent/agentic-organization/main/install.sh | bash. Kurulum sihirbazı Let's Encrypt SSL, Nginx, Docker Compose ve şifreleme anahtarlarını otomatik yapılandırır. Tüm veriler kendi sunucunuzda kalır." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Docker ve Docker Compose v2 kurulu bir Ubuntu sunucuda, alan adı sunucuya yönlenmişken tek komutla: curl -fsSL https://raw.githubusercontent.com/fab-agent/agentic-organization/main/install.sh | bash. Kurulum sihirbazı Let's Encrypt SSL'i, Nginx'i, Docker Compose'u ve gizli anahtarları otomatik yapılandırır. Veritabanı ve dosyalar kendi sunucunuzda kalır; yapılandırdığınız model sağlayıcısına giden istemler sağlayıcıya gider." }
           },
           {
             "@type": "Question",
@@ -765,7 +765,7 @@ const NEW = {
     'feat.alt':'Kalabalık bir kafeteryada beyaz bir robot tabletten bir şey okuyor; arkada turuncu lambalar.','feat.cap':'Kare 04 · Hafıza',
     'prod.k':'Dokümantasyon','prod.title':'Ürünü <span class="human">dokümantasyonda</span> gör.','prod.desc':'Kurulum, kavramlar ve güncel ekran görüntüleri dokümantasyonda. Ürün hızlı geliştiği için en doğru kaynak orası.','prod.cta':'Dokümantasyonu aç',
     'inst.alt':'Cam duvarın önünde, şehre bakan bir masada dizüstü bilgisayarla çalışan bir robotun silueti.','inst.cap':'Kare 05 · Kurulum',
-    'inst.title':'Tek komutla, <span class="human">kendi</span> sunucunda.','inst.desc':'Docker çalışan her sunucuda kurulur. SSL, Nginx ve anahtar üretimini sihirbaz yapar. Verilerin sunucundan çıkmaz.',
+    'inst.title':'Tek komutla, <span class="human">kendi</span> sunucunda.','inst.desc':'Docker ve Docker Compose v2 kurulu bir Ubuntu sunucuda, alan adınız sunucuya yönlenmişken çalışır. Sihirbaz Let's Encrypt SSL'i, Nginx'i ve gizli anahtarları hazırlar. Veritabanı ve dosyalar sunucunuzda kalır; yapılandırdığınız model sağlayıcısına giden istemler sağlayıcıya gider.',
     'ct.k':'İletişim','ct.title':'Konuşalım<span style="color:var(--signal-ink)">.</span>','ct.desc':'Demo görmek, bir şey sormak ya da projeye sponsor olmak için yaz. Mesajın doğrudan kuruluşa ulaşır.',
     'ct.intent':'Ne istiyorsun?','ct.i.demo':'Demo istiyorum','ct.i.contact':'İletişime geçmek istiyorum','ct.i.sponsor':'Sponsor olmak istiyorum',
     'ct.name':'Adın','ct.email':'E-posta','ct.org':'Şirket / kurum (isteğe bağlı)','ct.msg':'Mesajın (isteğe bağlı)',
@@ -794,7 +794,7 @@ const NEW = {
     'feat.alt':'In a crowded canteen a white robot reads something on a tablet; orange lamps glow behind it.','feat.cap':'Frame 04 · Memory',
     'prod.k':'Documentation','prod.title':'See the product <span class="human">in the docs</span>.','prod.desc':'Setup, concepts and current screenshots live in the documentation. The product moves fast, so that is the most accurate source.','prod.cta':'Open the docs',
     'inst.alt':'Silhouette of a robot working on a laptop at a table by a glass wall, facing the city.','inst.cap':'Frame 05 · Install',
-    'inst.title':'One command, on <span class="human">your</span> server.','inst.desc':'Installs on any server running Docker. The wizard sets up SSL, Nginx and key generation. Your data never leaves your server.',
+    'inst.title':'One command, on <span class="human">your</span> server.','inst.desc':'Runs on an Ubuntu server with Docker and Docker Compose v2, once your domain points at it. The wizard sets up Let's Encrypt SSL, Nginx and the secret keys. The database and files stay on your server; prompts sent to the model provider you configure go to that provider.',
     'ct.k':'Contact','ct.title':'Let\'s talk<span style="color:var(--signal-ink)">.</span>','ct.desc':'Write to us to see a demo, ask something or sponsor the project. Your message goes straight to the team.',
     'ct.intent':'What do you need?','ct.i.demo':'I want a demo','ct.i.contact':'I want to get in touch','ct.i.sponsor':'I want to sponsor',
     'ct.name':'Your name','ct.email':'Email','ct.org':'Company / organization (optional)','ct.msg':'Your message (optional)',
@@ -823,7 +823,7 @@ const NEW = {
     'feat.alt':'In einer vollen Kantine liest ein weißer Roboter etwas auf einem Tablet; dahinter orange Lampen.','feat.cap':'Bild 04 · Gedächtnis',
     'prod.k':'Dokumentation','prod.title':'Das Produkt <span class="human">in der Doku</span> ansehen.','prod.desc':'Installation, Konzepte und aktuelle Screenshots finden Sie in der Dokumentation. Das Produkt entwickelt sich schnell, dort steht der aktuelle Stand.','prod.cta':'Dokumentation öffnen',
     'inst.alt':'Silhouette eines Roboters, der an einem Tisch vor einer Glaswand mit Blick auf die Stadt am Laptop arbeitet.','inst.cap':'Bild 05 · Installation',
-    'inst.title':'Ein Befehl, auf <span class="human">Ihrem</span> Server.','inst.desc':'Läuft auf jedem Server mit Docker. Der Assistent richtet SSL, Nginx und die Schlüsselerzeugung ein. Ihre Daten verlassen Ihren Server nicht.',
+    'inst.title':'Ein Befehl, auf <span class="human">Ihrem</span> Server.','inst.desc':'Läuft auf einem Ubuntu-Server mit Docker und Docker Compose v2, sobald Ihre Domain darauf zeigt. Der Assistent richtet Let's-Encrypt-SSL, Nginx und die geheimen Schlüssel ein. Datenbank und Dateien bleiben auf Ihrem Server; Prompts an den von Ihnen konfigurierten Modellanbieter gehen an diesen Anbieter.',
     'ct.k':'Kontakt','ct.title':'Lassen Sie uns reden<span style="color:var(--signal-ink)">.</span>','ct.desc':'Schreiben Sie uns für eine Demo, eine Frage oder um das Projekt zu sponsern. Ihre Nachricht geht direkt ans Team.',
     'ct.intent':'Was brauchen Sie?','ct.i.demo':'Ich möchte eine Demo','ct.i.contact':'Ich möchte Kontakt aufnehmen','ct.i.sponsor':'Ich möchte sponsern',
     'ct.name':'Ihr Name','ct.email':'E-Mail','ct.org':'Firma / Organisation (optional)','ct.msg':'Ihre Nachricht (optional)',
@@ -852,7 +852,7 @@ const NEW = {
     'feat.alt':'En una cantina llena, un robot blanco lee algo en una tableta; detrás, lámparas naranjas.','feat.cap':'Plano 04 · Memoria',
     'prod.k':'Documentación','prod.title':'Mira el producto <span class="human">en la documentación</span>.','prod.desc':'La instalación, los conceptos y las capturas actuales están en la documentación. El producto avanza rápido y esa es la fuente más precisa.','prod.cta':'Abrir la documentación',
     'inst.alt':'Silueta de un robot que trabaja con un portátil en una mesa junto a un muro de cristal, frente a la ciudad.','inst.cap':'Plano 05 · Instalación',
-    'inst.title':'Un comando, en <span class="human">tu</span> servidor.','inst.desc':'Se instala en cualquier servidor con Docker. El asistente configura SSL, Nginx y las claves. Tus datos no salen de tu servidor.',
+    'inst.title':'Un comando, en <span class="human">tu</span> servidor.','inst.desc':'Funciona en un servidor Ubuntu con Docker y Docker Compose v2, cuando tu dominio ya apunta a él. El asistente configura SSL de Let's Encrypt, Nginx y las claves secretas. La base de datos y los archivos se quedan en tu servidor; los prompts enviados al proveedor de modelos que configures van a ese proveedor.',
     'ct.k':'Contacto','ct.title':'Hablemos<span style="color:var(--signal-ink)">.</span>','ct.desc':'Escríbenos para ver una demo, preguntar algo o patrocinar el proyecto. Tu mensaje llega directo al equipo.',
     'ct.intent':'¿Qué necesitas?','ct.i.demo':'Quiero una demo','ct.i.contact':'Quiero ponerme en contacto','ct.i.sponsor':'Quiero patrocinar',
     'ct.name':'Tu nombre','ct.email':'Correo electrónico','ct.org':'Empresa / organización (opcional)','ct.msg':'Tu mensaje (opcional)',
