@@ -14,12 +14,25 @@ echo ""
 # ── Domain ────────────────────────────────────────────────────────────────────
 echo -e "${BOLD}1. Alan Adı${NC}"
 echo "  Platforma erişmek için kullanılacak alan adı (ör. agents.sirketim.com)"
+# Hostname: total length <= 253, dot-separated labels of 1-63 [a-z0-9-], alphanumeric at both ends of each label.
+valid_hostname() {
+    local h="$1" label
+    [ "${#h}" -ge 1 ] && [ "${#h}" -le 253 ] || return 1
+    case "$h" in .*|*.|*..*) return 1;; esac
+    local IFS=.
+    for label in $h; do
+        [ "${#label}" -ge 1 ] && [ "${#label}" -le 63 ] || return 1
+        printf '%s' "$label" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$' || return 1
+    done
+    return 0
+}
+
 while true; do
     read -rp "  > " DOMAIN || { echo "Alan adı okunamadı (girdi kapalı)." >&2; exit 1; }
     # normalise first (CR, quotes, spaces, case), then default, then validate; everything below derives from this one value
     DOMAIN=$(printf '%s' "$DOMAIN" | tr -d '"'"'"' \t\r' | tr 'A-Z' 'a-z')
     DOMAIN="${DOMAIN:-localhost}"
-    if printf '%s' "$DOMAIN" | grep -Eq '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$' && ! printf '%s' "$DOMAIN" | grep -q '\.\.'; then
+    if valid_hostname "$DOMAIN"; then
         break
     fi
     echo "  Geçersiz alan adı. Yalnızca alan adı yazın (ör. app.sirketim.com); https:// veya / olmadan." >&2
