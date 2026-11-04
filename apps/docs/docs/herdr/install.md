@@ -11,6 +11,8 @@ kendi klasöründe çalışır, root/SYSTEM gerekmez.
 
 ## Kullanıcı kurucuları
 
+Dosyalar genel depodadır: [`installers/`](https://github.com/fab-agent/agentic-organization/tree/main/installers) (kullanıcı kurucuları ve dağıtım sözleşmesi). **Henüz ayrı bir indirme sayfası veya sürüm paketi yok:** sürümlerde yalnızca `3pa.mjs` ve SHA-256 dosyası yayımlanır; kurucuları depodan alır, hash'leri kendiniz hesaplar ve dağıtırsınız.
+
 | Platform | Dosya | Not |
 |---|---|---|
 | Linux / macOS | `installers/user/install.sh` | `--base-url`, `--root-pub`, `--cli`, `--cli-sha256`; isteğe bağlı çiftler: `--herdr-bin` + `--herdr-sha256`, `--release-pub` + `--release-url`; ayrıca `--dry-run`, `--uninstall` |
