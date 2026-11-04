@@ -10,6 +10,8 @@ The installers **download nothing**; the administrator (or MDM) supplies the fil
 
 ## User installers
 
+The files are in the public repository: [`installers/`](https://github.com/fab-agent/agentic-organization/tree/main/installers) (user installers and the deployment contract). **There is no separate download page or release package yet:** the release workflow publishes only `3pa.mjs` and its SHA-256 file; you take the installers from the repository, compute the hashes yourself and distribute them.
+
 | Platform | File | Note |
 |---|---|---|
 | Linux / macOS | `installers/user/install.sh` | `--base-url`, `--root-pub`, `--cli`, `--cli-sha256`; optional pairs: `--herdr-bin` + `--herdr-sha256`, `--release-pub` + `--release-url`; also `--dry-run`, `--uninstall` |
