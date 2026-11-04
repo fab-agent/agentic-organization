@@ -14,8 +14,16 @@ echo ""
 # ── Domain ────────────────────────────────────────────────────────────────────
 echo -e "${BOLD}1. Alan Adı${NC}"
 echo "  Platforma erişmek için kullanılacak alan adı (ör. agents.sirketim.com)"
-read -rp "  > " DOMAIN
-DOMAIN="${DOMAIN:-localhost}"
+while true; do
+    read -rp "  > " DOMAIN || { echo "Alan adı okunamadı (girdi kapalı)." >&2; exit 1; }
+    # normalise first (CR, quotes, spaces, case), then default, then validate; everything below derives from this one value
+    DOMAIN=$(printf '%s' "$DOMAIN" | tr -d '"'"'"' \t\r' | tr 'A-Z' 'a-z')
+    DOMAIN="${DOMAIN:-localhost}"
+    if printf '%s' "$DOMAIN" | grep -Eq '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$' && ! printf '%s' "$DOMAIN" | grep -q '\.\.'; then
+        break
+    fi
+    echo "  Geçersiz alan adı. Yalnızca alan adı yazın (ör. app.sirketim.com); https:// veya / olmadan." >&2
+done
 echo ""
 
 # ── Company info ──────────────────────────────────────────────────────────────
