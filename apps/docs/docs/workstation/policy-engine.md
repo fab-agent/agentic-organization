@@ -60,9 +60,10 @@ Arka uçtaki araç çağrıları (arka uç ajan araçları, akış araçları, M
 (`agent_runtime.policy_gate`) geçer; `/policy/decide` uç noktası aynı `decide` + `audit_decision` çiftini doğrudan
 çağırır. İkisi de **kapalı-başarısızdır**:
 
-- Motor hatası, çözümlenemeyen mod/kapsam veya bilinmeyen persona çağrıyı engeller. `/policy/decide` bunu
-  **HTTP 200** ile `effect: deny`, `enforced: true`, `fail_closed: true` döndürerek bildirir; karar tüketicisi HTTP
-  koduna değil bu alanlara bakmalıdır. Çözümleme hatası bir uç noktadan dışarı kaçarsa (ör. yapılandırma okuyan
+- Motor hatası, çözümlenemeyen mod/kapsam veya bilinmeyen persona çağrıyı engeller. `/policy/decide`, ele alınan
+  çözümleme/değerlendirme hatalarını (ör. geçersiz mod) **HTTP 200** ile `effect: deny`, `enforced: true`,
+  `fail_closed: true` döndürerek bildirir; karar tüketicisi bu alanlara bakmalıdır. Beklenmeyen bir istisna ise
+  non-2xx (ör. 500) yanıt verir; çağıran bunu da başarısızlık saymalı, asla izin olarak yorumlamamalıdır. Çözümleme hatası bir uç noktadan dışarı kaçarsa (ör. yapılandırma okuyan
   uç noktalar) `503 policy_unavailable` olur.
 - Karar **denetim zincirine yazılamazsa** çağrı **her modda, `off` dahil** engellenir. `off` yalnızca politika
   kurallarının değerlendirilmesini atlar.
