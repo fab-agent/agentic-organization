@@ -28,10 +28,12 @@ echo ""
 # ── Secrets (auto-generate) ───────────────────────────────────────────────────
 JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(32))")
 ENCRYPTION_KEY=$(openssl rand -hex 32 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(32))")
+POSTGRES_PASSWORD=$(openssl rand -hex 24 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(24))")
 
 echo -e "${BOLD}3. Güvenlik Anahtarları${NC} (otomatik oluşturuldu)"
 echo -e "  JWT_SECRET:      ${GREEN}✓ oluşturuldu${NC}"
 echo -e "  ENCRYPTION_KEY:  ${GREEN}✓ oluşturuldu${NC}"
+echo -e "  POSTGRES_PASSWORD: ${GREEN}✓ oluşturuldu${NC}"
 echo ""
 
 # ── AI Provider keys (optional) ───────────────────────────────────────────────
@@ -72,6 +74,7 @@ APP_URL=${APP_URL}
 # ── Security (DO NOT SHARE) ────────────────────────────────────────────────────
 JWT_SECRET=${JWT_SECRET}
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 
 # ── Company ────────────────────────────────────────────────────────────────────
 COMPANY_NAME=${COMPANY_NAME}
