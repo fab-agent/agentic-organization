@@ -136,7 +136,7 @@
           {
             "@type": "Question",
             "name": "Nasıl kurulur?",
-            "acceptedAnswer": { "@type": "Answer", "text": "Docker kurulu her sunucuda tek komutla: curl -fsSL https://raw.githubusercontent.com/fab-agent/agentic-organization/main/install.sh | bash. Kurulum sihirbazı Let's Encrypt SSL, Nginx, Docker Compose ve şifreleme anahtarlarını otomatik yapılandırır. Tüm veriler kendi sunucunuzda kalır." }
+            "acceptedAnswer": { "@type": "Answer", "text": "Docker ve Docker Compose v2 kurulu bir Ubuntu sunucuda, alan adı sunucuya yönlenmişken tek komut satırıyla: git clone https://github.com/fab-agent/agentic-organization.git && cd agentic-organization && bash install.sh. Sihirbaz soru sorduğu için komutu bir terminalde çalıştırın. Kurulum sihirbazı Let's Encrypt SSL'i, Nginx'i, Docker Compose'u ve gizli anahtarları otomatik yapılandırır. Veritabanı ve dosyalar kendi sunucunuzda kalır; yapılandırdığınız model sağlayıcısına giden istemler sağlayıcıya gider." }
           },
           {
             "@type": "Question",
@@ -475,7 +475,7 @@
       <div class="kicker mono" style="margin:0"><span data-i18n="open.kicker">Kaynağı açık · Self-hosted</span></div>
       <h2 style="font-size:clamp(32px,4.2vw,56px)" data-i18n-html="inst.title">Tek komutla, <span class="human">kendi</span> sunucunda.</h2>
       <p class="lede" style="margin:0" data-i18n="inst.desc"></p>
-      <div class="cmd"><code>curl -fsSL https://raw.githubusercontent.com/fab-agent/agentic-organization/main/install.sh | bash</code><button onclick="copyInstall(this)"><span data-i18n="open.copy">Kopyala</span></button></div>
+      <div class="cmd"><code>git clone https://github.com/fab-agent/agentic-organization.git &amp;&amp; cd agentic-organization &amp;&amp; bash install.sh</code><button onclick="copyInstall(this)"><span data-i18n="open.copy">Kopyala</span></button></div>
       <div class="facts mono"><span>Docker</span><span>SSL</span><span>Nginx</span><span data-i18n="open.stack">FastAPI + SvelteKit</span></div>
       <p style="margin:0;color:var(--ink-2)" data-i18n="open.desc"></p>
       <div class="cta-row"><a class="btn ghost sm" href="https://github.com/fab-agent/agentic-organization" data-i18n="open.proj">Proje</a><a class="btn ghost sm" href="https://agent-docs.fab.engineering/" data-i18n="open.docs">Dokümantasyon</a></div>
@@ -557,7 +557,7 @@ const COPY = {
     'open.label': 'Kaynağı Açık', 'open.kicker': 'Kaynağı açık · Self-hosted', 'open.title': 'Kaynak görünür, veriler sizde',
     'open.desc': 'Commons Clause + MIT lisansı: kendi kuruluşunuz için serbest, satış ve yönetilen hizmet için ticari lisans gerekir. Kendi sunucunuzda çalışır, kod tamamen görünür. Sizden gizli çalışan hiçbir katman yok.',
     'open.proj': 'Proje', 'open.docs': 'Dokümantasyon',
-    'open.stack': 'FastAPI + SvelteKit · SQLite · Model bağımsız',
+    'open.stack': 'FastAPI + SvelteKit · PostgreSQL · Model bağımsız',
     'open.company': 'Fabrika Yazılım Tic. Ltd. Şti. · İstanbul',
     'open.role': 'Kurucu — Fabrika Yazılım',
     'open.copy': 'Kopyala', 'open.copied': 'Kopyalandı',
@@ -608,7 +608,7 @@ const COPY = {
     'open.label': 'Source-available', 'open.kicker': 'Source-available · Self-hosted', 'open.title': 'Source visible, data yours',
     'open.desc': 'Commons Clause + MIT license: free for your own organization; selling or offering it as a hosted service needs a commercial license. Runs on your own server, the code is fully visible. No hidden layers working behind your back.',
     'open.proj': 'Project', 'open.docs': 'Documentation',
-    'open.stack': 'FastAPI + SvelteKit · SQLite · Model-agnostic',
+    'open.stack': 'FastAPI + SvelteKit · PostgreSQL · Model-agnostic',
     'open.company': 'Fabrika Yazılım Tic. Ltd. Şti. · Istanbul',
     'open.role': 'Founder — Fabrika Yazılım',
     'open.copy': 'Copy', 'open.copied': 'Copied',
@@ -659,7 +659,7 @@ const COPY = {
     'open.label': 'Source-available', 'open.kicker': 'Source-available · Self-hosted', 'open.title': 'Quelltext sichtbar, Daten bei Ihnen',
     'open.desc': 'Commons-Clause-+-MIT-Lizenz: frei für die eigene Organisation, Verkauf oder gehosteter Betrieb für Dritte braucht eine kommerzielle Lizenz. Läuft auf Ihrem eigenen Server, der Code ist vollständig einsehbar. Keine versteckten Schichten.',
     'open.proj': 'Projekt', 'open.docs': 'Dokumentation',
-    'open.stack': 'FastAPI + SvelteKit · SQLite · Modellunabhängig',
+    'open.stack': 'FastAPI + SvelteKit · PostgreSQL · Modellunabhängig',
     'open.company': 'Fabrika Yazılım Tic. Ltd. Şti. · Istanbul',
     'open.role': 'Gründer — Fabrika Yazılım',
     'open.copy': 'Kopieren', 'open.copied': 'Kopiert',
@@ -710,7 +710,7 @@ const COPY = {
     'open.label': 'Código disponible', 'open.kicker': 'Código disponible · Self-hosted', 'open.title': 'Código visible, datos tuyos',
     'open.desc': 'Licencia Commons Clause + MIT: libre para tu propia organización; venderlo u ofrecerlo como servicio alojado requiere licencia comercial. Corre en tu propio servidor, el código es totalmente visible. Sin capas ocultas.',
     'open.proj': 'Proyecto', 'open.docs': 'Documentación',
-    'open.stack': 'FastAPI + SvelteKit · SQLite · Independiente del modelo',
+    'open.stack': 'FastAPI + SvelteKit · PostgreSQL · Independiente del modelo',
     'open.company': 'Fabrika Yazılım Tic. Ltd. Şti. · Estambul',
     'open.role': 'Fundador — Fabrika Yazılım',
     'open.copy': 'Copiar', 'open.copied': 'Copiado',
@@ -765,7 +765,7 @@ const NEW = {
     'feat.alt':'Kalabalık bir kafeteryada beyaz bir robot tabletten bir şey okuyor; arkada turuncu lambalar.','feat.cap':'Kare 04 · Hafıza',
     'prod.k':'Dokümantasyon','prod.title':'Ürünü <span class="human">dokümantasyonda</span> gör.','prod.desc':'Kurulum, kavramlar ve güncel ekran görüntüleri dokümantasyonda. Ürün hızlı geliştiği için en doğru kaynak orası.','prod.cta':'Dokümantasyonu aç',
     'inst.alt':'Cam duvarın önünde, şehre bakan bir masada dizüstü bilgisayarla çalışan bir robotun silueti.','inst.cap':'Kare 05 · Kurulum',
-    'inst.title':'Tek komutla, <span class="human">kendi</span> sunucunda.','inst.desc':'Docker çalışan her sunucuda kurulur. SSL, Nginx ve anahtar üretimini sihirbaz yapar. Verilerin sunucundan çıkmaz.',
+    'inst.title':'Tek komutla, <span class="human">kendi</span> sunucunda.','inst.desc':'Docker ve Docker Compose v2 kurulu bir Ubuntu sunucuda, alan adınız sunucuya yönlenmişken çalışır. Sihirbaz Let’s Encrypt SSL’i, Nginx’i ve gizli anahtarları hazırlar. Veritabanı ve dosyalar sunucunuzda kalır; yapılandırdığınız model sağlayıcısına giden istemler sağlayıcıya gider.',
     'ct.k':'İletişim','ct.title':'Konuşalım<span style="color:var(--signal-ink)">.</span>','ct.desc':'Demo görmek, bir şey sormak ya da projeye sponsor olmak için yaz. Mesajın doğrudan kuruluşa ulaşır.',
     'ct.intent':'Ne istiyorsun?','ct.i.demo':'Demo istiyorum','ct.i.contact':'İletişime geçmek istiyorum','ct.i.sponsor':'Sponsor olmak istiyorum',
     'ct.name':'Adın','ct.email':'E-posta','ct.org':'Şirket / kurum (isteğe bağlı)','ct.msg':'Mesajın (isteğe bağlı)',
@@ -794,7 +794,7 @@ const NEW = {
     'feat.alt':'In a crowded canteen a white robot reads something on a tablet; orange lamps glow behind it.','feat.cap':'Frame 04 · Memory',
     'prod.k':'Documentation','prod.title':'See the product <span class="human">in the docs</span>.','prod.desc':'Setup, concepts and current screenshots live in the documentation. The product moves fast, so that is the most accurate source.','prod.cta':'Open the docs',
     'inst.alt':'Silhouette of a robot working on a laptop at a table by a glass wall, facing the city.','inst.cap':'Frame 05 · Install',
-    'inst.title':'One command, on <span class="human">your</span> server.','inst.desc':'Installs on any server running Docker. The wizard sets up SSL, Nginx and key generation. Your data never leaves your server.',
+    'inst.title':'One command, on <span class="human">your</span> server.','inst.desc':'Runs on an Ubuntu server with Docker and Docker Compose v2, once your domain points at it. The wizard sets up Let’s Encrypt SSL, Nginx and the secret keys. The database and files stay on your server; prompts sent to the model provider you configure go to that provider.',
     'ct.k':'Contact','ct.title':'Let\'s talk<span style="color:var(--signal-ink)">.</span>','ct.desc':'Write to us to see a demo, ask something or sponsor the project. Your message goes straight to the team.',
     'ct.intent':'What do you need?','ct.i.demo':'I want a demo','ct.i.contact':'I want to get in touch','ct.i.sponsor':'I want to sponsor',
     'ct.name':'Your name','ct.email':'Email','ct.org':'Company / organization (optional)','ct.msg':'Your message (optional)',
@@ -823,7 +823,7 @@ const NEW = {
     'feat.alt':'In einer vollen Kantine liest ein weißer Roboter etwas auf einem Tablet; dahinter orange Lampen.','feat.cap':'Bild 04 · Gedächtnis',
     'prod.k':'Dokumentation','prod.title':'Das Produkt <span class="human">in der Doku</span> ansehen.','prod.desc':'Installation, Konzepte und aktuelle Screenshots finden Sie in der Dokumentation. Das Produkt entwickelt sich schnell, dort steht der aktuelle Stand.','prod.cta':'Dokumentation öffnen',
     'inst.alt':'Silhouette eines Roboters, der an einem Tisch vor einer Glaswand mit Blick auf die Stadt am Laptop arbeitet.','inst.cap':'Bild 05 · Installation',
-    'inst.title':'Ein Befehl, auf <span class="human">Ihrem</span> Server.','inst.desc':'Läuft auf jedem Server mit Docker. Der Assistent richtet SSL, Nginx und die Schlüsselerzeugung ein. Ihre Daten verlassen Ihren Server nicht.',
+    'inst.title':'Ein Befehl, auf <span class="human">Ihrem</span> Server.','inst.desc':'Läuft auf einem Ubuntu-Server mit Docker und Docker Compose v2, sobald Ihre Domain darauf zeigt. Der Assistent richtet Let’s-Encrypt-SSL, Nginx und die geheimen Schlüssel ein. Datenbank und Dateien bleiben auf Ihrem Server; Prompts an den von Ihnen konfigurierten Modellanbieter gehen an diesen Anbieter.',
     'ct.k':'Kontakt','ct.title':'Lassen Sie uns reden<span style="color:var(--signal-ink)">.</span>','ct.desc':'Schreiben Sie uns für eine Demo, eine Frage oder um das Projekt zu sponsern. Ihre Nachricht geht direkt ans Team.',
     'ct.intent':'Was brauchen Sie?','ct.i.demo':'Ich möchte eine Demo','ct.i.contact':'Ich möchte Kontakt aufnehmen','ct.i.sponsor':'Ich möchte sponsern',
     'ct.name':'Ihr Name','ct.email':'E-Mail','ct.org':'Firma / Organisation (optional)','ct.msg':'Ihre Nachricht (optional)',
@@ -852,7 +852,7 @@ const NEW = {
     'feat.alt':'En una cantina llena, un robot blanco lee algo en una tableta; detrás, lámparas naranjas.','feat.cap':'Plano 04 · Memoria',
     'prod.k':'Documentación','prod.title':'Mira el producto <span class="human">en la documentación</span>.','prod.desc':'La instalación, los conceptos y las capturas actuales están en la documentación. El producto avanza rápido y esa es la fuente más precisa.','prod.cta':'Abrir la documentación',
     'inst.alt':'Silueta de un robot que trabaja con un portátil en una mesa junto a un muro de cristal, frente a la ciudad.','inst.cap':'Plano 05 · Instalación',
-    'inst.title':'Un comando, en <span class="human">tu</span> servidor.','inst.desc':'Se instala en cualquier servidor con Docker. El asistente configura SSL, Nginx y las claves. Tus datos no salen de tu servidor.',
+    'inst.title':'Un comando, en <span class="human">tu</span> servidor.','inst.desc':'Funciona en un servidor Ubuntu con Docker y Docker Compose v2, cuando tu dominio ya apunta a él. El asistente configura SSL de Let’s Encrypt, Nginx y las claves secretas. La base de datos y los archivos se quedan en tu servidor; los prompts enviados al proveedor de modelos que configures van a ese proveedor.',
     'ct.k':'Contacto','ct.title':'Hablemos<span style="color:var(--signal-ink)">.</span>','ct.desc':'Escríbenos para ver una demo, preguntar algo o patrocinar el proyecto. Tu mensaje llega directo al equipo.',
     'ct.intent':'¿Qué necesitas?','ct.i.demo':'Quiero una demo','ct.i.contact':'Quiero ponerme en contacto','ct.i.sponsor':'Quiero patrocinar',
     'ct.name':'Tu nombre','ct.email':'Correo electrónico','ct.org':'Empresa / organización (opcional)','ct.msg':'Tu mensaje (opcional)',
@@ -928,7 +928,7 @@ setInterval(renderClock, 30000);
 })();
 
 /* copy install */
-const INSTALL_CMD = 'curl -fsSL https://raw.githubusercontent.com/fab-agent/agentic-organization/main/install.sh | bash';
+const INSTALL_CMD = 'git clone https://github.com/fab-agent/agentic-organization.git && cd agentic-organization && bash install.sh';
 function copyInstall(btn) {
   const label = btn.querySelector('span');
   const flash = () => { btn.classList.add('done'); label.textContent = t('open.copied'); setTimeout(() => { btn.classList.remove('done'); label.textContent = t('open.copy'); }, 1800); };

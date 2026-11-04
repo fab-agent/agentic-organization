@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # install.sh — Single-command production installer for fab.engineering
-# Usage: curl -fsSL https://raw.githubusercontent.com/fab-agent/3rdparty-agent-org/main/install.sh | bash
-# Or:    bash install.sh
+# Usage: git clone https://github.com/fab-agent/agentic-organization.git && cd agentic-organization && bash install.sh
+# (run it from a file, in a terminal: the wizard asks questions, so do not pipe it into bash)
 
 set -euo pipefail
 
