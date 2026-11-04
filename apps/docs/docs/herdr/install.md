@@ -11,7 +11,7 @@ kendi klasöründe çalışır, root/SYSTEM gerekmez.
 
 ## Kullanıcı kurucuları
 
-Dosyalar genel depodadır: [`installers/`](https://github.com/fab-agent/agentic-organization/tree/main/installers) (kullanıcı kurucuları ve dağıtım sözleşmesi). **Henüz ayrı bir indirme sayfası veya sürüm paketi yok:** sürümlerde yalnızca `3pa.mjs` ve SHA-256 dosyası yayımlanır; kurucuları depodan alır, hash'leri kendiniz hesaplar ve dağıtırsınız.
+Dosyalar genel depodadır: [`installers/`](https://github.com/fab-agent/agentic-organization/tree/main/installers) (kullanıcı kurucuları ve dağıtım sözleşmesi). **Henüz ayrı bir indirme sayfası veya sürüm paketi yok:** sürüm iş akışı yalnızca `3pa.mjs` ve SHA-256 dosyasını yayımlar; kurucuları depodan alır, hash'leri kendiniz hesaplar ve dağıtırsınız.
 
 | Platform | Dosya | Not |
 |---|---|---|
