@@ -52,7 +52,33 @@ mod tutar. En özel `PolicyConfig` kazanır; yoksa varsayılan `dry_run`.
 | `enforce` | `deny`/`ask` verdict'i çağrıyı durdurur |
 
 **İstisna:** fail-closed verdict'ler (kural ayrıştırılamadı, motor hata verdi)
-**her modda** engeller — `dry_run` dahil.
+`off` hariç **her modda** engeller — `dry_run` dahil.
+
+### Sunucu tarafı politika kapısı (ADR-0026)
+
+Arka uçtaki araç çağrıları (arka uç ajan araçları, akış araçları, MCP `org_policies`) tek bir kapıdan
+(`agent_runtime.policy_gate`) geçer; `/policy/decide` uç noktası aynı `decide` + `audit_decision` çiftini doğrudan
+çağırır. İkisi de **kapalı-başarısızdır**:
+
+- Motor hatası, çözümlenemeyen mod/kapsam veya bilinmeyen persona çağrıyı engeller. `/policy/decide`, ele alınan
+  çözümleme/değerlendirme hatalarını (ör. geçersiz mod) **HTTP 200** ile `effect: deny`, `enforced: true`,
+  `fail_closed: true` döndürerek bildirir; karar tüketicisi bu alanlara bakmalıdır. Beklenmeyen bir istisna ise
+  non-2xx (ör. 500) yanıt verir; çağıran bunu da başarısızlık saymalı, asla izin olarak yorumlamamalıdır. Çözümleme hatası bir uç noktadan dışarı kaçarsa (ör. yapılandırma okuyan
+  uç noktalar) `503 policy_unavailable` olur.
+- Karar **denetim zincirine yazılamazsa** çağrı **her modda, `off` dahil** engellenir. `off` yalnızca politika
+  kurallarının değerlendirilmesini atlar.
+
+Politika gövdesindeki çalıştırılabilir bloklar katıdır. Kapanmamış, ayrıştırılamayan veya kural biçimine uymayan blok
+kaydetme sırasında `422 malformed_policy` ile reddedilir. Kayıtlı bir politika sonradan bozulursa: ayrıştırılamayan
+blok o politikanın kapsamındaki kararları reddettirir; bir kuralın alanı bozuksa (ör. yanlış tipte `args`) kural
+yalnızca ona ulaşan çağrıları etkileyebilir. Yani çağrılar **reddedilebilir**, hepsi değil. Sözleşme:
+`docs/architecture/policy-block-contract.md`.
+
+**Yükseltme notu:** mevcut bir kurulumu yükseltmeden önce `scripts/policy_inventory.py` çalıştırın; artık
+ayrıştırılamayan bir politika veya yazılamayan denetim zinciri araç çağrılarını engeller.
+
+**Hâlâ açık:** politika değişiklik istekleri doğrulanır ama Policy tablosuna uygulanmaz; arka uçtaki bazı sohbet
+yolları sağlayıcı SDK'larını ortak gateway katmanı dışında çağırır.
 
 `resolve_mode(...)` etkin modu döndürür; `3pa policy` bunu ve etkin kural
 listesini gösterir.

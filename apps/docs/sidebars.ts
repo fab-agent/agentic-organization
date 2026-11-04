@@ -57,6 +57,11 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: 'Herdr İstemcisi ve Çalışma Alanı',
+      items: ['herdr/overview', 'herdr/workspace', 'herdr/install', 'herdr/monitoring'],
+    },
+    {
+      type: 'category',
       label: 'Teknik',
       items: ['technical/architecture', 'technical/runtime', 'technical/skill-types', 'technical/security'],
     },

@@ -44,7 +44,20 @@ The `PolicyConfig` table keeps a mode per scope (`company` / `department` / `age
 | `dry_run` | Evaluated and **written to the audit**, but the call is not blocked (default) |
 | `enforce` | A `deny`/`ask` verdict stops the call |
 
-**Exception:** fail-closed verdicts (the rule could not be parsed, the engine raised an error) block **in every mode**, including `dry_run`.
+**Exception:** fail-closed verdicts (the rule could not be parsed, the engine raised an error) block **in every mode except `off`**, including `dry_run`.
+
+### Server-side policy gate (ADR-0026)
+
+Tool calls on the backend (backend agent tools, flow tools, MCP `org_policies`) pass one gate (`agent_runtime.policy_gate`); the `/policy/decide` endpoint calls the same `decide` + `audit_decision` pair directly. Both **fail closed**:
+
+- An engine error, an unresolvable mode/scope or an unknown persona blocks the call. `/policy/decide` reports handled resolution/evaluation failures (for example an invalid mode) as **HTTP 200** with `effect: deny`, `enforced: true`, `fail_closed: true`, so a decision consumer must read those fields. An unexpected exception instead gives a non-2xx response (for example 500); the caller must treat that as a failure too, never as permission. If a resolution error escapes an endpoint (for example endpoints that read configuration) it becomes `503 policy_unavailable`.
+- If the decision **cannot be written to the audit chain** the call is blocked **in every mode, `off` included**. `off` only skips evaluating policy rules.
+
+Executable blocks in a policy body are strict. An unterminated block, one that does not parse, or one whose rules have the wrong shape is refused at save time with `422 malformed_policy`. If a stored policy breaks later: an unparseable block makes decisions in that policy's scope be denied; a bad field inside one rule (for example `args` of the wrong type) can affect only the calls that reach that rule. So calls **may** be denied, not all of them. Contract: `docs/architecture/policy-block-contract.md`.
+
+**Upgrade note:** before upgrading an existing install run `scripts/policy_inventory.py`; a policy that no longer parses, or an audit chain that cannot be written, now blocks tool calls.
+
+**Still open:** policy change requests are validated but not applied to the Policy table; some backend chat paths call provider SDKs outside the shared gateway layer.
 
 `resolve_mode(...)` returns the effective mode; `3pa policy` shows this and the effective rule list.
 

@@ -6,6 +6,19 @@ sidebar_position: 99
 
 Platformun değişiklikleri, yeniden eskiye doğru. Teknik ayrıntı için depodaki commit geçmişine ve `docs/adr/` kayıtlarına bakın.
 
+## Yayımlanmamış (`main`) — 4 Kasım 2026: Herdr istemcisi, imzalı çalışma alanı, kurucular, izleme
+
+Aşağıdakilerin ADR'leri (0026–0039) **"önerildi"** durumundadır; kod `main` dalındadır ve CI'dan geçmiştir.
+
+- **Sunucuda kapalı-başarısız politika kapısı:** motor hatası ve bozuk politika araç çağrısını engelleyebilir (`off` hariç); yazılamayan denetim kaydı her modda engeller. Yükseltmeden önce `scripts/policy_inventory.py`. → [Politika motoru](/workstation/policy-engine)
+- **İmzalı çalışma alanı:** `GET /me/workspace` (rol → yerleşim + mod), çevrimdışı kök anahtar, imza sertifikası, iptal listesi, geri alma koruması; `3pa workspace sync|status|activate|report`; kişi başına 10 sn aralık. → [Çalışma alanı](/herdr/workspace)
+- **Kurucular:** Linux/macOS/Windows kullanıcı kurucuları, imzalı sürüm zinciri ve `3pa self-update`, MDM'den bağımsız dağıtım sözleşmesi. → [Kurulum](/herdr/install)
+- **İzleme:** `GET /admin/monitoring` ve `/monitoring` sayfası; nabızda "canlı" ve "politika hazır" ayrımı; istemcilerin kendi bildirdiği sapma. → [İzleme](/herdr/monitoring)
+- **Hesap başına tek insan kaydı** (çift kayıt 409; var olan çiftler onarılmadı).
+- 4 yeni veritabanı geçişi; imza anahtarı kurtarma runbook'u (`docs/runbooks/`).
+
+**Sınırlar:** Herdr yerleşim geçişi çalışan bir pencerede denenmedi; Windows ikilileri imzasız, Herdr uygulama klasörü varsayılanı tahmin; sürüm iş akışı imzasız `body.json` üretmiyor; CRL/epoch 2^53-1 için kurtarma yok. → [Genel bakış](/herdr/overview)
+
 ## v1.5 — 18 Ekim 2026: Birim görünümü, öğrenilmiş yönergeler, çok şirketli yetki
 
 - **Asistan görünümü (ADR-0022 §7):** yeni `assistant_user` rolü; kendi asistanıyla sohbet, dosya gönderme, durum olayları ve "benim bağlamım". Şirket geneli listeler, geliştirici kimlik bilgileri ve sunucu geneli ayarlar bu rol için kapalıdır. → [Asistan](/guide/assistant)

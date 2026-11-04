@@ -34,5 +34,9 @@
   "sidebar.tutorialSidebar.doc.Sürüm Notları": {
     "message": "Release Notes",
     "description": "The label for the doc item 'Sürüm Notları' in sidebar 'tutorialSidebar', linking to the doc changelog"
+  },
+  "sidebar.tutorialSidebar.category.Herdr İstemcisi ve Çalışma Alanı": {
+    "message": "Herdr Client and Workspace",
+    "description": "The label for category 'Herdr İstemcisi ve Çalışma Alanı' in sidebar 'tutorialSidebar'"
   }
 }
