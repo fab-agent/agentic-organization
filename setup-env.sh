@@ -15,17 +15,19 @@ echo ""
 echo -e "${BOLD}1. Alan Adı${NC}"
 echo "  Platforma erişmek için kullanılacak alan adı (ör. agents.sirketim.com)"
 # Hostname: total length <= 253, dot-separated labels of 1-63 [a-z0-9-], alphanumeric at both ends of each label.
-valid_hostname() {
-    local h="$1" label
+valid_hostname() (
+    h="$1"
     [ "${#h}" -ge 1 ] && [ "${#h}" -le 253 ] || return 1
+    printf '%s' "$h" | grep -Eq '^[a-z0-9.-]+$' || return 1   # before any splitting: no glob characters can reach the loop
     case "$h" in .*|*.|*..*) return 1;; esac
-    local IFS=.
+    set -f   # no pathname expansion while splitting
+    IFS=.
     for label in $h; do
         [ "${#label}" -ge 1 ] && [ "${#label}" -le 63 ] || return 1
         printf '%s' "$label" | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$' || return 1
     done
     return 0
-}
+)
 
 while true; do
     read -rp "  > " DOMAIN || { echo "Alan adı okunamadı (girdi kapalı)." >&2; exit 1; }
