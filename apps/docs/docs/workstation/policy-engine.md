@@ -52,7 +52,24 @@ mod tutar. En özel `PolicyConfig` kazanır; yoksa varsayılan `dry_run`.
 | `enforce` | `deny`/`ask` verdict'i çağrıyı durdurur |
 
 **İstisna:** fail-closed verdict'ler (kural ayrıştırılamadı, motor hata verdi)
-**her modda** engeller — `dry_run` dahil.
+`off` hariç **her modda** engeller — `dry_run` dahil.
+
+### Sunucu tarafı politika kapısı (ADR-0026)
+
+Arka uçtaki tüm araç çağrıları tek bir kapıdan (`agent_runtime.policy_gate`) geçer: arka uç ajan araçları,
+akış araçları, MCP `org_policies` ve `/policy/decide`. Kapı **kapalı-başarısızdır**: motor hatası, okunamayan
+politika, bilinmeyen persona veya **denetim zincirine yazılamayan karar** çağrıyı engeller (`off` hariç her
+modda). Çözümleme hatası HTTP `503 policy_unavailable` olarak döner.
+
+Politika gövdesindeki çalıştırılabilir bloklar katıdır: kapanmamış, ayrıştırılamayan veya kural biçimine uymayan
+blok kaydetme sırasında `422 malformed_policy` ile reddedilir; kayıtlı bir politika sonradan bozulursa, uygulandığı
+kişiler için her karar reddedilir. Sözleşme: `docs/architecture/policy-block-contract.md`.
+
+**Yükseltme notu:** mevcut bir kurulumu yükseltmeden önce `scripts/policy_inventory.py` çalıştırın; artık
+ayrıştırılamayan bir politika veya yazılamayan denetim zinciri araç çağrılarını engeller.
+
+**Hâlâ açık:** politika değişiklik istekleri doğrulanır ama Policy tablosuna uygulanmaz; arka uçtaki bazı sohbet
+yolları sağlayıcı SDK'larını ortak gateway katmanı dışında çağırır.
 
 `resolve_mode(...)` etkin modu döndürür; `3pa policy` bunu ve etkin kural
 listesini gösterir.

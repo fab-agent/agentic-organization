@@ -25,6 +25,8 @@ sidebar_position: 6
 | `3pa signal <signal>` | Send a signed control signal to the session |
 | `3pa doctor` | Check sandbox prerequisites (Docker, network, image) |
 | `3pa start` / `3pa status` | Start the platform with Docker / show its status |
+| `3pa workspace sync\|status\|activate\|report` | Install the role-based signed Herdr workspace / show drift / activate the layout / send the drift report → [Workspace](/herdr/workspace) |
+| `3pa self-update` | Verify the signed release notice and update the `3pa` bundle → [Install](/herdr/install) |
 
 ---
 
@@ -46,7 +48,7 @@ sidebar_position: 6
 
 ## Heartbeat and command channel
 
-While running, `3pa` sends a regular `POST /workstation/heartbeat`. The response carries pending **signed commands** (`PersonaCommand`); `3pa` verifies each with Ed25519, applies it and acknowledges it with `POST /workstation/commands/{id}/ack`. The owner can queue a command to a session from the panel with `POST /workstation/commands` (for example stopping a running sandbox remotely).
+While running, `3pa` sends a regular `POST /workstation/heartbeat`. The response carries pending **signed commands** (`PersonaCommand`); `3pa` verifies each with Ed25519, applies it and acknowledges it with `POST /workstation/commands/{id}/ack`. The owner can queue a command to a session from the panel with `POST /workstation/commands` (for example stopping a running sandbox remotely). The answer also carries `policy_ready`, `policy_reason` and `policy_mode`: if the policy cannot be resolved on the server, `3pa run` says so in **one line** (it does not stop the sandbox). This is what the server could resolve at that moment; it does not prove the local machine obeys the policy → [Monitoring](/herdr/monitoring).
 
 ---
 
@@ -58,5 +60,4 @@ While running, `3pa` sends a regular `POST /workstation/heartbeat`. The response
 
 ## Open items
 
-- `3pa update`: self-update.
 - A single binary `3pa` compiled with Go (to remove the Node dependency).

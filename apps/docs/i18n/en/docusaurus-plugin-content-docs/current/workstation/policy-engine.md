@@ -44,7 +44,17 @@ The `PolicyConfig` table keeps a mode per scope (`company` / `department` / `age
 | `dry_run` | Evaluated and **written to the audit**, but the call is not blocked (default) |
 | `enforce` | A `deny`/`ask` verdict stops the call |
 
-**Exception:** fail-closed verdicts (the rule could not be parsed, the engine raised an error) block **in every mode**, including `dry_run`.
+**Exception:** fail-closed verdicts (the rule could not be parsed, the engine raised an error) block **in every mode except `off`**, including `dry_run`.
+
+### Server-side policy gate (ADR-0026)
+
+Every tool call on the backend passes one gate (`agent_runtime.policy_gate`): backend agent tools, flow tools, MCP `org_policies` and `/policy/decide`. The gate **fails closed**: an engine error, an unreadable policy, an unknown persona or a **decision that cannot be written to the audit chain** blocks the call (in every mode except `off`). A resolution error returns HTTP `503 policy_unavailable`.
+
+Executable blocks in a policy body are strict: an unterminated block, one that does not parse, or one whose rules have the wrong shape is refused at save time with `422 malformed_policy`; if a stored policy breaks later, every decision for the people it applies to is denied. Contract: `docs/architecture/policy-block-contract.md`.
+
+**Upgrade note:** before upgrading an existing install run `scripts/policy_inventory.py`; a policy that no longer parses, or an audit chain that cannot be written, now blocks tool calls.
+
+**Still open:** policy change requests are validated but not applied to the Policy table; some backend chat paths call provider SDKs outside the shared gateway layer.
 
 `resolve_mode(...)` returns the effective mode; `3pa policy` shows this and the effective rule list.
 

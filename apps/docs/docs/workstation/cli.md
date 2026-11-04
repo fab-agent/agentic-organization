@@ -27,6 +27,8 @@ durumunu gösterir, çalışan oturumu güvenli biçimde durdurur.
 | `3pa signal <sinyal>` | Oturuma imzalı bir kontrol sinyali gönder |
 | `3pa doctor` | Sandbox ön koşullarını kontrol et (Docker, ağ, imaj) |
 | `3pa start` / `3pa status` | Platformu Docker ile başlat / durumunu göster |
+| `3pa workspace sync\|status\|activate\|report` | Rol bazlı imzalı Herdr çalışma alanını kur / farkı göster / yerleşimi etkinleştir / sapma raporu gönder → [Çalışma alanı](/herdr/workspace) |
+| `3pa self-update` | İmzalı sürüm bildirimini doğrulayıp `3pa` paketini güncelle → [Kurulum](/herdr/install) |
 
 ---
 
@@ -48,7 +50,9 @@ geçersiz kılınabilir. `sandbox/run.sh` bu dosyayı okur.
 4. opencode'u konteyner içinde başlatır — gateway provider'ı, plugin ve
    guardrail prompt'u önceden yerleştirilmiş olarak.
 5. Heartbeat döngüsü: `POST /workstation/heartbeat` — durum bildirir ve
-   [imzalı komut kanalını](./injection-defense.md) yoklar (ör. uzaktan `stop`).
+   [imzalı komut kanalını](./injection-defense.md) yoklar (ör. uzaktan `stop`). Yanıt ayrıca `policy_ready`, `policy_reason` ve `policy_mode` taşır: politika sunucuda
+çözülemiyorsa `3pa run` bunu **tek satırla** bildirir (sandbox'ı durdurmaz). Bu, sunucunun o an çözebildiğidir; yerel
+makinenin politikaya uyduğunu kanıtlamaz → [İzleme](/herdr/monitoring).
 
 ---
 
@@ -72,5 +76,4 @@ matrisi: `docs/architecture/version-compat.md`.
 
 ## Açık konular
 
-- `3pa update` — kendi kendini güncelleme.
 - Go ile derlenmiş tek ikili `3pa` (Node bağımlılığını kaldırmak için).

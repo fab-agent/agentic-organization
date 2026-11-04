@@ -18,17 +18,19 @@ fab.engineering is a source-available platform that runs on your own server. Eve
 | **Department manager**: I manage my team's agents and approvals | [Agents](/guide/agents), [Change Requests](/guide/change-requests) |
 | **IT / installer** | [Requirements](/getting-started/requirements), [Installation](/getting-started/installation), [Settings](/guide/settings) |
 | **Developer**: I will work with opencode on my own machine | [Developer Workstation](/workstation/overview) |
+| **IT / security rolling out the Herdr client company-wide** | [Herdr client](/herdr/overview), [Install and deploy](/herdr/install), [Monitoring](/herdr/monitoring) |
 | **Department employee who wants to work in a terminal** | [The fab terminal client](/fab/overview) |
 | **Building or reviewing the platform** | [Technical](/technical/architecture), [Developer Notes](/developer-notes/overview) |
 
-## Three ways to work
+## Four ways to work
 
-Same server, same policies, same audit trail; three doors depending on the job:
+Same server, same policies, same audit trail; four doors depending on the job:
 
 | Surface | For | Status |
 |---|---|---|
 | **Web interface** | Everyone: chat, flows, approvals, administration | Ready to use |
 | **Developer workstation** (`3pa` + opencode) | Software developers | Ready to use |
+| **Herdr client** (role-based signed workspace) | Anyone who wants a layout by role | Server and `3pa` side are in the code; not tried in a real Herdr window, see [Herdr](/herdr/overview) |
 | **`fab` terminal client** | Departments such as finance, accounting, sales | In development: there is no real workspace runtime yet, see [fab](/fab/overview) |
 
 ## Core concepts

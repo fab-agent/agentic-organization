@@ -18,17 +18,19 @@ fab.engineering, kendi sunucunuzda çalışan, kaynağı açık bir platformdur.
 | **Departman yöneticisi** — ekibimin ajanlarını ve onayları yönetiyorum | [Ajanlar](/guide/agents), [Değişiklik Talepleri](/guide/change-requests) |
 | **BT / kurulum sorumlusu** | [Gereksinimler](/getting-started/requirements), [Kurulum](/getting-started/installation), [Ayarlar](/guide/settings) |
 | **Geliştirici** — kendi bilgisayarımda opencode ile çalışacağım | [Geliştirici İş İstasyonu](/workstation/overview) |
+| **BT / güvenlik — şirket genelinde Herdr istemcisi dağıtacağım** | [Herdr İstemcisi](/herdr/overview), [Kurulum ve dağıtım](/herdr/install), [İzleme](/herdr/monitoring) |
 | **Departman çalışanı, terminalde çalışmak istiyorum** | [fab terminal istemcisi](/fab/overview) |
 | **Platformu geliştiren / inceleyen** | [Teknik Bölüm](/technical/architecture), [Geliştirici Notları](/developer-notes/overview) |
 
-## Üç çalışma yüzeyi
+## Dört çalışma yüzeyi
 
-Aynı sunucu, aynı politikalar, aynı denetim kaydı; kişinin işine göre üç farklı kapı:
+Aynı sunucu, aynı politikalar, aynı denetim kaydı; kişinin işine göre dört farklı kapı:
 
 | Yüzey | Kimin için | Durum |
 |---|---|---|
 | **Web arayüzü** | Herkes: sohbet, akışlar, onaylar, yönetim | Kullanıma hazır |
 | **Geliştirici iş istasyonu** (`3pa` + opencode) | Yazılım geliştiriciler | Kullanıma hazır |
+| **Herdr istemcisi** (rol bazlı imzalı çalışma alanı) | Rolüne göre yerleşim isteyen herkes | Sunucu ve `3pa` tarafı kodda; gerçek Herdr penceresinde denenmedi, bkz. [Herdr](/herdr/overview) |
 | **`fab` terminal istemcisi** | Finans, muhasebe, satış gibi departmanlar | Geliştirme aşamasında: gerçek çalışma alanı çalışma zamanı henüz yok, bkz. [fab](/fab/overview) |
 
 ## Temel kavramlar

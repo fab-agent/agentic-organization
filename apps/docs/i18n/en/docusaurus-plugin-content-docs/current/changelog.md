@@ -6,6 +6,19 @@ sidebar_position: 99
 
 The platform's changes, newest first. For technical detail see the repository's commit history and `docs/adr/` records.
 
+## Unreleased (`main`) — 4 November 2026: Herdr client, signed workspace, installers, monitoring
+
+The ADRs below (0026–0039) are **"proposed"**; the code is on `main` and has passed CI.
+
+- **Fail-closed policy gate on the server:** an engine error, a broken policy or an unwritable audit record blocks the tool call (except `off`). Run `scripts/policy_inventory.py` before upgrading. → [Policy engine](/workstation/policy-engine)
+- **Signed workspace:** `GET /me/workspace` (role → layout + mods), offline root key, signing certificate, revocation list, rollback protection; `3pa workspace sync|status|activate|report`; one call per person per 10 s. → [Workspace](/herdr/workspace)
+- **Installers:** Linux/macOS/Windows user installers, a signed release chain and `3pa self-update`, a vendor-neutral deployment contract. → [Install](/herdr/install)
+- **Monitoring:** `GET /admin/monitoring` and the `/monitoring` page; "alive" vs "policy ready" in the heartbeat; client-reported drift. → [Monitoring](/herdr/monitoring)
+- **One human record per account** (a second one returns 409; existing duplicates were not repaired).
+- 4 new database migrations; a signing-key recovery runbook (`docs/runbooks/`).
+
+**Limits:** the Herdr layout switch was not tried in a running window; Windows binaries are unsigned and the Herdr app-folder default is a guess; the release workflow does not emit an unsigned `body.json`; there is no recovery for a CRL/epoch at 2^53-1. → [Overview](/herdr/overview)
+
 ## v1.5 — 18 October 2026: department view, learned guidance, multi-company authorisation
 
 - **Assistant view (ADR-0022 §7):** the new `assistant_user` role; chat with their own assistant, send files, status events and "my context". Company-wide lists, developer credentials and installation-wide settings are closed to this role. → [Assistant](/guide/assistant)
